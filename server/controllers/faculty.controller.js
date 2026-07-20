@@ -48,5 +48,18 @@ async function updateFaculty(req, res, next) {
   }
 }
 
-module.exports = { listFaculty, createFaculty, updateFaculty };
+async function deleteFaculty(req, res, next) {
+  try {
+    if (req.user?.role !== 'admin') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const { id } = req.params;
+    await facultyService.deleteFaculty(id);
+    res.json({ message: 'Faculty member deleted successfully' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { listFaculty, createFaculty, updateFaculty, deleteFaculty };
 

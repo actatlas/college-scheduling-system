@@ -6,7 +6,13 @@ export function LandingPage() {
   const navigate = useNavigate();
 
   return (
-    <div className="landing-page">
+    <div
+      className="landing-page"
+      style={{
+        backgroundImage:
+          'linear-gradient(to right, rgba(0, 40, 80, 0.55) 40%, rgba(0, 40, 80, 0.05) 100%), url("/src/assets/images/SRCB FRONT DES.png")',
+      }}
+    >
       <div className="landing-shell">
         <section className="landing-hero">
           <div className="landing-hero__badge">
@@ -58,7 +64,7 @@ export function LandingPage() {
                 <ShieldCheck size={14} /> Secure access
               </span>
               <span className="pill">
-                <Sparkles size={14} /> Modern UX
+                <Sparkles size={14} /> Uriel
               </span>
             </div>
           </div>

@@ -72,6 +72,34 @@ const RegisterPage = lazy(() =>
     default: module.RegisterPage,
   })),
 );
+const StudentsPage = lazy(() =>
+  import("../pages/StudentsPage").then((module) => ({
+    default: module.StudentsPage,
+  })),
+);
+
+import { Navigate, Outlet } from "react-router-dom";
+
+interface ProtectedRouteProps {
+  allowedRoles: string[];
+}
+
+export function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
+  const token = localStorage.getItem("token");
+  const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
+
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!allowedRoles.includes(role)) {
+    if (role === "student") return <Navigate to="/student-dashboard" replace />;
+    if (role === "teacher") return <Navigate to="/teacher-dashboard" replace />;
+    return <Navigate to="/admin-dashboard" replace />;
+  }
+
+  return <Outlet />;
+}
 
 function RouteFallback() {
   return <div className="empty-state">Loading page…</div>;
@@ -84,23 +112,40 @@ export function AppRoutes() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        
         <Route element={<MainLayout />}>
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/admin-dashboard" element={<DashboardPage />} />
-          <Route path="/teacher-dashboard" element={<DashboardPage />} />
-          <Route path="/student-dashboard" element={<DashboardPage />} />
-          <Route path="/faculty" element={<FacultyPage />} />
-          <Route path="/programs" element={<CoursesPage />} />
-          <Route path="/departments" element={<CoursesPage />} />
-          <Route path="/courses" element={<CoursesPage />} />
-          <Route path="/subjects" element={<SubjectsPage />} />
-          <Route path="/sections" element={<SectionsPage />} />
-          <Route path="/rooms" element={<RoomsPage />} />
-          <Route path="/schedules" element={<SchedulesPage />} />
-          <Route path="/conflicts" element={<ConflictPage />} />
-          <Route path="/reports" element={<ReportsPage />} />
-          <Route path="/users" element={<UserManagementPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
+          {/* Shared paths */}
+          <Route element={<ProtectedRoute allowedRoles={["admin", "teacher", "student"]} />}>
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/schedules" element={<SchedulesPage />} />
+            <Route path="/subjects" element={<SubjectsPage />} />
+          </Route>
+
+          {/* Admin-only paths */}
+          <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
+            <Route path="/admin-dashboard" element={<DashboardPage />} />
+            <Route path="/faculty" element={<FacultyPage />} />
+            <Route path="/programs" element={<CoursesPage />} />
+            <Route path="/departments" element={<CoursesPage />} />
+            <Route path="/courses" element={<CoursesPage />} />
+            <Route path="/sections" element={<SectionsPage />} />
+            <Route path="/rooms" element={<RoomsPage />} />
+            <Route path="/conflicts" element={<ConflictPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/users" element={<UserManagementPage />} />
+            <Route path="/students" element={<StudentsPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Route>
+
+          {/* Teacher-only paths */}
+          <Route element={<ProtectedRoute allowedRoles={["teacher"]} />}>
+            <Route path="/teacher-dashboard" element={<DashboardPage />} />
+          </Route>
+
+          {/* Student-only paths */}
+          <Route element={<ProtectedRoute allowedRoles={["student"]} />}>
+            <Route path="/student-dashboard" element={<DashboardPage />} />
+          </Route>
         </Route>
       </Routes>
     </Suspense>

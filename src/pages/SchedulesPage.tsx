@@ -6,6 +6,7 @@ import { useToast } from "../components/common/Toast";
 import { Plus } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
 import {
+  buildAiRecommendations,
   generateScheduleSeed,
   parseTeacherAvailability,
   type UserRole,
@@ -54,6 +55,11 @@ export function SchedulesPage() {
         ),
       );
   }, [role, selectedProgram.key, userName]);
+
+  const aiRecommendations = useMemo(
+    () => buildAiRecommendations(scheduleItems),
+    [scheduleItems],
+  );
 
   const timetable = useMemo(() => {
     // UI expects a table with time rows and day columns.
@@ -107,49 +113,80 @@ export function SchedulesPage() {
               : "Preview a weekly timetable with room and faculty assignments."
         }
         actions={
-          <button
-            className="action-button"
-            type="button"
-            disabled={loading}
-            onClick={async () => {
-              setLoading(true);
-              try {
-                if (role === "admin") {
+          role === "admin" ? (
+            <button
+              className="action-button"
+              type="button"
+              disabled={loading}
+              onClick={async () => {
+                setLoading(true);
+                try {
                   await api.post("/schedules/generate");
+                  const res: any = await api.get("/schedules");
+                  setScheduleItems(res.data?.data || []);
+                  toast.push("Timetable generated", "success");
+                } catch (err) {
+                  toast.push("Failed to generate timetable", "error");
+                } finally {
+                  setLoading(false);
                 }
-                const res: any = await api.get("/schedules");
-                setScheduleItems(res.data?.data || []);
-                toast.push(
-                  role === "admin"
-                    ? "Timetable generated"
-                    : "Schedule refreshed",
-                  "success",
-                );
-              } catch (err) {
-                toast.push(
-                  role === "admin"
-                    ? "Failed to generate timetable"
-                    : "Failed to refresh schedule",
-                  "error",
-                );
-              } finally {
-                setLoading(false);
-              }
-            }}
-          >
-            <Plus size={16} />
-            {loading
-              ? role === "admin"
-                ? "Generating…"
-                : "Refreshing…"
-              : role === "admin"
-                ? "Generate Timetable"
-                : role === "teacher"
-                  ? "Refresh Schedule"
-                  : "Refresh View"}
-          </button>
+              }}
+            >
+              <Plus size={16} />
+              {loading ? "Generating…" : "Generate Timetable"}
+            </button>
+          ) : (
+            <button
+              className="action-button"
+              type="button"
+              disabled={loading}
+              onClick={async () => {
+                setLoading(true);
+                try {
+                  const res: any = await api.get("/schedules");
+                  setScheduleItems(res.data?.data || []);
+                  toast.push("Schedule refreshed", "success");
+                } catch (err) {
+                  toast.push("Failed to refresh schedule", "error");
+                } finally {
+                  setLoading(false);
+                }
+              }}
+            >
+              Refresh Schedule
+            </button>
+          )
         }
       />
+
+      <section className="card">
+        <div className="card__header">
+          <div>
+            <p className="eyebrow">AI planner</p>
+            <h3>Smart timetable recommendations</h3>
+            <p className="muted">
+              The planner highlights where classes may need to be rebalanced for
+              better school operations.
+            </p>
+          </div>
+        </div>
+        <div className="grid-2">
+          {aiRecommendations.length === 0 ? (
+            <div className="empty-state">
+              No planning issues detected. Your schedule is balanced.
+            </div>
+          ) : (
+            aiRecommendations.map((recommendation) => (
+              <article className="card" key={recommendation.id}>
+                <p className="eyebrow">{recommendation.severity} priority</p>
+                <h3>{recommendation.title}</h3>
+                <p className="muted">{recommendation.detail}</p>
+                <p className="pill">{recommendation.suggestion}</p>
+              </article>
+            ))
+          )}
+        </div>
+      </section>
 
       <section className="card">
         <div className="table-wrap">
@@ -177,13 +214,49 @@ export function SchedulesPage() {
               ) : (
                 timetable.map((row) => (
                   <tr key={row.time}>
-                    <td>{row.time}</td>
-                    <td>{row.Monday}</td>
-                    <td>{row.Tuesday}</td>
-                    <td>{row.Wednesday}</td>
-                    <td>{row.Thursday}</td>
-                    <td>{row.Friday}</td>
-                    <td>{row.Saturday}</td>
+                    <td style={{ fontWeight: 500 }}>{row.time}</td>
+                    <td>
+                      {row.Monday ? (
+                        <div className="timetable-block">{row.Monday}</div>
+                      ) : (
+                        <span className="empty-slot">-</span>
+                      )}
+                    </td>
+                    <td>
+                      {row.Tuesday ? (
+                        <div className="timetable-block">{row.Tuesday}</div>
+                      ) : (
+                        <span className="empty-slot">-</span>
+                      )}
+                    </td>
+                    <td>
+                      {row.Wednesday ? (
+                        <div className="timetable-block">{row.Wednesday}</div>
+                      ) : (
+                        <span className="empty-slot">-</span>
+                      )}
+                    </td>
+                    <td>
+                      {row.Thursday ? (
+                        <div className="timetable-block">{row.Thursday}</div>
+                      ) : (
+                        <span className="empty-slot">-</span>
+                      )}
+                    </td>
+                    <td>
+                      {row.Friday ? (
+                        <div className="timetable-block">{row.Friday}</div>
+                      ) : (
+                        <span className="empty-slot">-</span>
+                      )}
+                    </td>
+                    <td>
+                      {row.Saturday ? (
+                        <div className="timetable-block">{row.Saturday}</div>
+                      ) : (
+                        <span className="empty-slot">-</span>
+                      )}
+                    </td>
                   </tr>
                 ))
               )}

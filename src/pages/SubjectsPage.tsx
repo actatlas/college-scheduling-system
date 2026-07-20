@@ -4,8 +4,11 @@ import { useEffect, useState } from "react";
 import { api } from "../data/mockApi";
 import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Edit2, Trash2 } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
+
+const getRole = () =>
+  (localStorage.getItem("userRole") || "admin").toLowerCase();
 
 type SubjectRow = {
   code: string;
@@ -16,13 +19,16 @@ type SubjectRow = {
   semester: string;
   department: string;
   instructor: string;
+  instructorId?: string;
 };
 
 export function SubjectsPage() {
   const [subjects, setSubjects] = useState<SubjectRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [deletingCode, setDeletingCode] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
+  const [editingSubject, setEditingSubject] = useState<SubjectRow | null>(null);
   const [form, setForm] = useState({
     code: "",
     name: "",
@@ -34,6 +40,46 @@ export function SubjectsPage() {
     instructorId: "",
   });
   const toast = useToast();
+
+  const role = getRole();
+  const isAdmin = role === "admin";
+
+  const handleEdit = (subject: SubjectRow) => {
+    if (!isAdmin) return;
+    setEditingSubject(subject);
+
+    setForm({
+      code: subject.code,
+      name: subject.name,
+      units: String(subject.units),
+      lectureHours: String(subject.lectureHours),
+      labHours: String(subject.labHours),
+      semester: subject.semester,
+      department: subject.department,
+      instructorId: subject.instructorId || "",
+    });
+    setIsOpen(true);
+  };
+
+  const handleDelete = async (code: string) => {
+    if (!isAdmin) return;
+    if (!window.confirm("Remove this subject from the catalog?")) return;
+
+    setDeletingCode(code);
+    try {
+      await api.delete(`/subjects/${encodeURIComponent(code)}`);
+      toast.push("Subject deleted successfully", "success");
+      fetchSubjects();
+    } catch (err: any) {
+      toast.push(
+        err?.response?.data?.error || "Failed to delete subject",
+        "error",
+      );
+    } finally {
+      setDeletingCode(null);
+    }
+  };
+
   const { selectedProgram, matchesProgram } = useProgramContext();
 
   const fetchSubjects = () => {
@@ -72,15 +118,36 @@ export function SubjectsPage() {
       <PageHeader
         title="Subjects"
         description="Track learning units, lecture hours, lab hours, and instructors."
+        breadcrumbs={
+          <>
+            <span>Home</span> <span>/</span> <strong>Subjects</strong>
+          </>
+        }
+        helpText="Add subjects once and reuse them when building sections and schedules."
         actions={
-          <button
-            className="action-button"
-            type="button"
-            onClick={() => setIsOpen(true)}
-          >
-            <Plus size={16} />
-            Add Subject
-          </button>
+          isAdmin ? (
+            <button
+              className="action-button"
+              type="button"
+              onClick={() => {
+                setEditingSubject(null);
+                setForm({
+                  code: "",
+                  name: "",
+                  units: "3",
+                  lectureHours: "3",
+                  labHours: "0",
+                  semester: "1",
+                  department: "",
+                  instructorId: "",
+                });
+                setIsOpen(true);
+              }}
+            >
+              <Plus size={16} />
+              Add Subject
+            </button>
+          ) : undefined
         }
       />
 
@@ -109,12 +176,13 @@ export function SubjectsPage() {
                 <th>Lecture</th>
                 <th>Lab</th>
                 <th>Instructor</th>
+                {isAdmin && <th style={{ textAlign: "right" }}>Actions</th>}
               </tr>
             </thead>
             <tbody>
               {filteredSubjects.length === 0 ? (
                 <tr>
-                  <td colSpan={6}>
+                  <td colSpan={isAdmin ? 7 : 6}>
                     <div className="empty-state">
                       No subjects matched your search.
                     </div>
@@ -129,6 +197,51 @@ export function SubjectsPage() {
                     <td>{subject.lectureHours}</td>
                     <td>{subject.labHours}</td>
                     <td>{subject.instructor}</td>
+                    {isAdmin && (
+                      <td style={{ textAlign: "right" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "flex-end",
+                            gap: 8,
+                          }}
+                        >
+                          <button
+                            type="button"
+                            className="icon-button"
+                            title="Edit Subject"
+                            onClick={() => handleEdit(subject)}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              color: "#4b5563",
+                            }}
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-button"
+                            title="Delete Subject"
+                            onClick={() => handleDelete(subject.code)}
+                            disabled={deletingCode === subject.code}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              cursor:
+                                deletingCode === subject.code
+                                  ? "wait"
+                                  : "pointer",
+                              color: "#dc2626",
+                              opacity: deletingCode === subject.code ? 0.7 : 1,
+                            }}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}
@@ -138,10 +251,17 @@ export function SubjectsPage() {
       </section>
 
       <Modal
-        isOpen={isOpen}
-        title="Create subject"
-        description="Add a new academic subject to the registration catalog."
-        onClose={() => setIsOpen(false)}
+        isOpen={isOpen && isAdmin}
+        title={editingSubject ? "Edit subject" : "Create subject"}
+        onClose={() => {
+          setIsOpen(false);
+          setEditingSubject(null);
+        }}
+        description={
+          editingSubject
+            ? "Update academic subject registration details."
+            : "Add a new academic subject to the registration catalog."
+        }
       >
         <div className="form-grid">
           <div className="field-group">
@@ -149,6 +269,7 @@ export function SubjectsPage() {
             <input
               id="subjectCode"
               value={form.code}
+              disabled={!!editingSubject}
               onChange={(event) =>
                 setForm({ ...form, code: event.target.value })
               }
@@ -234,7 +355,10 @@ export function SubjectsPage() {
           <button
             type="button"
             className="secondary-button"
-            onClick={() => setIsOpen(false)}
+            onClick={() => {
+              setIsOpen(false);
+              setEditingSubject(null);
+            }}
           >
             Cancel
           </button>
@@ -249,15 +373,25 @@ export function SubjectsPage() {
               }
               setLoading(true);
               try {
-                await api.post("/subjects", {
+                const payload = {
                   ...form,
                   units: Number(form.units),
                   lectureHours: Number(form.lectureHours),
                   labHours: Number(form.labHours),
-                });
+                };
+                if (editingSubject) {
+                  await api.put(
+                    `/subjects/${encodeURIComponent(editingSubject.code)}`,
+                    payload,
+                  );
+                  toast.push("Subject updated", "success");
+                } else {
+                  await api.post("/subjects", payload);
+                  toast.push("Subject created", "success");
+                }
                 fetchSubjects();
-                toast.push("Subject created", "success");
                 setIsOpen(false);
+                setEditingSubject(null);
                 setForm({
                   code: "",
                   name: "",
@@ -270,7 +404,7 @@ export function SubjectsPage() {
                 });
               } catch (err: any) {
                 toast.push(
-                  err?.response?.data?.error || "Failed to create subject",
+                  err?.response?.data?.error || "Failed to save subject",
                   "error",
                 );
               } finally {

@@ -43,10 +43,21 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             ? " toast-center"
             : "")
         }
+        aria-live="polite"
       >
         {toasts.map((t) => (
-          <div key={t.id} className={`toast toast-${t.type}`}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div key={t.id} className={`toast toast-${t.type}`} role="status">
+            <span className="toast__icon">
+              {t.type === "success" ? "✓" : t.type === "error" ? "!" : "i"}
+            </span>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                flex: 1,
+              }}
+            >
               <div style={{ flex: 1 }}>{t.message}</div>
               {t.actionLabel && t.onAction ? (
                 <button

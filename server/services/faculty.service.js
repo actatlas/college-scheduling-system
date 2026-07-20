@@ -51,29 +51,45 @@ async function createFaculty(payload) {
 }
 
 async function updateFaculty(id, payload) {
+  const [oldFaculty] = await query('SELECT email FROM faculty WHERE id = ? LIMIT 1', [id]);
+
   const updates = [];
   const params = [];
 
-  if (payload.availability !== undefined) {
-    updates.push('availability = ?');
-    params.push(payload.availability);
-  }
-  if (payload.status !== undefined) {
-    updates.push('status = ?');
-    params.push(payload.status);
-  }
-  if (payload.department !== undefined) {
-    updates.push('department = ?');
-    params.push(payload.department);
+  const fields = ['name', 'department', 'email', 'phone', 'status', 'availability'];
+  for (const field of fields) {
+    if (payload[field] !== undefined) {
+      updates.push(`${field} = ?`);
+      params.push(payload[field]);
+    }
   }
 
-  if (updates.length === 0) {
-    return listFaculty();
+  if (updates.length > 0) {
+    params.push(id);
+    await query(`UPDATE faculty SET ${updates.join(', ')} WHERE id = ?`, params);
   }
 
-  params.push(id);
-  await query(`UPDATE faculty SET ${updates.join(', ')} WHERE id = ?`, params);
+  if (oldFaculty && oldFaculty.email) {
+    const userUpdates = [];
+    const userParams = [];
+    if (payload.name !== undefined) {
+      userUpdates.push('name = ?');
+      userParams.push(payload.name);
+    }
+    if (payload.email !== undefined) {
+      userUpdates.push('email = ?');
+      userParams.push(payload.email);
+    }
+    if (userUpdates.length > 0) {
+      userParams.push(oldFaculty.email);
+      await query(`UPDATE users SET ${userUpdates.join(', ')} WHERE email = ?`, userParams);
+    }
+  }
+
   const [row] = await query('SELECT id, name, department, email, phone, status, availability FROM faculty WHERE id = ? LIMIT 1', [id]);
+  if (!row) {
+    throw new Error('Faculty member not found');
+  }
   return {
     id: String(row.id),
     name: row.name,
@@ -86,6 +102,21 @@ async function updateFaculty(id, payload) {
   };
 }
 
-const facultyService = { listFaculty, createFaculty, updateFaculty };
+async function deleteFaculty(id) {
+  const [faculty] = await query('SELECT email FROM faculty WHERE id = ? LIMIT 1', [id]);
+  if (!faculty) {
+    const err = new Error('Faculty member not found');
+    err.statusCode = 404;
+    throw err;
+  }
+  
+  if (faculty.email) {
+    await query('DELETE FROM users WHERE email = ?', [faculty.email]);
+  }
+  
+  await query('DELETE FROM faculty WHERE id = ?', [id]);
+}
+
+const facultyService = { listFaculty, createFaculty, updateFaculty, deleteFaculty };
 module.exports = { facultyService };
 

@@ -4,6 +4,7 @@ async function listSubjects(department) {
   // Match SubjectItem fields:
   // code, name, units, lectureHours, labHours, semester, department, instructor
   let sql = `SELECT s.code, s.name, s.units, s.lecture_hours, s.lab_hours, s.semester, s.department,
+            s.instructor_id,
             COALESCE(f.name, '') AS instructor
      FROM subjects s
      LEFT JOIN faculty f ON f.id = s.instructor_id`;
@@ -24,6 +25,7 @@ async function listSubjects(department) {
     semester: s.semester,
     department: s.department,
     instructor: s.instructor,
+    instructorId: s.instructor_id || '',
   }));
 }
 

@@ -18,6 +18,14 @@ export interface TeacherAvailabilityEntry {
   slots: string[];
 }
 
+export interface AiRecommendation {
+  id: string;
+  title: string;
+  detail: string;
+  suggestion: string;
+  severity: "High" | "Medium" | "Low";
+}
+
 export function parseTeacherAvailability(raw?: string | null): TeacherAvailabilityEntry[] {
   if (!raw) return [];
 
@@ -55,6 +63,58 @@ function pickSlot(usedByTeacher: Map<string, Set<string>>, usedByRoom: Map<strin
   }
 
   return null;
+}
+
+export function buildAiRecommendations(scheduleItems: GeneratedScheduleItem[]): AiRecommendation[] {
+  const byTeacher = new Map<string, number>();
+  const byRoom = new Map<string, number>();
+  const byTime = new Map<string, number>();
+
+  for (const item of scheduleItems) {
+    byTeacher.set(item.faculty, (byTeacher.get(item.faculty) ?? 0) + 1);
+    byRoom.set(item.room, (byRoom.get(item.room) ?? 0) + 1);
+    byTime.set(`${item.day}:${item.time}`, (byTime.get(`${item.day}:${item.time}`) ?? 0) + 1);
+  }
+
+  const recommendations: AiRecommendation[] = [];
+
+  for (const [teacher, count] of byTeacher.entries()) {
+    if (count >= 2) {
+      recommendations.push({
+        id: `teacher-${teacher}`,
+        title: `Reassign ${teacher}'s overload`,
+        detail: `${teacher} is assigned to ${count} classes in the same window.`,
+        suggestion: "Shift one class to a different instructor or lower-priority slot.",
+        severity: "High",
+      });
+    }
+  }
+
+  for (const [room, count] of byRoom.entries()) {
+    if (count >= 2) {
+      recommendations.push({
+        id: `room-${room}`,
+        title: `Room conflict for ${room}`,
+        detail: `${room} is being used ${count} times at the same period.`,
+        suggestion: "Move one class to an alternate room or stagger the lesson block.",
+        severity: "High",
+      });
+    }
+  }
+
+  for (const [slot, count] of byTime.entries()) {
+    if (count >= 2) {
+      recommendations.push({
+        id: `slot-${slot}`,
+        title: `Shift a class from ${slot}`,
+        detail: `${count} lessons overlap in ${slot}.`,
+        suggestion: "Spread the timetable by moving one lesson to a nearby slot.",
+        severity: "Medium",
+      });
+    }
+  }
+
+  return recommendations.slice(0, 4);
 }
 
 export function generateScheduleSeed(option?: { role?: UserRole; programKey?: string; section?: string; teacherName?: string; availability?: TeacherAvailabilityEntry[] }) {

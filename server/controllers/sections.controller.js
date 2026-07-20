@@ -11,6 +11,9 @@ async function listSections(req, res, next) {
 
 async function createSection(req, res, next) {
   try {
+    if (req.user?.role !== 'admin') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
     const payload = req.body || {};
     const row = await sectionsService.createSection(payload);
     res.status(201).json({ data: row });
@@ -22,5 +25,32 @@ async function createSection(req, res, next) {
   }
 }
 
-module.exports = { listSections, createSection };
+async function updateSection(req, res, next) {
+  try {
+    if (req.user?.role !== 'admin') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const { id } = req.params;
+    const payload = req.body || {};
+    const row = await sectionsService.updateSection(id, payload);
+    res.json({ data: row });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function deleteSection(req, res, next) {
+  try {
+    if (req.user?.role !== 'admin') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const { id } = req.params;
+    await sectionsService.deleteSection(id);
+    res.json({ message: 'Section deleted successfully' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { listSections, createSection, updateSection, deleteSection };
 

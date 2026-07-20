@@ -15,7 +15,8 @@ export function RegisterPage() {
     password: "",
     role: "student",
     programCode: "",
-    yearLevel: "1",
+    yearLevel: "First Year",
+    studentId: "",
   });
   const [courseOptions, setCourseOptions] = useState<
     Array<{ code: string; name: string }>
@@ -29,6 +30,7 @@ export function RegisterPage() {
         role: mode,
         programCode: mode === "student" ? form.programCode : undefined,
         yearLevel: mode === "student" ? form.yearLevel : undefined,
+        studentId: mode === "student" && form.studentId ? form.studentId : undefined,
       });
 
       const loginRes: any = await api.post("/auth/login", {
@@ -41,6 +43,27 @@ export function RegisterPage() {
       localStorage.setItem("token", payload.token || "");
       localStorage.setItem("userRole", userRole);
       localStorage.setItem("userName", payload.user?.name || form.name);
+      
+      if (userRole === "teacher") {
+        localStorage.setItem(
+          "teacherId",
+          String(payload.user?.teacher?.id || ""),
+        );
+      }
+      if (userRole === "student") {
+        localStorage.setItem(
+          "studentProgram",
+          String(payload.user?.student?.programCode || ""),
+        );
+        localStorage.setItem(
+          "studentYear",
+          String(payload.user?.student?.yearLevel || ""),
+        );
+        localStorage.setItem(
+          "studentSection",
+          String(payload.user?.student?.sectionLabel || ""),
+        );
+      }
 
       toast.push("Account created and signed in", "success");
       const destination =
@@ -94,14 +117,20 @@ export function RegisterPage() {
             <button
               type="button"
               className={mode === "student" ? "active" : ""}
-              onClick={() => setMode("student")}
+              onClick={() => {
+                setMode("student");
+                setForm((f) => ({ ...f, role: "student" }));
+              }}
             >
               Student
             </button>
             <button
               type="button"
               className={mode === "teacher" ? "active" : ""}
-              onClick={() => setMode("teacher")}
+              onClick={() => {
+                setMode("teacher");
+                setForm((f) => ({ ...f, role: "teacher" }));
+              }}
             >
               Teacher
             </button>
@@ -169,8 +198,19 @@ export function RegisterPage() {
                 />
               </div>
             </div>
-            {mode === "student" ? (
+            {mode === "student" && (
               <>
+                <div className="field-group">
+                  <label htmlFor="studentId">Student Number (Optional)</label>
+                  <input
+                    id="studentId"
+                    value={form.studentId}
+                    onChange={(event) =>
+                      setForm({ ...form, studentId: event.target.value })
+                    }
+                    placeholder="Auto-generated if empty"
+                  />
+                </div>
                 <div className="field-group">
                   <label htmlFor="programCode">Program</label>
                   <select
@@ -198,53 +238,15 @@ export function RegisterPage() {
                       setForm({ ...form, yearLevel: event.target.value })
                     }
                   >
-                    <option value="1">1st Year</option>
-                    <option value="2">2nd Year</option>
-                    <option value="3">3rd Year</option>
-                    <option value="4">4th Year</option>
-                    <option value="5">5th Year</option>
+                    <option value="First Year">First Year</option>
+                    <option value="Second Year">Second Year</option>
+                    <option value="Third Year">Third Year</option>
+                    <option value="Fourth Year">Fourth Year</option>
+                    <option value="Fifth Year">Fifth Year</option>
                   </select>
                 </div>
               </>
-            ) : null}
-            {mode === "student" ? (
-              <>
-                <div className="field-group">
-                  <label htmlFor="programCode">Program</label>
-                  <select
-                    id="programCode"
-                    value={form.programCode}
-                    onChange={(event) =>
-                      setForm({ ...form, programCode: event.target.value })
-                    }
-                    required
-                  >
-                    <option value="">Select your program</option>
-                    {courseOptions.map((course) => (
-                      <option key={course.code} value={course.code}>
-                        {course.code} — {course.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field-group">
-                  <label htmlFor="yearLevel">Year level</label>
-                  <select
-                    id="yearLevel"
-                    value={form.yearLevel}
-                    onChange={(event) =>
-                      setForm({ ...form, yearLevel: event.target.value })
-                    }
-                  >
-                    <option value="1">1st Year</option>
-                    <option value="2">2nd Year</option>
-                    <option value="3">3rd Year</option>
-                    <option value="4">4th Year</option>
-                    <option value="5">5th Year</option>
-                  </select>
-                </div>
-              </>
-            ) : null}
+            )}
             <button className="login-button" type="submit">
               {mode === "teacher"
                 ? "Create teacher account"

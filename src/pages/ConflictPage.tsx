@@ -1,8 +1,9 @@
 import { motion } from "framer-motion";
 import { PageHeader } from "../components/common/PageHeader";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../data/mockApi";
-import { ShieldAlert } from "lucide-react";
+import { ShieldAlert, Sparkles } from "lucide-react";
+import { buildAiRecommendations } from "../utils/scheduling";
 
 type ConflictRow = {
   title: string;
@@ -13,13 +14,24 @@ type ConflictRow = {
 
 export function ConflictPage() {
   const [conflicts, setConflicts] = useState<ConflictRow[]>([]);
+  const [scheduleItems, setScheduleItems] = useState<Array<any>>([]);
 
   useEffect(() => {
     api
       .get("/schedules/conflicts")
       .then((res: any) => setConflicts(res.data?.data || []))
       .catch(() => setConflicts([]));
+
+    api
+      .get("/schedules")
+      .then((res: any) => setScheduleItems(res.data?.data || []))
+      .catch(() => setScheduleItems([]));
   }, []);
+
+  const aiRecommendations = useMemo(
+    () => buildAiRecommendations(scheduleItems),
+    [scheduleItems],
+  );
 
   return (
     <motion.div
@@ -37,6 +49,38 @@ export function ConflictPage() {
           </button>
         }
       />
+
+      <section className="card">
+        <div className="card__header">
+          <div>
+            <p className="eyebrow">AI assistant</p>
+            <h3>Suggested improvements</h3>
+            <p className="muted">
+              The assistant recommends practical changes that keep class
+              planning efficient and fair.
+            </p>
+          </div>
+          <span className="pill">
+            <Sparkles size={14} /> Smart planning
+          </span>
+        </div>
+        <div className="grid-2">
+          {aiRecommendations.length === 0 ? (
+            <div className="empty-state">
+              No planning issues detected right now.
+            </div>
+          ) : (
+            aiRecommendations.map((recommendation) => (
+              <article className="card" key={recommendation.id}>
+                <p className="eyebrow">{recommendation.severity} priority</p>
+                <h3>{recommendation.title}</h3>
+                <p className="muted">{recommendation.detail}</p>
+                <p className="pill">{recommendation.suggestion}</p>
+              </article>
+            ))
+          )}
+        </div>
+      </section>
 
       <section className="grid-3">
         {conflicts.length === 0 ? (

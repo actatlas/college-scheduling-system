@@ -4,14 +4,16 @@ import { useEffect, useState } from "react";
 import { api } from "../data/mockApi";
 import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Edit2, Trash2 } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
 
 type SectionRow = {
+  id?: string;
   course: string;
   yearLevel: string;
   section: string;
   adviser: string;
+  adviserId?: string;
   students: number;
   semester: string;
   schoolYear: string;
@@ -20,8 +22,10 @@ type SectionRow = {
 export function SectionsPage() {
   const [sections, setSections] = useState<SectionRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
+  const [editingSection, setEditingSection] = useState<SectionRow | null>(null);
   const [form, setForm] = useState({
     courseCode: "",
     yearLevel: "1",
@@ -32,6 +36,39 @@ export function SectionsPage() {
     schoolYear: "2026-2027",
   });
   const toast = useToast();
+
+  const handleEdit = (section: SectionRow) => {
+    setEditingSection(section);
+    setForm({
+      courseCode: section.course,
+      yearLevel: section.yearLevel,
+      sectionLabel: section.section,
+      adviserId: section.adviserId || "",
+      students: String(section.students),
+      semester: section.semester,
+      schoolYear: section.schoolYear,
+    });
+    setIsOpen(true);
+  };
+
+  const handleDelete = async (id?: string) => {
+    if (!id) return;
+    if (!window.confirm("Remove this section and its current roster?")) return;
+    setDeletingId(id);
+    try {
+      await api.delete(`/sections/${encodeURIComponent(id)}`);
+      toast.push("Section deleted successfully", "success");
+      fetchSections();
+    } catch (err: any) {
+      toast.push(
+        err?.response?.data?.error || "Failed to delete section",
+        "error",
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const { selectedProgram, matchesProgram } = useProgramContext();
 
   const fetchSections = () => {
@@ -70,11 +107,29 @@ export function SectionsPage() {
       <PageHeader
         title="Sections"
         description="Organize student sections by course, year level, and advisor."
+        breadcrumbs={
+          <>
+            <span>Home</span> <span>/</span> <strong>Sections</strong>
+          </>
+        }
+        helpText="Use sections to keep student cohorts and classroom assignments aligned."
         actions={
           <button
             className="action-button"
             type="button"
-            onClick={() => setIsOpen(true)}
+            onClick={() => {
+              setEditingSection(null);
+              setForm({
+                courseCode: "",
+                yearLevel: "1",
+                sectionLabel: "A",
+                adviserId: "",
+                students: "30",
+                semester: "1",
+                schoolYear: "2026-2027",
+              });
+              setIsOpen(true);
+            }}
           >
             <Plus size={16} />
             Add Section
@@ -106,12 +161,13 @@ export function SectionsPage() {
                 <th>Section</th>
                 <th>Adviser</th>
                 <th>Students</th>
+                <th style={{ textAlign: "right" }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredSections.length === 0 ? (
                 <tr>
-                  <td colSpan={5}>
+                  <td colSpan={6}>
                     <div className="empty-state">
                       No sections matched your search.
                     </div>
@@ -119,12 +175,55 @@ export function SectionsPage() {
                 </tr>
               ) : (
                 filteredSections.map((section) => (
-                  <tr key={`${section.course}-${section.section}`}>
+                  <tr
+                    key={section.id || `${section.course}-${section.section}`}
+                  >
                     <td>{section.course}</td>
                     <td>{section.yearLevel}</td>
                     <td>{section.section}</td>
                     <td>{section.adviser}</td>
                     <td>{section.students}</td>
+                    <td style={{ textAlign: "right" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "flex-end",
+                          gap: 8,
+                        }}
+                      >
+                        <button
+                          type="button"
+                          className="icon-button"
+                          title="Edit Section"
+                          onClick={() => handleEdit(section)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            color: "#4b5563",
+                          }}
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-button"
+                          title="Delete Section"
+                          onClick={() => handleDelete(section.id)}
+                          disabled={deletingId === section.id}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            cursor:
+                              deletingId === section.id ? "wait" : "pointer",
+                            color: "#dc2626",
+                            opacity: deletingId === section.id ? 0.7 : 1,
+                          }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
@@ -135,9 +234,16 @@ export function SectionsPage() {
 
       <Modal
         isOpen={isOpen}
-        title="Create section"
-        description="Register a new class section for a course."
-        onClose={() => setIsOpen(false)}
+        title={editingSection ? "Edit section" : "Create section"}
+        description={
+          editingSection
+            ? "Update class section registration details."
+            : "Register a new class section for a course."
+        }
+        onClose={() => {
+          setIsOpen(false);
+          setEditingSection(null);
+        }}
       >
         <div className="form-grid">
           <div className="field-group">
@@ -216,7 +322,10 @@ export function SectionsPage() {
           <button
             type="button"
             className="secondary-button"
-            onClick={() => setIsOpen(false)}
+            onClick={() => {
+              setIsOpen(false);
+              setEditingSection(null);
+            }}
           >
             Cancel
           </button>
@@ -234,13 +343,23 @@ export function SectionsPage() {
               }
               setLoading(true);
               try {
-                await api.post("/sections", {
+                const payload = {
                   ...form,
                   students: Number(form.students),
-                });
+                };
+                if (editingSection && editingSection.id) {
+                  await api.put(
+                    `/sections/${encodeURIComponent(editingSection.id)}`,
+                    payload,
+                  );
+                  toast.push("Section updated", "success");
+                } else {
+                  await api.post("/sections", payload);
+                  toast.push("Section created", "success");
+                }
                 fetchSections();
-                toast.push("Section created", "success");
                 setIsOpen(false);
+                setEditingSection(null);
                 setForm({
                   courseCode: "",
                   yearLevel: "1",
@@ -252,7 +371,7 @@ export function SectionsPage() {
                 });
               } catch (err: any) {
                 toast.push(
-                  err?.response?.data?.error || "Failed to create section",
+                  err?.response?.data?.error || "Failed to save section",
                   "error",
                 );
               } finally {

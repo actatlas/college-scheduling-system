@@ -4,8 +4,11 @@ import { useEffect, useState } from "react";
 import { api } from "../data/mockApi";
 import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Edit2, Trash2 } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
+
+const getRole = () =>
+  (localStorage.getItem("userRole") || "admin").toLowerCase();
 
 type FacultyRow = {
   id: string;
@@ -18,8 +21,10 @@ type FacultyRow = {
 export function FacultyPage() {
   const [faculty, setFaculty] = useState<FacultyRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
+  const [editingFaculty, setEditingFaculty] = useState<FacultyRow | null>(null);
   const [form, setForm] = useState({
     id: "",
     name: "",
@@ -28,6 +33,43 @@ export function FacultyPage() {
     availability: "",
   });
   const toast = useToast();
+
+  const role = getRole();
+  const isAdmin = role === "admin";
+
+  const handleEdit = (f: FacultyRow) => {
+    setEditingFaculty(f);
+    setForm({
+      id: f.id,
+      name: f.name,
+      department: f.department,
+      status: f.status,
+      availability: f.availability || "",
+    });
+    setIsOpen(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (
+      !window.confirm(
+        "Delete this faculty record? This action cannot be undone.",
+      )
+    )
+      return;
+    setDeletingId(id);
+    try {
+      await api.delete(`/faculty/${encodeURIComponent(id)}`);
+      toast.push("Faculty member deleted successfully", "success");
+      fetchFaculty();
+    } catch (err: any) {
+      toast.push(
+        err?.response?.data?.error || "Failed to delete faculty member",
+        "error",
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  };
   const { selectedProgram, matchesProgram } = useProgramContext();
 
   const fetchFaculty = () => {
@@ -67,15 +109,33 @@ export function FacultyPage() {
       <PageHeader
         title="Faculty Management"
         description="Maintain faculty records, availability, and instruction load."
+        breadcrumbs={
+          <>
+            <span>Home</span> <span>/</span> <strong>Faculty</strong>
+          </>
+        }
+        helpText="Use the search bar to find instructors quickly and review availability before assigning classes."
         actions={
-          <button
-            className="action-button"
-            type="button"
-            onClick={() => setIsOpen(true)}
-          >
-            <Plus size={16} />
-            Add Faculty
-          </button>
+          isAdmin ? (
+            <button
+              className="action-button"
+              type="button"
+              onClick={() => {
+                setEditingFaculty(null);
+                setForm({
+                  id: "",
+                  name: "",
+                  department: "",
+                  status: "Full-Time",
+                  availability: "",
+                });
+                setIsOpen(true);
+              }}
+            >
+              <Plus size={16} />
+              Add Faculty
+            </button>
+          ) : undefined
         }
       />
 
@@ -103,12 +163,15 @@ export function FacultyPage() {
                 <th>Department</th>
                 <th>Status</th>
                 <th>Availability</th>
+                <th style={{ textAlign: "right" }}>
+                  {isAdmin ? "Actions" : ""}
+                </th>
               </tr>
             </thead>
             <tbody>
               {filteredFaculty.length === 0 ? (
                 <tr>
-                  <td colSpan={5}>
+                  <td colSpan={6}>
                     <div className="empty-state">
                       No faculty records matched your search.
                     </div>
@@ -124,6 +187,46 @@ export function FacultyPage() {
                       <span className="pill">{f.status}</span>
                     </td>
                     <td>{f.availability}</td>
+                    <td style={{ textAlign: "right" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "flex-end",
+                          gap: 8,
+                        }}
+                      >
+                        <button
+                          type="button"
+                          className="icon-button"
+                          title="Edit Faculty"
+                          onClick={() => handleEdit(f)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            color: "#4b5563",
+                          }}
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-button"
+                          title="Delete Faculty"
+                          onClick={() => handleDelete(f.id)}
+                          disabled={deletingId === f.id}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            cursor: deletingId === f.id ? "wait" : "pointer",
+                            color: "#dc2626",
+                            opacity: deletingId === f.id ? 0.7 : 1,
+                          }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
@@ -134,9 +237,16 @@ export function FacultyPage() {
 
       <Modal
         isOpen={isOpen}
-        title="Add faculty"
-        description="Create a faculty profile for the registrar roster."
-        onClose={() => setIsOpen(false)}
+        title={editingFaculty ? "Edit faculty" : "Add faculty"}
+        description={
+          editingFaculty
+            ? "Update faculty profile details."
+            : "Create a faculty profile for the registrar roster."
+        }
+        onClose={() => {
+          setIsOpen(false);
+          setEditingFaculty(null);
+        }}
       >
         <div className="form-grid">
           <div className="field-group">
@@ -144,6 +254,7 @@ export function FacultyPage() {
             <input
               id="facultyId"
               value={form.id}
+              disabled={!!editingFaculty}
               onChange={(event) => setForm({ ...form, id: event.target.value })}
             />
           </div>
@@ -197,7 +308,10 @@ export function FacultyPage() {
           <button
             type="button"
             className="secondary-button"
-            onClick={() => setIsOpen(false)}
+            onClick={() => {
+              setIsOpen(false);
+              setEditingFaculty(null);
+            }}
           >
             Cancel
           </button>
@@ -212,10 +326,19 @@ export function FacultyPage() {
               }
               setLoading(true);
               try {
-                await api.post("/faculty", form);
+                if (editingFaculty) {
+                  await api.put(
+                    `/faculty/${encodeURIComponent(editingFaculty.id)}`,
+                    form,
+                  );
+                  toast.push("Faculty updated", "success");
+                } else {
+                  await api.post("/faculty", form);
+                  toast.push("Faculty added", "success");
+                }
                 fetchFaculty();
-                toast.push("Faculty added", "success");
                 setIsOpen(false);
+                setEditingFaculty(null);
                 setForm({
                   id: "",
                   name: "",
@@ -225,7 +348,7 @@ export function FacultyPage() {
                 });
               } catch (err: any) {
                 toast.push(
-                  err?.response?.data?.error || "Failed to add faculty",
+                  err?.response?.data?.error || "Failed to save faculty",
                   "error",
                 );
               } finally {

@@ -13,11 +13,22 @@ export function LoginPage() {
   const toast = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const trimmed = email.trim();
+    const trimmedPassword = password.trim();
+    if (!trimmed || !trimmedPassword) {
+      const msg = "Please enter your email and password.";
+      setLoginError(msg);
+      window.setTimeout(() => setLoginError(null), 4000);
+      return;
+    }
+
+    setLoginError(null);
+    setIsSubmitting(true);
     const presetCredentials: Record<
       string,
       { email: string; password: string }
@@ -47,6 +58,10 @@ export function LoginPage() {
           "teacherId",
           String(payload.user?.teacher?.id || ""),
         );
+        localStorage.setItem(
+          "teacherStatus",
+          String(payload.user?.teacher?.status || "Full-Time"),
+        );
       }
       if (userRole === "student") {
         localStorage.setItem(
@@ -74,7 +89,9 @@ export function LoginPage() {
     } catch (err: any) {
       const msg = err?.response?.data?.error || "Invalid email or password";
       setLoginError(msg);
-      setTimeout(() => setLoginError(null), 4000);
+      window.setTimeout(() => setLoginError(null), 4000);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -127,7 +144,7 @@ export function LoginPage() {
           />
           <h2>Welcome back</h2>
 
-          <form className="login-form" onSubmit={handleLogin}>
+          <form className="login-form" onSubmit={handleLogin} noValidate>
             <div className="form-group">
               <label htmlFor="email">Email Address</label>
               <div className="input-wrapper">
@@ -137,7 +154,10 @@ export function LoginPage() {
                   type="email"
                   placeholder="admin@srbc.edu"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (loginError) setLoginError(null);
+                  }}
                   required
                 />
               </div>
@@ -152,7 +172,10 @@ export function LoginPage() {
                   type={showPassword ? "text" : "password"}
                   placeholder="Enter your password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (loginError) setLoginError(null);
+                  }}
                   required
                 />
                 <button
@@ -208,8 +231,14 @@ export function LoginPage() {
               >
                 Forgot password?
               </button>
-              <button type="submit" className="login-button">
-                Sign In <ArrowRight size={16} />
+              <button
+                type="submit"
+                className="login-button"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? <span className="spinner" /> : null}
+                {isSubmitting ? "Signing in…" : "Sign In"}
+                {!isSubmitting ? <ArrowRight size={16} /> : null}
               </button>
             </div>
           </form>

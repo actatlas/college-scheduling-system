@@ -23,6 +23,7 @@ function getRole() {
 const adminRoutes = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/faculty", label: "Faculty", icon: Users },
+  { to: "/students", label: "Students", icon: GraduationCap },
   { to: "/courses", label: "Programs / Courses", icon: Building2 },
   { to: "/subjects", label: "Subjects", icon: BookOpen },
   { to: "/sections", label: "Sections", icon: ClipboardList },
@@ -35,15 +36,17 @@ const adminRoutes = [
 ];
 
 const teacherRoutes = [
-  { to: "/dashboard", label: "My Dashboard", icon: LayoutDashboard },
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/schedules", label: "My Schedule", icon: CalendarDays },
-  { to: "/faculty", label: "Faculty Info", icon: GraduationCap },
+  { to: "/subjects", label: "My Subjects", icon: BookOpen },
+  { to: "/dashboard", label: "Availability", icon: ClipboardList },
 ];
 
 const studentRoutes = [
-  { to: "/dashboard", label: "My Schedule", icon: CalendarDays },
-  { to: "/subjects", label: "Subjects", icon: BookOpen },
-  { to: "/sections", label: "Sections", icon: ClipboardList },
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/schedules", label: "My Schedule", icon: CalendarDays },
+  { to: "/subjects", label: "My Subjects", icon: BookOpen },
+  { to: "/dashboard", label: "Assigned Rooms", icon: DoorOpen },
 ];
 
 export function Sidebar() {

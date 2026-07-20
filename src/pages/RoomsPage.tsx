@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { api } from "../data/mockApi";
 import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Edit2, Trash2 } from "lucide-react";
 
 type RoomRow = {
   number: string;
@@ -17,16 +17,56 @@ type RoomRow = {
 export function RoomsPage() {
   const [rooms, setRooms] = useState<RoomRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [deletingNumber, setDeletingNumber] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+
+  const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
+  const isAdmin = role === "admin";
+
   const [isOpen, setIsOpen] = useState(false);
+
+  const [editingRoom, setEditingRoom] = useState<RoomRow | null>(null);
   const [form, setForm] = useState({
     number: "",
+
     capacity: "40",
     building: "",
     type: "Lecture",
     status: "Available",
   });
   const toast = useToast();
+
+  const handleEdit = (room: RoomRow) => {
+    if (!isAdmin) return;
+    setEditingRoom(room);
+    setForm({
+      number: room.number,
+      capacity: String(room.capacity),
+      building: room.building,
+      type: room.type,
+      status: room.status,
+    });
+    setIsOpen(true);
+  };
+
+  const handleDelete = async (number: string) => {
+    if (!isAdmin) return;
+    if (!window.confirm("Remove this room from the facilities list?")) return;
+
+    setDeletingNumber(number);
+    try {
+      await api.delete(`/rooms/${encodeURIComponent(number)}`);
+      toast.push("Room deleted successfully", "success");
+      fetchRooms();
+    } catch (err: any) {
+      toast.push(
+        err?.response?.data?.error || "Failed to delete room",
+        "error",
+      );
+    } finally {
+      setDeletingNumber(null);
+    }
+  };
 
   const fetchRooms = () => {
     api
@@ -55,15 +95,33 @@ export function RoomsPage() {
       <PageHeader
         title="Rooms"
         description="Keep classrooms and laboratories aligned with your scheduling rules."
+        breadcrumbs={
+          <>
+            <span>Home</span> <span>/</span> <strong>Rooms</strong>
+          </>
+        }
+        helpText="Review room capacity and availability before locking a timetable slot."
         actions={
-          <button
-            className="action-button"
-            type="button"
-            onClick={() => setIsOpen(true)}
-          >
-            <Plus size={16} />
-            Add Room
-          </button>
+          isAdmin ? (
+            <button
+              className="action-button"
+              type="button"
+              onClick={() => {
+                setEditingRoom(null);
+                setForm({
+                  number: "",
+                  capacity: "40",
+                  building: "",
+                  type: "Lecture",
+                  status: "Available",
+                });
+                setIsOpen(true);
+              }}
+            >
+              <Plus size={16} />
+              Add Room
+            </button>
+          ) : undefined
         }
       />
 
@@ -87,7 +145,54 @@ export function RoomsPage() {
             <div className="empty-state">No rooms matched your search.</div>
           ) : (
             filteredRooms.map((room) => (
-              <article className="card" key={room.number}>
+              <article
+                className="card"
+                key={room.number}
+                style={{ position: "relative" }}
+              >
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 12,
+                    right: 12,
+                    display: "flex",
+                    gap: 4,
+                  }}
+                >
+                  {isAdmin && (
+                    <>
+                      <button
+                        type="button"
+                        title="Edit Room"
+                        onClick={() => handleEdit(room)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          color: "#4b5563",
+                        }}
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        title="Delete Room"
+                        onClick={() => handleDelete(room.number)}
+                        disabled={deletingNumber === room.number}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor:
+                            deletingNumber === room.number ? "wait" : "pointer",
+                          color: "#dc2626",
+                          opacity: deletingNumber === room.number ? 0.7 : 1,
+                        }}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </>
+                  )}
+                </div>
                 <p className="eyebrow">{room.building}</p>
                 <h3>{room.number}</h3>
                 <p className="muted">
@@ -101,10 +206,17 @@ export function RoomsPage() {
       </section>
 
       <Modal
-        isOpen={isOpen}
-        title="Create room"
-        description="Register a room or laboratory for timetable planning."
-        onClose={() => setIsOpen(false)}
+        isOpen={isOpen && isAdmin}
+        onClose={() => {
+          setIsOpen(false);
+          setEditingRoom(null);
+        }}
+        title={editingRoom ? "Edit room" : "Create room"}
+        description={
+          editingRoom
+            ? "Update registration details for this room."
+            : "Register a room or laboratory for timetable planning."
+        }
       >
         <div className="form-grid">
           <div className="field-group">
@@ -112,6 +224,7 @@ export function RoomsPage() {
             <input
               id="roomNumber"
               value={form.number}
+              disabled={!!editingRoom}
               onChange={(event) =>
                 setForm({ ...form, number: event.target.value })
               }
@@ -172,7 +285,10 @@ export function RoomsPage() {
           <button
             type="button"
             className="secondary-button"
-            onClick={() => setIsOpen(false)}
+            onClick={() => {
+              setIsOpen(false);
+              setEditingRoom(null);
+            }}
           >
             Cancel
           </button>
@@ -187,13 +303,23 @@ export function RoomsPage() {
               }
               setLoading(true);
               try {
-                await api.post("/rooms", {
+                const payload = {
                   ...form,
                   capacity: Number(form.capacity),
-                });
+                };
+                if (editingRoom) {
+                  await api.put(
+                    `/rooms/${encodeURIComponent(editingRoom.number)}`,
+                    payload,
+                  );
+                  toast.push("Room updated", "success");
+                } else {
+                  await api.post("/rooms", payload);
+                  toast.push("Room created", "success");
+                }
                 fetchRooms();
-                toast.push("Room created", "success");
                 setIsOpen(false);
+                setEditingRoom(null);
                 setForm({
                   number: "",
                   capacity: "40",
@@ -203,7 +329,7 @@ export function RoomsPage() {
                 });
               } catch (err: any) {
                 toast.push(
-                  err?.response?.data?.error || "Failed to create room",
+                  err?.response?.data?.error || "Failed to save room",
                   "error",
                 );
               } finally {
