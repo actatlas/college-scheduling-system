@@ -1,0 +1,80 @@
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field-group label {
+  color: #17436b;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.field-group input,
+.field-group select,
+.field-group textarea,
+.input-wrapper {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #ccd8e6;
+  background: #fff;
+  color: #0f172a;
+  transition: all var(--srcb-transition);
+  font-size: 0.95rem;
+}
+
+.field-group textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+.field-group input:focus,
+.field-group select:focus,
+.field-group textarea:focus,
+.input-wrapper:focus-within {
+  outline: none;
+  border-color: var(--srcb-blue);
+  box-shadow: 0 0 0 4px rgba(13, 84, 153, 0.12);
+}
+
+.input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  min-height: 50px;
+}
+
+.input-wrapper input,
+.input-wrapper select {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  padding: 0;
+}
+
+.inline-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #b91c1c;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.err-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fee2e2;
+}

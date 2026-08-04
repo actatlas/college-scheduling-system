@@ -21,7 +21,7 @@ vi.mock("axios", () => ({
 import { CoursesPage } from "../CoursesPage";
 
 describe("CoursesPage", () => {
-  it("renders fallback subjects when API returns empty", async () => {
+  it("shows an empty state when the API returns no subject data", async () => {
     render(
       <ProgramProvider>
         <ToastProvider>
@@ -30,11 +30,10 @@ describe("CoursesPage", () => {
       </ProgramProvider>,
     );
 
-    // one of the fallback subject names should appear
     await waitFor(() => {
       expect(
-        screen.getByText(/Programming Fundamentals|Principles of Management/i),
-      ).toBeTruthy();
+        screen.getByText(/No subjects available for this program yet/i),
+      ).toBeInTheDocument();
     });
   });
 });

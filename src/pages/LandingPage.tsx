@@ -32,19 +32,12 @@ export function LandingPage() {
             >
               Login <ArrowRight size={16} />
             </button>
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() => navigate("/register")}
-            >
-              Register
-            </button>
           </div>
           <div className="landing-card">
             <p className="eyebrow">Campus-ready workflow</p>
             <p>
-              Built for administrators, teachers, and students with a consistent
-              experience across every page.
+              Built for administrators, program heads, and teachers with a
+              consistent experience across every manual scheduling workflow.
             </p>
           </div>
         </section>

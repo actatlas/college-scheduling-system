@@ -1,0 +1,57 @@
+:root {
+  --srcb-blue: #003f7f;
+  --srcb-blue-strong: #0b5cad;
+  --srcb-blue-soft: #eaf3ff;
+  --srcb-green: #0f8a6d;
+  --srcb-green-soft: #ebfaf5;
+  --srcb-gold: #d4a574;
+  --srcb-slate: #475569;
+  --srcb-border: #dce8f5;
+  --srcb-bg: #f4f8fc;
+  --srcb-surface: #ffffff;
+  --srcb-text: #10233b;
+  --srcb-text-muted: #64748b;
+  --srcb-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+  --srcb-shadow-soft: 0 8px 20px rgba(15, 23, 42, 0.06);
+  --srcb-radius: 18px;
+  --srcb-radius-sm: 12px;
+  --srcb-transition: 220ms ease;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(17, 95, 166, 0.14), transparent 28%),
+    var(--srcb-bg);
+  color: var(--srcb-text);
+  font-family: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+img {
+  max-width: 100%;
+}
+
+::selection {
+  background: rgba(11, 92, 173, 0.22);
+}

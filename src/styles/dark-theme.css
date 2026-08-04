@@ -1,0 +1,60 @@
+html[data-theme="dark"] {
+  --srcb-bg: #071426;
+  --srcb-surface: #0b1b31;
+  --srcb-text: #e8f1ff;
+  --srcb-text-muted: #9bb0ca;
+  --srcb-border: #163252;
+}
+
+html[data-theme="dark"] body {
+  background: radial-gradient(circle at top left, rgba(11, 92, 173, 0.25), transparent 25%), #071426;
+}
+
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .hero-card,
+html[data-theme="dark"] .page-panel,
+html[data-theme="dark"] .table-wrap,
+html[data-theme="dark"] .topbar__search,
+html[data-theme="dark"] .topbar__program-select select,
+html[data-theme="dark"] .topbar__icon,
+html[data-theme="dark"] .topbar__profile,
+html[data-theme="dark"] .landing-card,
+html[data-theme="dark"] .input-wrapper,
+html[data-theme="dark"] .field-group input,
+html[data-theme="dark"] .field-group select,
+html[data-theme="dark"] .field-group textarea,
+html[data-theme="dark"] .modal-card {
+  background: #0b1b31;
+  border-color: #163252;
+  color: #e8f1ff;
+}
+
+html[data-theme="dark"] .topbar {
+  background: rgba(11, 23, 42, 0.85);
+}
+
+html[data-theme="dark"] .data-table thead th {
+  background: #102641;
+  color: #cfe5ff;
+}
+
+html[data-theme="dark"] .data-table td,
+html[data-theme="dark"] .schedule-item__title,
+html[data-theme="dark"] .schedule-item__meta,
+html[data-theme="dark"] .page-help__content,
+html[data-theme="dark"] .muted {
+  color: #d1def2;
+}
+
+html[data-theme="dark"] .schedule-item,
+html[data-theme="dark"] .hero-status-list li,
+html[data-theme="dark"] .landing-hero,
+html[data-theme="dark"] .auth-intro,
+html[data-theme="dark"] .landing-panel {
+  background: #0d2037;
+  border-color: #163252;
+}
+
+html[data-theme="dark"] .hero-card {
+  background: linear-gradient(135deg, #0d2037, #102641);
+}

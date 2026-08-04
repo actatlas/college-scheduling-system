@@ -1,7 +1,5 @@
 import {
-  BarChart3,
   CalendarClock,
-  Sparkles,
   Users,
   BookOpen,
   DoorOpen,
@@ -11,94 +9,16 @@ import {
   BadgeCheck,
   CheckSquare,
   Square,
-  Bookmark,
 } from "lucide-react";
-import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Tooltip,
-  BarChart,
-  Bar,
-} from "recharts";
 import { motion } from "framer-motion";
 import { PageHeader } from "../components/common/PageHeader";
 import { StatCard } from "../components/common/StatCard";
-import { api } from "../data/mockApi";
+import { api } from "../data/apiClient";
 import { useEffect, useState } from "react";
 import { useToast } from "../components/common/Toast";
-import { Modal } from "../components/common/Modal";
 import { useNavigate } from "react-router-dom";
 import { useProgramContext } from "../contexts/ProgramContext";
-import {
-  generateScheduleSeed,
-  parseTeacherAvailability,
-  type UserRole,
-} from "../utils/scheduling";
-
-const workloadData = [
-  { name: "Mon", load: 72 },
-  { name: "Tue", load: 68 },
-  { name: "Wed", load: 84 },
-  { name: "Thu", load: 75 },
-  { name: "Fri", load: 79 },
-  { name: "Sat", load: 54 },
-];
-
-const roomData = [
-  { name: "R-101", usage: 82 },
-  { name: "LAB-02", usage: 74 },
-  { name: "SCI-05", usage: 61 },
-  { name: "R-202", usage: 90 },
-];
-
-const fallbackMetrics = [
-  {
-    label: "Total Faculty",
-    value: "18",
-    detail: "Sample registrar data",
-    icon: "👩‍🏫",
-    tone: "royal",
-  },
-  {
-    label: "Total Subjects",
-    value: "24",
-    detail: "Sample registrar data",
-    icon: "📘",
-    tone: "gold",
-  },
-  {
-    label: "Total Sections",
-    value: "12",
-    detail: "Sample registrar data",
-    icon: "🏫",
-    tone: "navy",
-  },
-  {
-    label: "Total Rooms",
-    value: "16",
-    detail: "Sample registrar data",
-    icon: "🪑",
-    tone: "slate",
-  },
-  {
-    label: "Total Schedules",
-    value: "36",
-    detail: "Sample registrar data",
-    icon: "🗓️",
-    tone: "emerald",
-  },
-  {
-    label: "Schedule Conflicts",
-    value: "2",
-    detail: "Sample registrar data",
-    icon: "⚠️",
-    tone: "amber",
-  },
-];
+import { type UserRole } from "../utils/scheduling";
 
 const AVAILABILITY_DAYS = [
   "Monday",
@@ -119,7 +39,6 @@ const AVAILABILITY_SLOTS = [
 ];
 
 export function DashboardPage() {
-  const [isGenerating, setIsGenerating] = useState(false);
   const [isSavingAvailability, setIsSavingAvailability] = useState(false);
   const toast = useToast();
   const navigate = useNavigate();
@@ -131,27 +50,10 @@ export function DashboardPage() {
   const userName = window.localStorage.getItem("userName") || "User";
   const [teacherStatus, setTeacherStatus] = useState<string>("Full-Time");
   const [schedules, setSchedules] = useState<any[]>([]);
-  const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [availabilityMessage, setAvailabilityMessage] = useState("");
   const [selectedSlots, setSelectedSlots] = useState<Record<string, string[]>>(
     {},
   );
-
-  // Student Program / Section info
-  const studentProgram =
-    window.localStorage.getItem("studentProgram") || "BSCS";
-  const studentYear =
-    window.localStorage.getItem("studentYear") || "First Year";
-  const studentSection = window.localStorage.getItem("studentSection") || "A";
-
-  const [form, setForm] = useState({
-    academicYear: "2026-2027",
-    semester: "1st Semester",
-    program: "ITP",
-    yearLevel: "1",
-    section: "A",
-    options: "Balanced room allocation",
-  });
 
   const [metrics, setMetrics] = useState([
     {
@@ -274,41 +176,55 @@ export function DashboardPage() {
         }
       }
 
-      const rawAvail =
-        role === "teacher"
-          ? facs.find(
-              (f: any) =>
-                String(f.id) ===
-                String(window.localStorage.getItem("teacherId")),
-            )?.availability || ""
-          : window.localStorage.getItem("teacherAvailability");
-      const availability = parseTeacherAvailability(rawAvail);
-
-      const fallback = generateScheduleSeed({
-        role,
-        programKey: selectedProgram.key,
-        teacherName: userName,
-        section: "A",
-        availability,
-      });
-      setSchedules(
-        scheds.length > 0 ? scheds.slice(0, 6) : fallback.slice(0, 4),
-      );
+      setSchedules(scheds.slice(0, 6));
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error(err);
-      setMetrics(fallbackMetrics);
-      const rawAvail = window.localStorage.getItem("teacherAvailability");
-      const availability = parseTeacherAvailability(rawAvail);
-      setSchedules(
-        generateScheduleSeed({
-          role,
-          programKey: selectedProgram.key,
-          teacherName: userName,
-          section: "A",
-          availability,
-        }),
-      );
+      setMetrics([
+        {
+          label: "Total Faculty",
+          value: "0",
+          detail: "From database",
+          icon: "👩‍🏫",
+          tone: "royal",
+        },
+        {
+          label: "Total Subjects",
+          value: "0",
+          detail: "From database",
+          icon: "📘",
+          tone: "gold",
+        },
+        {
+          label: "Total Sections",
+          value: "0",
+          detail: "From database",
+          icon: "🏫",
+          tone: "navy",
+        },
+        {
+          label: "Total Rooms",
+          value: "0",
+          detail: "From database",
+          icon: "🪑",
+          tone: "slate",
+        },
+        {
+          label: "Total Schedules",
+          value: "0",
+          detail: "From database",
+          icon: "🗓️",
+          tone: "emerald",
+        },
+        {
+          label: "Schedule Conflicts",
+          value: "0",
+          detail: "From database",
+          icon: "⚠️",
+          tone: "amber",
+        },
+      ]);
+      setSchedules([]);
     }
   };
 
@@ -316,9 +232,22 @@ export function DashboardPage() {
     loadDashboardData();
   }, [role, selectedProgram.key, userName]);
 
-  // Sync checkboxes with availabilityMessage
   useEffect(() => {
-    const parsed = parseTeacherAvailability(availabilityMessage);
+    const parsed = availabilityMessage
+      .split("|")
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .map((entry) => {
+        const [day, ...slots] = entry.split(":");
+        return {
+          day: day.trim(),
+          slots: slots
+            .join(":")
+            .split(",")
+            .map((slot) => slot.trim())
+            .filter(Boolean),
+        };
+      });
     const slotsMap: Record<string, string[]> = {};
     for (const entry of parsed) {
       slotsMap[entry.day] = entry.slots;
@@ -392,12 +321,6 @@ export function DashboardPage() {
 
   const quickActions = [
     {
-      label: "Generate Schedule",
-      icon: Sparkles,
-      onClick: () => setShowScheduleModal(true),
-      tone: "royal",
-    },
-    {
       label: "Add Faculty",
       icon: Users,
       onClick: () => navigate("/faculty"),
@@ -435,32 +358,6 @@ export function DashboardPage() {
           <PageHeader
             title="College Scheduling System"
             description="Registrar overview for St. Rita's College of Balingasag."
-            actions={
-              <button
-                className="action-button"
-                type="button"
-                disabled={isGenerating}
-                onClick={async () => {
-                  setIsGenerating(true);
-                  try {
-                    await api.post("/schedules/generate");
-                    await loadDashboardData();
-                    toast.push("Schedule generated successfully", "success");
-                  } catch (err) {
-                    toast.push("Failed to generate schedule", "error");
-                  } finally {
-                    setIsGenerating(false);
-                  }
-                }}
-              >
-                {isGenerating ? (
-                  <span className="spinner" />
-                ) : (
-                  <Sparkles size={16} />
-                )}
-                {isGenerating ? "Generating schedule…" : "Generate Schedule"}
-              </button>
-            }
           />
 
           <section className="hero-card">
@@ -544,55 +441,6 @@ export function DashboardPage() {
                 }}
               />
             ))}
-          </section>
-
-          <section className="grid-2">
-            <article className="card">
-              <div className="card__header">
-                <div>
-                  <p className="eyebrow">Faculty workload</p>
-                  <h3>Weekly teaching load</h3>
-                </div>
-                <BarChart3 size={18} />
-              </div>
-              <div className="chart-wrap">
-                <ResponsiveContainer width="100%" height={220}>
-                  <AreaChart data={workloadData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="name" tickLine={false} axisLine={false} />
-                    <YAxis tickLine={false} axisLine={false} />
-                    <Tooltip />
-                    <Area
-                      type="monotone"
-                      dataKey="load"
-                      stroke="#2563eb"
-                      fill="#dbeafe"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </article>
-
-            <article className="card">
-              <div className="card__header">
-                <div>
-                  <p className="eyebrow">Room utilization</p>
-                  <h3>Capacity usage</h3>
-                </div>
-                <CalendarClock size={18} />
-              </div>
-              <div className="chart-wrap">
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={roomData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="name" tickLine={false} axisLine={false} />
-                    <YAxis tickLine={false} axisLine={false} />
-                    <Tooltip />
-                    <Bar dataKey="usage" fill="#0f766e" radius={[6, 6, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </article>
           </section>
 
           <section className="grid-2">
@@ -874,234 +722,6 @@ export function DashboardPage() {
           </section>
         </>
       )}
-
-      {/* -------------------- STUDENT VIEW -------------------- */}
-      {role === "student" && (
-        <>
-          <PageHeader
-            title="Student Portal"
-            description="View your active courses, class schedule, and section announcements."
-            actions={
-              <button
-                className="action-button"
-                type="button"
-                onClick={loadDashboardData}
-              >
-                Refresh View
-              </button>
-            }
-          />
-
-          <section className="hero-card">
-            <div>
-              <p className="eyebrow">Welcome Student</p>
-              <h2>Welcome back, {userName}. Your schedule is ready to view.</h2>
-              <p className="muted" style={{ marginTop: 8 }}>
-                Access your personalized class schedule and stay informed about
-                your program and section timetable.
-              </p>
-            </div>
-          </section>
-
-          <section className="grid-2">
-            <article className="card">
-              <div className="card__header">
-                <div>
-                  <p className="eyebrow">Weekly classes</p>
-                  <h3>Personal Schedule</h3>
-                </div>
-                <CalendarRange size={18} />
-              </div>
-              <div className="schedule-list">
-                {schedules.length === 0 ? (
-                  <div className="empty-state">
-                    No schedule blocks generated for your section.
-                  </div>
-                ) : (
-                  schedules.map((slot) => (
-                    <div className="schedule-item" key={slot.id}>
-                      <div
-                        className="schedule-item__dot"
-                        style={{ backgroundColor: slot.color }}
-                      />
-                      <div>
-                        <p className="schedule-item__title">{slot.subject}</p>
-                        <p className="schedule-item__meta">
-                          {slot.day} • {slot.time} • {slot.room}
-                        </p>
-                      </div>
-                      <span className="pill">{slot.faculty}</span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </article>
-
-            <article className="card">
-              <div className="card__header">
-                <div>
-                  <p className="eyebrow">Academic Status</p>
-                  <h3>Section Overview</h3>
-                </div>
-                <Bookmark size={18} />
-              </div>
-              <div className="schedule-list">
-                {[
-                  {
-                    label: "Assigned Program",
-                    value: studentProgram,
-                    detail: "Your major curriculum",
-                  },
-                  {
-                    label: "Year Level",
-                    value: studentYear,
-                    detail: "Current academic progression",
-                  },
-                  {
-                    label: "Active Section",
-                    value: studentSection || "Not Assigned",
-                    detail: "Assigned section cohort",
-                  },
-                  {
-                    label: "Total Weekly Classes",
-                    value: String(schedules.length),
-                    detail: "Active scheduled blocks",
-                  },
-                ].map((item) => (
-                  <div className="schedule-item" key={item.label}>
-                    <div>
-                      <p className="schedule-item__title">{item.label}</p>
-                      <p className="schedule-item__meta">{item.detail}</p>
-                    </div>
-                    <span className="pill">{item.value}</span>
-                  </div>
-                ))}
-              </div>
-            </article>
-          </section>
-        </>
-      )}
-
-      {/* -------------------- SCHEDULE MODAL (ADMIN ONLY) -------------------- */}
-      <Modal
-        isOpen={showScheduleModal}
-        title="Generate schedule"
-        description="Prepare a new timetable block for the registrar office."
-        onClose={() => setShowScheduleModal(false)}
-      >
-        <div className="form-grid">
-          <div className="field-group">
-            <label htmlFor="academicYear">Academic Year</label>
-            <input
-              id="academicYear"
-              value={form.academicYear}
-              onChange={(event) =>
-                setForm({ ...form, academicYear: event.target.value })
-              }
-            />
-          </div>
-          <div className="field-group">
-            <label htmlFor="semester">Semester</label>
-            <input
-              id="semester"
-              value={form.semester}
-              onChange={(event) =>
-                setForm({ ...form, semester: event.target.value })
-              }
-            />
-          </div>
-          <div className="field-group">
-            <label htmlFor="program">Program</label>
-            <select
-              id="program"
-              value={form.program}
-              onChange={(event) =>
-                setForm({ ...form, program: event.target.value })
-              }
-            >
-              <option value="ITP">ITP</option>
-              <option value="BSA">BSA</option>
-              <option value="CJEP">CJEP</option>
-              <option value="HMP">HMP</option>
-              <option value="TEP">TEP</option>
-            </select>
-          </div>
-          <div className="field-group">
-            <label htmlFor="yearLevel">Year Level</label>
-            <input
-              id="yearLevel"
-              value={form.yearLevel}
-              onChange={(event) =>
-                setForm({ ...form, yearLevel: event.target.value })
-              }
-            />
-          </div>
-          <div className="field-group">
-            <label htmlFor="section">Section</label>
-            <input
-              id="section"
-              value={form.section}
-              onChange={(event) =>
-                setForm({ ...form, section: event.target.value })
-              }
-            />
-          </div>
-          <div className="field-group">
-            <label htmlFor="options">Scheduling Options</label>
-            <select
-              id="options"
-              value={form.options}
-              onChange={(event) =>
-                setForm({ ...form, options: event.target.value })
-              }
-            >
-              <option value="Balanced room allocation">
-                Balanced room allocation
-              </option>
-              <option value="Faculty-first scheduling">
-                Faculty-first scheduling
-              </option>
-              <option value="Room-first scheduling">
-                Room-first scheduling
-              </option>
-            </select>
-          </div>
-        </div>
-        <div className="table-actions">
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => setShowScheduleModal(false)}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="action-button"
-            disabled={isGenerating}
-            onClick={async () => {
-              setShowScheduleModal(false);
-              setIsGenerating(true);
-              try {
-                await api.post("/schedules/generate");
-                await loadDashboardData();
-                toast.push("Schedule generated successfully", "success");
-              } catch (err) {
-                toast.push("Unable to generate schedule", "error");
-              } finally {
-                setIsGenerating(false);
-              }
-            }}
-          >
-            {isGenerating ? (
-              <span className="spinner" />
-            ) : (
-              <BadgeCheck size={16} />
-            )}
-            {isGenerating ? "Preparing schedule…" : "Prepare Schedule"}
-          </button>
-        </div>
-      </Modal>
     </motion.div>
   );
 }

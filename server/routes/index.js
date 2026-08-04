@@ -7,10 +7,10 @@ const courseRoutes = require('./courses.routes');
 const sectionRoutes = require('./sections.routes');
 const roomRoutes = require('./rooms.routes');
 const scheduleRoutes = require('./schedules.routes');
-const departmentRoutes = require('./departments.routes');
 const programsRoutes = require('./programs.routes');
+const programMajorsRoutes = require('./programMajors.routes');
+const yearLevelsRoutes = require('./yearLevels.routes');
 const userRoutes = require('./users.routes');
-const studentsRoutes = require('./students.routes');
 
 const router = express.Router();
 
@@ -21,10 +21,10 @@ router.use('/courses', courseRoutes);
 router.use('/sections', sectionRoutes);
 router.use('/rooms', roomRoutes);
 router.use('/schedules', scheduleRoutes);
-router.use('/departments', departmentRoutes);
 router.use('/programs', programsRoutes);
+router.use('/program-majors', programMajorsRoutes);
+router.use('/year-levels', yearLevelsRoutes);
 router.use('/users', userRoutes);
-router.use('/students', studentsRoutes);
 
 
 module.exports = router;

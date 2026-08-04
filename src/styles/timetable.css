@@ -1,0 +1,21 @@
+.availability-form {
+  display: grid;
+  gap: 18px;
+}
+
+.availability-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.availability-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(11, 92, 173, 0.08);
+  color: var(--srcb-blue);
+  font-size: 0.78rem;
+  font-weight: 800;
+}

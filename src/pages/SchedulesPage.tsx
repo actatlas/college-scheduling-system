@@ -1,16 +1,11 @@
 import { motion } from "framer-motion";
 import { PageHeader } from "../components/common/PageHeader";
 import { useEffect, useMemo, useState } from "react";
-import { api } from "../data/mockApi";
+import { api } from "../data/apiClient";
 import { useToast } from "../components/common/Toast";
 import { Plus } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
-import {
-  buildAiRecommendations,
-  generateScheduleSeed,
-  parseTeacherAvailability,
-  type UserRole,
-} from "../utils/scheduling";
+import { type UserRole } from "../utils/scheduling";
 
 export function SchedulesPage() {
   const [scheduleItems, setScheduleItems] = useState<Array<any>>([]);
@@ -26,40 +21,14 @@ export function SchedulesPage() {
     api
       .get("/schedules")
       .then((res: any) => {
-        const data = res.data?.data || [];
-        setScheduleItems(
-          data.length > 0
-            ? data
-            : generateScheduleSeed({
-                role,
-                programKey: selectedProgram.key,
-                teacherName: userName,
-                section: "A",
-                availability: parseTeacherAvailability(
-                  window.localStorage.getItem("teacherAvailability"),
-                ),
-              }),
-        );
+        setScheduleItems(res.data?.data || []);
       })
-      .catch(() =>
-        setScheduleItems(
-          generateScheduleSeed({
-            role,
-            programKey: selectedProgram.key,
-            teacherName: userName,
-            section: "A",
-            availability: parseTeacherAvailability(
-              window.localStorage.getItem("teacherAvailability"),
-            ),
-          }),
-        ),
-      );
+      .catch(() => {
+        setScheduleItems([]);
+      });
   }, [role, selectedProgram.key, userName]);
 
-  const aiRecommendations = useMemo(
-    () => buildAiRecommendations(scheduleItems),
-    [scheduleItems],
-  );
+  const aiRecommendations = useMemo(() => [], [scheduleItems]);
 
   const timetable = useMemo(() => {
     // UI expects a table with time rows and day columns.
@@ -108,9 +77,7 @@ export function SchedulesPage() {
         description={
           role === "teacher"
             ? "View your assigned classes and confirm your availability-driven timetable."
-            : role === "student"
-              ? "See your personalized weekly class schedule based on your section."
-              : "Preview a weekly timetable with room and faculty assignments."
+            : "Preview a weekly timetable with room and faculty assignments."
         }
         actions={
           role === "admin" ? (
@@ -162,29 +129,19 @@ export function SchedulesPage() {
       <section className="card">
         <div className="card__header">
           <div>
-            <p className="eyebrow">AI planner</p>
-            <h3>Smart timetable recommendations</h3>
+            <p className="eyebrow">Scheduling status</p>
+            <h3>Timetable overview</h3>
             <p className="muted">
-              The planner highlights where classes may need to be rebalanced for
-              better school operations.
+              Review the current schedule data from the backend. If no entries
+              are available yet, the timetable will stay empty until a program
+              head creates the first schedule block.
             </p>
           </div>
         </div>
-        <div className="grid-2">
-          {aiRecommendations.length === 0 ? (
-            <div className="empty-state">
-              No planning issues detected. Your schedule is balanced.
-            </div>
-          ) : (
-            aiRecommendations.map((recommendation) => (
-              <article className="card" key={recommendation.id}>
-                <p className="eyebrow">{recommendation.severity} priority</p>
-                <h3>{recommendation.title}</h3>
-                <p className="muted">{recommendation.detail}</p>
-                <p className="pill">{recommendation.suggestion}</p>
-              </article>
-            ))
-          )}
+        <div className="empty-state">
+          {aiRecommendations.length === 0
+            ? "No planning issues detected. The schedule is currently balanced."
+            : "Schedule review data is available."}
         </div>
       </section>
 

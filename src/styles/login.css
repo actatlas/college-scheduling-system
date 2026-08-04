@@ -1,0 +1,102 @@
+.login-wrapper {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background:
+    linear-gradient(rgba(8, 44, 94, 0.72), rgba(8, 44, 94, 0.72)),
+    url("/src/assets/images/SRCB FRONT DES.png");
+  background-size: cover;
+  background-position: center;
+}
+
+.auth-shell,
+.landing-shell,
+.login-card {
+  width: min(1080px, 100%);
+  background: #fff;
+  border-radius: 22px;
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.14);
+}
+
+.auth-shell,
+.landing-shell {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.auth-intro,
+.login-side {
+  padding: 48px;
+  background: linear-gradient(180deg, #f7fbff, #eef6ff);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 18px;
+}
+
+.auth-side {
+  padding: 48px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.auth-intro h2,
+.auth-side h2,
+.login-header h1 {
+  margin: 0;
+  color: var(--srcb-blue);
+  font-size: 2rem;
+  font-weight: 800;
+}
+
+.login-logo {
+  width: 84px;
+  height: 84px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  padding: 4px;
+  background: #fff;
+  object-fit: cover;
+}
+
+.login-form,
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.auth-switcher {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.auth-switcher button {
+  flex: 1;
+  padding: 11px 12px;
+  border-radius: 12px;
+  border: 1px solid #d6e3ef;
+  background: #fff;
+  color: var(--srcb-blue);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.auth-switcher button.active {
+  background: linear-gradient(135deg, var(--srcb-blue), #0d5499);
+  color: #fff;
+  border-color: transparent;
+}
+
+.login-footer {
+  margin: 0;
+  color: var(--srcb-text-muted);
+  text-align: center;
+  font-weight: 700;
+}

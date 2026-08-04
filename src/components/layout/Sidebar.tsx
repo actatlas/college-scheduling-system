@@ -10,7 +10,6 @@ import {
   LogOut,
   DoorOpen,
   ClipboardList,
-  GraduationCap,
   UserCircle2,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
@@ -22,8 +21,7 @@ function getRole() {
 
 const adminRoutes = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/faculty", label: "Faculty", icon: Users },
-  { to: "/students", label: "Students", icon: GraduationCap },
+  { to: "/faculty", label: "Teachers", icon: Users },
   { to: "/courses", label: "Programs / Courses", icon: Building2 },
   { to: "/subjects", label: "Subjects", icon: BookOpen },
   { to: "/sections", label: "Sections", icon: ClipboardList },
@@ -35,18 +33,20 @@ const adminRoutes = [
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
+const programHeadRoutes = [
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/programs", label: "Programs", icon: Building2 },
+  { to: "/subjects", label: "Manage Subjects", icon: BookOpen },
+  { to: "/sections", label: "Manage Sections", icon: ClipboardList },
+  { to: "/faculty", label: "Teachers", icon: Users },
+  { to: "/rooms", label: "Rooms", icon: DoorOpen },
+  { to: "/schedules", label: "Schedules", icon: CalendarDays },
+];
+
 const teacherRoutes = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/schedules", label: "My Schedule", icon: CalendarDays },
-  { to: "/subjects", label: "My Subjects", icon: BookOpen },
-  { to: "/dashboard", label: "Availability", icon: ClipboardList },
-];
-
-const studentRoutes = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/schedules", label: "My Schedule", icon: CalendarDays },
-  { to: "/subjects", label: "My Subjects", icon: BookOpen },
-  { to: "/dashboard", label: "Assigned Rooms", icon: DoorOpen },
+  { to: "/dashboard", label: "My Availability", icon: ClipboardList },
 ];
 
 export function Sidebar() {
@@ -55,8 +55,8 @@ export function Sidebar() {
   const routes =
     role === "teacher"
       ? teacherRoutes
-      : role === "student"
-        ? studentRoutes
+      : role === "program_head"
+        ? programHeadRoutes
         : adminRoutes;
   const handleLogout = () => {
     try {
@@ -79,8 +79,8 @@ export function Sidebar() {
           <p className="sidebar__brand-sub">
             {role === "teacher"
               ? "Teacher Portal"
-              : role === "student"
-                ? "Student Portal"
+              : role === "program_head"
+                ? "Program Head Portal"
                 : "Academic Scheduling"}
           </p>
         </div>

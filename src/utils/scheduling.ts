@@ -1,4 +1,4 @@
-export type UserRole = "admin" | "teacher" | "student";
+export type UserRole = "admin" | "teacher" | "program_head";
 
 export interface GeneratedScheduleItem {
   id: string;
@@ -175,10 +175,6 @@ export function generateScheduleSeed(option?: { role?: UserRole; programKey?: st
 
   if (role === "teacher") {
     return generated.filter((entry) => entry.faculty === teacherName);
-  }
-
-  if (role === "student") {
-    return generated.filter((entry) => entry.section === section && entry.program === programKey);
   }
 
   return generated;

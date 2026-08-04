@@ -1,0 +1,112 @@
+.login-button,
+.action-button,
+.secondary-button,
+.ghost-button,
+.icon-button,
+.action-button--success,
+.action-button--warning,
+.action-button--danger,
+.action-button--neutral {
+  transition: all var(--srcb-transition);
+}
+
+.login-button,
+.action-button {
+  height: 46px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--srcb-blue), #0d5499);
+  color: #fff;
+  padding: 0 16px;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 10px 24px rgba(11, 92, 173, 0.22);
+}
+
+.login-button:hover,
+.action-button:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.03);
+}
+
+.secondary-button,
+.ghost-button {
+  padding: 0.7rem 1rem;
+  border-radius: 12px;
+  border: 1px solid #d7e3f0;
+  background: #fff;
+  color: var(--srcb-blue);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.secondary-button:hover,
+.ghost-button:hover {
+  background: #edf6ff;
+  border-color: #aac8ea;
+  transform: translateY(-1px);
+}
+
+.icon-button {
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 12px;
+  background: #eef5fd;
+  color: var(--srcb-blue);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  background: var(--srcb-blue);
+  color: #fff;
+  transform: translateY(-2px);
+}
+
+.action-button--success {
+  background: linear-gradient(135deg, #059669, #10b981);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  min-height: 44px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+}
+
+.action-button--warning,
+.action-button--danger,
+.action-button--neutral {
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 0 16px;
+  min-height: 44px;
+  font-weight: 800;
+}
+
+.action-button--warning {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+}
+
+.action-button--danger {
+  background: linear-gradient(135deg, #dc2626, #b91c1c);
+}
+
+.action-button--neutral {
+  background: linear-gradient(135deg, #64748b, #475569);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}

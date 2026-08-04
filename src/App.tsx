@@ -1,5 +1,5 @@
 import { BrowserRouter } from "react-router-dom";
-import "./App.css";
+import "./styles/index.css";
 import { AppRoutes } from "./routes/AppRoutes";
 import { ToastProvider } from "./components/common/Toast";
 import { ProgramProvider } from "./contexts/ProgramContext";

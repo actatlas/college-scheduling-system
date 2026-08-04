@@ -1,14 +1,13 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Lock, Mail, ArrowRight, GraduationCap } from "lucide-react";
-import { api } from "../data/mockApi";
+import { api } from "../data/apiClient";
 import { useToast } from "../components/common/Toast";
 import Logo from "../assets/images/Logo.png";
 
 export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("admin");
   const navigate = useNavigate();
   const toast = useToast();
   const [showPassword, setShowPassword] = useState(false);
@@ -29,27 +28,14 @@ export function LoginPage() {
 
     setLoginError(null);
     setIsSubmitting(true);
-    const presetCredentials: Record<
-      string,
-      { email: string; password: string }
-    > = {
-      admin: { email: "admin@srcb.edu.ph", password: "@admin123" },
-      teacher: { email: "teacher@srcb.edu.ph", password: "@teacher123" },
-      student: { email: "student@srcb.edu.ph", password: "@student123" },
-    };
-
-    const selected = presetCredentials[role] ?? presetCredentials.admin;
-    const loginEmail = trimmed || selected.email;
-    const loginPassword = password || selected.password;
-
     try {
       const res: any = await api.post("/auth/login", {
-        email: loginEmail,
-        password: loginPassword,
+        email: trimmed,
+        password: trimmedPassword,
       });
 
       const payload = res.data || {};
-      const userRole = String(payload.user?.role || role).toLowerCase();
+      const userRole = String(payload.user?.role || "admin").toLowerCase();
       localStorage.setItem("token", payload.token || "");
       localStorage.setItem("userRole", userRole);
       localStorage.setItem("userName", payload.user?.name || "User");
@@ -63,27 +49,13 @@ export function LoginPage() {
           String(payload.user?.teacher?.status || "Full-Time"),
         );
       }
-      if (userRole === "student") {
-        localStorage.setItem(
-          "studentProgram",
-          String(payload.user?.student?.programCode || ""),
-        );
-        localStorage.setItem(
-          "studentYear",
-          String(payload.user?.student?.yearLevel || ""),
-        );
-        localStorage.setItem(
-          "studentSection",
-          String(payload.user?.student?.sectionLabel || ""),
-        );
-      }
       toast.push("Signed in", "success");
 
       const destination =
         userRole === "teacher"
           ? "/teacher-dashboard"
-          : userRole === "student"
-            ? "/student-dashboard"
+          : userRole === "program_head"
+            ? "/program-head-dashboard"
             : "/admin-dashboard";
       navigate(destination);
     } catch (err: any) {
@@ -133,7 +105,7 @@ export function LoginPage() {
           <h2>Sign in to the St. Rita's College scheduling platform</h2>
           <p className="muted">
             Access a dependable, role-based experience for administrators,
-            teachers, and students.
+            program heads, and teachers.
           </p>
         </section>
         <section className="auth-side">
@@ -152,7 +124,7 @@ export function LoginPage() {
                 <input
                   id="email"
                   type="email"
-                  placeholder="admin@srbc.edu"
+                  placeholder="admin@srcb.edu.ph"
                   value={email}
                   onChange={(e) => {
                     setEmail(e.target.value);
@@ -196,19 +168,6 @@ export function LoginPage() {
               )}
             </div>
 
-            <div className="field-group" style={{ marginBottom: 16 }}>
-              <label htmlFor="role">Sign in as</label>
-              <select
-                id="role"
-                value={role}
-                onChange={(event) => setRole(event.target.value)}
-              >
-                <option value="admin">Administrator</option>
-                <option value="teacher">Teacher</option>
-                <option value="student">Student</option>
-              </select>
-            </div>
-
             <div
               style={{
                 display: "flex",
@@ -246,14 +205,6 @@ export function LoginPage() {
           <p className="login-footer" style={{ marginTop: 16 }}>
             College Department • Academic Scheduling System
           </p>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => navigate("/register")}
-            style={{ marginTop: 8 }}
-          >
-            Create an account
-          </button>
         </section>
       </div>
     </div>

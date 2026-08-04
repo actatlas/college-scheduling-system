@@ -63,8 +63,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 <button
                   onClick={() => {
                     try {
-                      t.onAction && t.onAction();
-                    } catch (e) {
+                      if (t.onAction) {
+                        t.onAction();
+                      }
+                    } catch {
                       // ignore
                     }
                   }}

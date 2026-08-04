@@ -1,37 +1,17 @@
 import { motion } from "framer-motion";
 import { PageHeader } from "../components/common/PageHeader";
 import { useEffect, useState } from "react";
-import { api } from "../data/mockApi";
+import { api } from "../data/apiClient";
 import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
 import { Plus } from "lucide-react";
 
 type ProgramRow = { id?: number; name: string; focus: string };
 
-const defaultPrograms = [
-  {
-    name: "Bachelor of Science in Information Technology",
-    focus: "Information Technology Program - ITP",
-  },
-  {
-    name: "Bachelor of Science in Business Administration",
-    focus: "Business Administration Program - BSA",
-  },
-  {
-    name: "Bachelor of Science in Criminology",
-    focus: "Criminal Justice Education Program - CJEP",
-  },
-  {
-    name: "Bachelor of Science in Hospitality Management",
-    focus: "Hospitality Management Program - HMP",
-  },
-  { name: "Teacher Education Program", focus: "TEP" },
-];
-
 export function ProgramsPage() {
   const [programs, setPrograms] = useState<ProgramRow[]>([]);
   const [isOpen, setIsOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", focus: "" });
+  const [form, setForm] = useState({ code: "", name: "", focus: "" });
   const [loading, setLoading] = useState(false);
   const toast = useToast();
 
@@ -46,7 +26,7 @@ export function ProgramsPage() {
     fetchPrograms();
   }, []);
 
-  const visiblePrograms = programs.length > 0 ? programs : defaultPrograms;
+  const visiblePrograms = programs;
 
   return (
     <motion.div
@@ -84,24 +64,6 @@ export function ProgramsPage() {
         )}
       </section>
 
-      <section className="card">
-        <div className="card__header">
-          <div>
-            <p className="eyebrow">Curriculum offerings</p>
-            <h3>College programs catalog</h3>
-          </div>
-        </div>
-        <div className="grid-3">
-          {defaultPrograms.map((item) => (
-            <article className="card" key={item.name}>
-              <p className="eyebrow">Registry entry</p>
-              <h3>{item.name}</h3>
-              <p className="muted">{item.focus}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
       <Modal
         isOpen={isOpen}
         title="Add program"
@@ -109,6 +71,16 @@ export function ProgramsPage() {
         onClose={() => setIsOpen(false)}
       >
         <div className="form-grid">
+          <div className="field-group">
+            <label htmlFor="programCode">Program Code</label>
+            <input
+              id="programCode"
+              value={form.code}
+              onChange={(event) =>
+                setForm({ ...form, code: event.target.value })
+              }
+            />
+          </div>
           <div className="field-group">
             <label htmlFor="programName">Program Name</label>
             <input
@@ -119,8 +91,8 @@ export function ProgramsPage() {
               }
             />
           </div>
-          <div className="field-group">
-            <label htmlFor="programFocus">Program Code / Focus</label>
+          <div className="field-group" style={{ gridColumn: "1 / -1" }}>
+            <label htmlFor="programFocus">Program Focus</label>
             <input
               id="programFocus"
               value={form.focus}
@@ -143,17 +115,21 @@ export function ProgramsPage() {
             className="action-button"
             disabled={loading}
             onClick={async () => {
-              if (!form.name) {
-                toast.push("Program name is required", "error");
+              if (!form.code || !form.name) {
+                toast.push("Program code and name are required", "error");
                 return;
               }
               setLoading(true);
               try {
-                await api.post("/programs", form);
+                await api.post("/programs", {
+                  code: form.code,
+                  name: form.name,
+                  focus: form.focus,
+                });
                 fetchPrograms();
                 toast.push("Program saved", "success");
                 setIsOpen(false);
-                setForm({ name: "", focus: "" });
+                setForm({ code: "", name: "", focus: "" });
               } catch (err: any) {
                 toast.push(
                   err?.response?.data?.error || "Failed to save program",

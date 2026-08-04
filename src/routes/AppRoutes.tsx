@@ -22,6 +22,11 @@ const CoursesPage = lazy(() =>
     default: module.CoursesPage,
   })),
 );
+const ProgramsPage = lazy(() =>
+  import("../pages/ProgramsPage").then((module) => ({
+    default: module.ProgramsPage,
+  })),
+);
 const SubjectsPage = lazy(() =>
   import("../pages/SubjectsPage").then((module) => ({
     default: module.SubjectsPage,
@@ -67,17 +72,6 @@ const LandingPage = lazy(() =>
     default: module.LandingPage,
   })),
 );
-const RegisterPage = lazy(() =>
-  import("../pages/RegisterPage").then((module) => ({
-    default: module.RegisterPage,
-  })),
-);
-const StudentsPage = lazy(() =>
-  import("../pages/StudentsPage").then((module) => ({
-    default: module.StudentsPage,
-  })),
-);
-
 import { Navigate, Outlet } from "react-router-dom";
 
 interface ProtectedRouteProps {
@@ -93,8 +87,9 @@ export function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
   }
 
   if (!allowedRoles.includes(role)) {
-    if (role === "student") return <Navigate to="/student-dashboard" replace />;
     if (role === "teacher") return <Navigate to="/teacher-dashboard" replace />;
+    if (role === "program_head")
+      return <Navigate to="/program-head-dashboard" replace />;
     return <Navigate to="/admin-dashboard" replace />;
   }
 
@@ -111,40 +106,52 @@ export function AppRoutes() {
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        
+
         <Route element={<MainLayout />}>
           {/* Shared paths */}
-          <Route element={<ProtectedRoute allowedRoles={["admin", "teacher", "student"]} />}>
+          <Route
+            element={
+              <ProtectedRoute
+                allowedRoles={["admin", "teacher", "program_head"]}
+              />
+            }
+          >
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/schedules" element={<SchedulesPage />} />
+            <Route path="/rooms" element={<RoomsPage />} />
+          </Route>
+
+          {/* Admin + Program Head paths */}
+          <Route
+            element={
+              <ProtectedRoute allowedRoles={["admin", "program_head"]} />
+            }
+          >
             <Route path="/subjects" element={<SubjectsPage />} />
+            <Route path="/sections" element={<SectionsPage />} />
+            <Route path="/faculty" element={<FacultyPage />} />
           </Route>
 
           {/* Admin-only paths */}
           <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
             <Route path="/admin-dashboard" element={<DashboardPage />} />
-            <Route path="/faculty" element={<FacultyPage />} />
-            <Route path="/programs" element={<CoursesPage />} />
+            <Route path="/programs" element={<ProgramsPage />} />
             <Route path="/departments" element={<CoursesPage />} />
             <Route path="/courses" element={<CoursesPage />} />
-            <Route path="/sections" element={<SectionsPage />} />
-            <Route path="/rooms" element={<RoomsPage />} />
             <Route path="/conflicts" element={<ConflictPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/users" element={<UserManagementPage />} />
-            <Route path="/students" element={<StudentsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+          </Route>
+
+          {/* Program Head paths */}
+          <Route element={<ProtectedRoute allowedRoles={["program_head"]} />}>
+            <Route path="/program-head-dashboard" element={<DashboardPage />} />
           </Route>
 
           {/* Teacher-only paths */}
           <Route element={<ProtectedRoute allowedRoles={["teacher"]} />}>
             <Route path="/teacher-dashboard" element={<DashboardPage />} />
-          </Route>
-
-          {/* Student-only paths */}
-          <Route element={<ProtectedRoute allowedRoles={["student"]} />}>
-            <Route path="/student-dashboard" element={<DashboardPage />} />
           </Route>
         </Route>
       </Routes>

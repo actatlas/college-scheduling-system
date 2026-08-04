@@ -7,17 +7,33 @@ const DEFAULT_ADMIN_PASSWORD = '@admin123';
 const DEFAULT_ADMIN_NAME = 'System Administrator';
 
 async function ensureCatalogSeed() {
+  const [program] = await query('SELECT code FROM programs WHERE code = ? LIMIT 1', ['ITP']);
+  if (!program) {
+    await query('INSERT INTO programs (code, name, focus) VALUES (?, ?, ?)', ['ITP', 'Information Technology Program', 'ITP']);
+  }
+
+  const [semester] = await query('SELECT id FROM semesters WHERE name = ? LIMIT 1', ['1st Semester']);
+  if (!semester) {
+    await query('INSERT INTO semesters (name, is_active) VALUES (?, ?)', ['1st Semester', true]);
+  }
+
+  const [academicYear] = await query('SELECT id FROM academic_years WHERE name = ? LIMIT 1', ['2026-2027']);
+  if (!academicYear) {
+    await query('INSERT INTO academic_years (name, is_active) VALUES (?, ?)', ['2026-2027', true]);
+  }
+
   const [course] = await query('SELECT code FROM courses WHERE code = ? LIMIT 1', ['BSCS']);
   if (!course) {
-    await query('INSERT INTO courses (code, name, year_duration) VALUES (?, ?, ?)', ['BSCS', 'Bachelor of Science in Computer Science', '4']);
+    await query('INSERT INTO courses (code, name, program_code, year_duration) VALUES (?, ?, ?, ?)', ['BSCS', 'Bachelor of Science in Computer Science', 'ITP', 4]);
   }
 
   const [section] = await query('SELECT id FROM sections WHERE course_code = ? AND section_label = ? LIMIT 1', ['BSCS', 'A']);
   if (!section) {
-    const [faculty] = await query('SELECT id FROM faculty WHERE email = ? LIMIT 1', ['teacher@srcb.edu.ph']);
+    const [semesterRow] = await query('SELECT id FROM semesters WHERE name = ? LIMIT 1', ['1st Semester']);
+    const [yearRow] = await query('SELECT id FROM academic_years WHERE name = ? LIMIT 1', ['2026-2027']);
     await query(
-      'INSERT INTO sections (course_code, year_level, section_label, adviser_id, students, semester, school_year) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      ['BSCS', '1', 'A', faculty?.id || null, 30, '1', '2025-2026']
+      'INSERT INTO sections (course_code, year_level, section_label, adviser_id, students, semester_id, academic_year_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      ['BSCS', 1, 'A', null, 30, semesterRow?.id || 1, yearRow?.id || 1]
     );
   }
 }
@@ -27,7 +43,6 @@ async function ensureDefaultUsers() {
   const defaultUsers = [
     { email: process.env.SEED_ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL, password: process.env.SEED_ADMIN_PASSWORD || DEFAULT_ADMIN_PASSWORD, name: DEFAULT_ADMIN_NAME, role: 'admin' },
     { email: process.env.SEED_TEACHER_EMAIL || 'teacher@srcb.edu.ph', password: process.env.SEED_TEACHER_PASSWORD || '@teacher123', name: 'Ms. Santos', role: 'teacher' },
-    { email: process.env.SEED_STUDENT_EMAIL || 'student@srcb.edu.ph', password: process.env.SEED_STUDENT_PASSWORD || '@student123', name: 'Student User', role: 'student' },
   ];
 
   for (const user of defaultUsers) {
@@ -56,34 +71,26 @@ async function ensureDefaultUsers() {
     }
 
     if (user.role === 'teacher') {
-      const [teacher] = await query('SELECT id FROM faculty WHERE email = ? LIMIT 1', [user.email]);
+      const [teacher] = await query('SELECT id FROM teachers WHERE email = ? LIMIT 1', [user.email]);
       if (!teacher) {
-        await query('INSERT INTO faculty (id, name, department, email, status) VALUES (?, ?, ?, ?, ?)', [
-          'T001',
+        const [major] = await query('SELECT id FROM program_majors WHERE code = ? LIMIT 1', ['BSIT']);
+        await query('INSERT INTO teachers (id, name, email, phone, status, program_major_id) VALUES (?, ?, ?, ?, ?, ?)', [
+          `T${Date.now().toString().slice(-6)}`,
           user.name,
-          'Information Technology',
           user.email,
+          null,
           'Full-Time',
+          major?.id || null,
         ]);
-      }
-    }
-
-    if (user.role === 'student') {
-      const [student] = await query('SELECT id FROM students WHERE user_id = ? LIMIT 1', [userId]);
-      if (!student) {
-        const [section] = await query('SELECT id FROM sections WHERE course_code = ? AND section_label = ? LIMIT 1', ['BSCS', 'A']);
-        await query(
-          'INSERT INTO students (user_id, student_id, program_code, year_level, section_id, status) VALUES (?, ?, ?, ?, ?, ?)',
-          [userId, 'STU000001', 'BSCS', '1', section?.id || null, 'active'],
-        );
       }
     }
   }
 }
 
-async function register({ name, email, password, role, programCode, yearLevel, studentId }) {
+async function register({ name, email, password, role }) {
   await ensureCatalogSeed();
 
+  const safeRole = role === 'program_head' || role === 'teacher' ? role : 'admin';
   const passwordHash = await bcrypt.hash(password, 10);
 
   const [existing] = await query('SELECT id FROM users WHERE email = ? LIMIT 1', [email]);
@@ -95,24 +102,15 @@ async function register({ name, email, password, role, programCode, yearLevel, s
 
   const [result] = await query(
     'INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)',
-    [name, email, passwordHash, role || 'admin']
+    [name, email, passwordHash, safeRole]
   );
 
-  if ((role || 'admin') === 'student') {
-    const finalStudentId = studentId || `STU${Date.now().toString().slice(-6)}`;
-    const finalProgramCode = programCode || 'BSCS';
-    const [section] = await query('SELECT id FROM sections WHERE course_code = ? AND section_label = ? LIMIT 1', ['BSCS', 'A']);
-    await query(
-      'INSERT INTO students (user_id, student_id, program_code, year_level, section_id, status) VALUES (?, ?, ?, ?, ?, ?)',
-      [result.insertId, finalStudentId, finalProgramCode, yearLevel || null, section?.id || null, 'active']
-    );
-  }
-
-  if ((role || 'admin') === 'teacher') {
+  if (safeRole === 'teacher') {
     const facultyId = `T${Date.now().toString().slice(-6)}`;
+    const [major] = await query('SELECT id FROM program_majors WHERE code = ? LIMIT 1', ['BSIT']);
     await query(
-      'INSERT INTO faculty (id, name, department, email, status) VALUES (?, ?, ?, ?, ?)',
-      [facultyId, name, 'Academic Affairs', email, 'Full-Time'],
+      'INSERT INTO teachers (id, name, email, phone, status, program_major_id) VALUES (?, ?, ?, ?, ?, ?)',
+      [facultyId, name, email, null, 'Full-Time', major?.id || null],
     );
   }
 
@@ -175,34 +173,18 @@ async function login({ email, password }) {
     role: user.role,
   };
 
-  if (user.role === 'student') {
-    const [student] = await query(
-      'SELECT s.student_id, s.program_code, s.year_level, s.section_id, sec.section_label, sec.course_code FROM students s LEFT JOIN sections sec ON sec.id = s.section_id WHERE s.user_id = ? LIMIT 1',
-      [user.id]
-    );
-    if (student) {
-      payload.student = {
-        studentId: student.student_id,
-        programCode: student.program_code,
-        yearLevel: student.year_level,
-        sectionId: student.section_id,
-        sectionLabel: student.section_label,
-        courseCode: student.course_code,
-      };
-    }
-  }
-
   if (user.role === 'teacher') {
-    const [facultyMember] = await query(
-      'SELECT id, department, status, availability FROM faculty WHERE email = ? LIMIT 1',
+    const [teacher] = await query(
+      'SELECT id, name, email, phone, status FROM teachers WHERE email = ? LIMIT 1',
       [user.email]
     );
-    if (facultyMember) {
+    if (teacher) {
       payload.teacher = {
-        id: facultyMember.id,
-        department: facultyMember.department,
-        status: facultyMember.status,
-        availability: facultyMember.availability,
+        id: teacher.id,
+        name: teacher.name,
+        email: teacher.email,
+        phone: teacher.phone,
+        status: teacher.status,
       };
     }
   }
@@ -233,34 +215,18 @@ async function getCurrentUser({ sub }) {
     role: user.role,
   };
 
-  if (user.role === 'student') {
-    const [student] = await query(
-      'SELECT s.student_id, s.program_code, s.year_level, s.section_id, sec.section_label, sec.course_code FROM students s LEFT JOIN sections sec ON sec.id = s.section_id WHERE s.user_id = ? LIMIT 1',
-      [user.id]
-    );
-    if (student) {
-      payload.student = {
-        studentId: student.student_id,
-        programCode: student.program_code,
-        yearLevel: student.year_level,
-        sectionId: student.section_id,
-        sectionLabel: student.section_label,
-        courseCode: student.course_code,
-      };
-    }
-  }
-
   if (user.role === 'teacher') {
-    const [facultyMember] = await query(
-      'SELECT id, department, status, availability FROM faculty WHERE email = ? LIMIT 1',
+    const [teacher] = await query(
+      'SELECT id, name, email, phone, status FROM teachers WHERE email = ? LIMIT 1',
       [user.email]
     );
-    if (facultyMember) {
+    if (teacher) {
       payload.teacher = {
-        id: facultyMember.id,
-        department: facultyMember.department,
-        status: facultyMember.status,
-        availability: facultyMember.availability,
+        id: teacher.id,
+        name: teacher.name,
+        email: teacher.email,
+        phone: teacher.phone,
+        status: teacher.status,
       };
     }
   }

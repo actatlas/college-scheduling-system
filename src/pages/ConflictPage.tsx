@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { PageHeader } from "../components/common/PageHeader";
 import { useEffect, useMemo, useState } from "react";
-import { api } from "../data/mockApi";
+import { api } from "../data/apiClient";
 import { ShieldAlert, Sparkles } from "lucide-react";
 import { buildAiRecommendations } from "../utils/scheduling";
 

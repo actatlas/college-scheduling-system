@@ -18,11 +18,7 @@ export function Topbar({ title }: TopbarProps) {
   ).toLowerCase();
   const userName =
     window.localStorage.getItem("userName") ||
-    (role === "teacher"
-      ? "Ms. Santos"
-      : role === "student"
-        ? "Student"
-        : "Admin");
+    (role === "teacher" ? "Ms. Santos" : "Admin");
 
   useEffect(() => {
     const saved = localStorage.getItem("theme");
@@ -106,16 +102,14 @@ export function Topbar({ title }: TopbarProps) {
         </button>
         <div className="topbar__profile">
           <div className="topbar__avatar">
-            {role === "teacher" ? "TE" : role === "student" ? "ST" : "AD"}
+            {role === "teacher" ? "TE" : "AD"}
           </div>
           <div>
             <p className="topbar__name">{userName}</p>
             <p className="topbar__meta">
               {role === "teacher"
                 ? "Teacher Portal"
-                : role === "student"
-                  ? "Student Portal"
-                  : "Semester 1 · SY 2026-2027"}
+                : "Semester 1 · SY 2026-2027"}
             </p>
           </div>
         </div>

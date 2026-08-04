@@ -1,0 +1,94 @@
+.landing-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background:
+    linear-gradient(rgba(8, 44, 94, 0.6), rgba(8, 44, 94, 0.6)),
+    url("/src/assets/images/SRCB FRONT DES.png");
+  background-size: cover;
+  background-position: center;
+}
+
+.landing-shell {
+  min-height: 650px;
+}
+
+.landing-hero {
+  padding: 58px;
+  background: linear-gradient(180deg, #f7fbff, #eef5ff);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 20px;
+}
+
+.landing-hero__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--srcb-blue);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.landing-hero h1 {
+  margin: 0;
+  color: var(--srcb-blue);
+  font-size: 3rem;
+  line-height: 1.12;
+  max-width: 780px;
+}
+
+.landing-hero p {
+  margin: 0;
+  color: var(--srcb-text-muted);
+  line-height: 1.8;
+  max-width: 620px;
+}
+
+.landing-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.landing-card {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid var(--srcb-border);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: var(--srcb-shadow-soft);
+}
+
+.landing-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 56px;
+  background: linear-gradient(180deg, #ffffff, #f7fbff);
+}
+
+.landing-panel h2 {
+  margin: 0 0 8px;
+  color: var(--srcb-blue);
+  font-size: 1.9rem;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: rgba(11, 92, 173, 0.08);
+  border: 1px solid rgba(11, 92, 173, 0.15);
+  color: var(--srcb-blue);
+  font-size: 0.78rem;
+  font-weight: 800;
+}

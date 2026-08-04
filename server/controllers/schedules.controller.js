@@ -26,7 +26,7 @@ async function generateSchedules(req, res, next) {
 
 async function createSchedule(req, res, next) {
   try {
-    if (req.user?.role !== 'admin') {
+    if (!['admin', 'program_head'].includes(req.user?.role)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const payload = req.body || {};
@@ -36,13 +36,14 @@ async function createSchedule(req, res, next) {
     const row = await schedulesService.createSchedule(payload);
     res.status(201).json({ data: row });
   } catch (err) {
+    if (err?.statusCode) return res.status(err.statusCode).json({ error: err.message });
     next(err);
   }
 }
 
 async function deleteSchedule(req, res, next) {
   try {
-    if (req.user?.role !== 'admin') {
+    if (!['admin', 'program_head'].includes(req.user?.role)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const id = req.params.id;
@@ -55,7 +56,7 @@ async function deleteSchedule(req, res, next) {
 
 async function updateSchedule(req, res, next) {
   try {
-    if (req.user?.role !== 'admin') {
+    if (!['admin', 'program_head'].includes(req.user?.role)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const id = req.params.id;
@@ -63,6 +64,7 @@ async function updateSchedule(req, res, next) {
     const row = await schedulesService.updateSchedule(id, payload);
     res.json({ data: row });
   } catch (err) {
+    if (err?.statusCode) return res.status(err.statusCode).json({ error: err.message });
     next(err);
   }
 }

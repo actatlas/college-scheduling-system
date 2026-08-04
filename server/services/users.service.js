@@ -20,23 +20,15 @@ async function listUsers() {
 
 async function updateUser(id, { name, email, role }) {
   await query('UPDATE users SET name = ?, email = ?, role = ? WHERE id = ?', [name, email, role, id]);
-  
-  if (role === 'student') {
-    const [existingStudent] = await query('SELECT id FROM students WHERE user_id = ? LIMIT 1', [id]);
-    if (!existingStudent) {
-      const studentId = `STU${Date.now().toString().slice(-6)}`;
+
+  if (role === 'teacher') {
+    const [existingTeacher] = await query('SELECT id FROM teachers WHERE email = ? LIMIT 1', [email]);
+    if (!existingTeacher) {
+      const teacherId = `T${Date.now().toString().slice(-6)}`;
+      const [majorRow] = await query('SELECT id FROM program_majors WHERE code = ? LIMIT 1', ['BSIT']);
       await query(
-        'INSERT INTO students (user_id, student_id, status) VALUES (?, ?, ?)',
-        [id, studentId, 'active']
-      );
-    }
-  } else if (role === 'teacher') {
-    const [existingFaculty] = await query('SELECT id FROM faculty WHERE email = ? LIMIT 1', [email]);
-    if (!existingFaculty) {
-      const facultyId = `T${Date.now().toString().slice(-6)}`;
-      await query(
-        'INSERT INTO faculty (id, name, department, email, status) VALUES (?, ?, ?, ?, ?)',
-        [facultyId, name, 'Academic Affairs', email, 'Full-Time']
+        'INSERT INTO teachers (id, name, email, phone, status, program_major_id) VALUES (?, ?, ?, ?, ?, ?)',
+        [teacherId, name, email, null, 'Full-Time', majorRow?.id || null]
       );
     }
   }
@@ -53,7 +45,7 @@ async function deleteUser(id) {
   }
   
   if (user.role === 'teacher') {
-    await query('DELETE FROM faculty WHERE email = ?', [user.email]);
+    await query('DELETE FROM teachers WHERE email = ?', [user.email]);
   }
   
   await query('DELETE FROM users WHERE id = ?', [id]);

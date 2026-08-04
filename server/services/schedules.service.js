@@ -1,46 +1,146 @@
 const { query } = require('../utils/db');
 
+function normalizeTime(value) {
+  if (!value) return null;
+  const str = String(value).trim();
+  if (/^\d{1,2}:\d{2}$/.test(str)) return str;
+  return `${str.padStart(2, '0')}:00`;
+}
+
+function toMinutes(value) {
+  const [hour, minute = '0'] = String(value || '00:00').split(':').map(Number);
+  return hour * 60 + minute;
+}
+
+function timesOverlap(startA, endA, startB, endB) {
+  if (!startA || !endA || !startB || !endB) return false;
+  const aStart = toMinutes(startA);
+  const aEnd = toMinutes(endA);
+  const bStart = toMinutes(startB);
+  const bEnd = toMinutes(endB);
+  return aStart < bEnd && bStart < aEnd;
+}
+
+function parseAvailabilityRanges(raw) {
+  if (!raw) return [];
+  const rows = [];
+  const parts = String(raw).split(/[|;]/).map((segment) => segment.trim()).filter(Boolean);
+  for (const part of parts) {
+    const match = part.match(/([A-Za-z]+)\s*[:=]\s*(\d{1,2}(?::\d{2})?)-?(\d{1,2}(?::\d{2})?)/i);
+    if (!match) continue;
+    const day = match[1].toLowerCase();
+    const start = normalizeTime(match[2]);
+    const end = normalizeTime(match[3]);
+    rows.push({ day, start, end });
+  }
+  return rows;
+}
+
+async function validateSchedulePayload({ id = null, day, start_time, end_time, subject_code, section_id, faculty_id, room_number }) {
+  const start = normalizeTime(start_time);
+  const end = normalizeTime(end_time || '01:00');
+  if (!day || !start || !subject_code) {
+    const err = new Error('day, start_time and subject_code are required');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const existingRows = await query(
+    `SELECT id, day, start_time, end_time, section_id, faculty_id, room_number
+     FROM schedules
+     WHERE id != ?
+     ORDER BY start_time ASC`,
+    [id || 0],
+  );
+
+  const conflicts = [];
+  for (const row of existingRows) {
+    if (row.day !== day) continue;
+    if (!timesOverlap(start, end, row.start_time, row.end_time || row.start_time)) continue;
+
+    if (room_number && row.room_number && String(row.room_number) === String(room_number)) {
+      conflicts.push(`Room ${room_number} is already booked on ${day} for overlapping time.`);
+    }
+    if (faculty_id && row.faculty_id && String(row.faculty_id) === String(faculty_id)) {
+      conflicts.push('The selected teacher is already assigned to another class during this time slot.');
+    }
+    if (section_id && row.section_id && Number(row.section_id) === Number(section_id)) {
+      conflicts.push('The selected section already has another class scheduled during this time slot.');
+    }
+  }
+
+  if (conflicts.length > 0) {
+    const err = new Error(conflicts[0]);
+    err.statusCode = 409;
+    throw err;
+  }
+
+  if (faculty_id) {
+    const [teacherRow] = await query(
+      `SELECT t.id, t.status
+       FROM teachers t
+       WHERE t.id = ? LIMIT 1`,
+      [faculty_id],
+    );
+
+    if (!teacherRow) {
+      const err = new Error('Selected teacher does not exist.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const availabilityRows = await query(
+      `SELECT day_of_week, start_time, end_time
+       FROM teacher_availability
+       WHERE teacher_id = ?`,
+      [faculty_id],
+    );
+
+    const ranges = availabilityRows.map((entry) => ({ day: entry.day_of_week, start: entry.start_time, end: entry.end_time }));
+    if (teacherRow.status === 'Part-Time' && ranges.length === 0) {
+      const err = new Error('Part-time teachers must have an availability record before a schedule can be saved.');
+      err.statusCode = 409;
+      throw err;
+    }
+
+    const availabilityMatch = ranges.some((entry) => {
+      const normalizedDay = String(entry.day || '').toLowerCase();
+      return normalizedDay.includes(day.toLowerCase()) && timesOverlap(start, end, entry.start, entry.end);
+    });
+
+    if (teacherRow.status === 'Part-Time' && !availabilityMatch) {
+      const err = new Error('The selected schedule falls outside the teacher availability window.');
+      err.statusCode = 409;
+      throw err;
+    }
+  }
+}
+
 async function listSchedules({ user, department } = {}) {
-  // Frontend ScheduleItem expects:
-  // { day, time, subject, faculty, room, color }
   let sql = `SELECT sc.id, sc.day,
             sc.start_time,
+            sc.end_time,
             sub.name AS subject,
-            COALESCE(f.name, '') AS faculty,
+            COALESCE(t.name, '') AS faculty,
             sc.room_number,
-            sc.color
+            sc.color,
+            sc.section_id
      FROM schedules sc
      INNER JOIN subjects sub ON sub.code = sc.subject_code
-     LEFT JOIN faculty f ON f.id = sc.faculty_id`;
+     LEFT JOIN teachers t ON t.id = sc.faculty_id`;
   const conditions = [];
   const params = [];
 
   if (department) {
-    conditions.push('sub.department = ?');
+    conditions.push('sub.program_code = ?');
     params.push(department);
   }
 
   if (user?.role === 'teacher') {
-    const [facultyRow] = await query(
-      'SELECT id FROM faculty WHERE email = ? LIMIT 1',
-      [user.email],
-    );
-    if (facultyRow && facultyRow.id) {
+    const [teacherRow] = await query('SELECT id FROM teachers WHERE email = ? LIMIT 1', [user.email]);
+    if (teacherRow && teacherRow.id) {
       conditions.push('sc.faculty_id = ?');
-      params.push(facultyRow.id);
-    } else {
-      return [];
-    }
-  }
-
-  if (user?.role === 'student') {
-    const [studentRow] = await query(
-      'SELECT section_id FROM students WHERE user_id = ? LIMIT 1',
-      [user.sub],
-    );
-    if (studentRow && studentRow.section_id) {
-      conditions.push('sc.section_id = ?');
-      params.push(studentRow.section_id);
+      params.push(teacherRow.id);
     } else {
       return [];
     }
@@ -57,20 +157,23 @@ async function listSchedules({ user, department } = {}) {
     id: s.id,
     day: s.day,
     time: s.start_time,
+    endTime: s.end_time,
     subject: s.subject,
     faculty: s.faculty,
     room: s.room_number || '',
+    sectionId: s.section_id,
     color: s.color || '#2563eb',
   }));
 }
 
-async function createSchedule({ day, start_time, end_time, subject_code, section_id, faculty_id, room_number, color }) {
+async function createSchedule(payload) {
+  await validateSchedulePayload(payload);
+  const { day, start_time, end_time, subject_code, section_id, faculty_id, room_number, color } = payload;
   const res = await query(
     `INSERT INTO schedules (day, start_time, end_time, subject_code, section_id, faculty_id, room_number, color)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [day, start_time, end_time || null, subject_code, section_id || null, faculty_id || null, room_number || null, color || '#2563eb']
   );
-  // return created row id
   return { id: res.insertId, day, time: start_time, subject: subject_code, room: room_number || '', color: color || '#2563eb' };
 }
 
@@ -78,166 +181,18 @@ async function deleteSchedule(id) {
   await query('DELETE FROM schedules WHERE id = ?', [id]);
 }
 
-async function updateSchedule(id, { day, start_time, end_time, subject_code, room_number, color }) {
-  await query('UPDATE schedules SET day = ?, start_time = ?, end_time = ?, subject_code = ?, room_number = ?, color = ? WHERE id = ?', [day, start_time, end_time || null, subject_code, room_number || null, color || '#2563eb', id]);
+async function updateSchedule(id, payload) {
+  await validateSchedulePayload({ id, ...payload });
+  const { day, start_time, end_time, subject_code, section_id, faculty_id, room_number, color } = payload;
+  await query(
+    'UPDATE schedules SET day = ?, start_time = ?, end_time = ?, subject_code = ?, section_id = ?, faculty_id = ?, room_number = ?, color = ? WHERE id = ?',
+    [day, start_time, end_time || null, subject_code, section_id || null, faculty_id || null, room_number || null, color || '#2563eb', id],
+  );
   return { id, day, time: start_time, subject: subject_code, room: room_number || '', color: color || '#2563eb' };
 }
 
 async function generateSchedules() {
-  // Simple round-robin generator for demo purposes.
-  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const times = ['08:00', '09:00', '10:00', '11:00', '13:00', '14:00', '15:00'];
-
-  const subjects = await query('SELECT code, instructor_id, lecture_hours, lab_hours FROM subjects');
-  const rooms = await query('SELECT number, capacity FROM rooms');
-  const faculty = await query('SELECT id, availability FROM faculty');
-  const sections = await query('SELECT id, students FROM sections');
-
-  if (!subjects.length || !rooms.length || !faculty.length || !sections.length) {
-    return [];
-  }
-
-  // Build schedule rows while avoiding double-booking and respecting room capacity.
-  const inserts = [];
-  // Track taken slots: key = `${day}|${time}` -> { rooms: Set, faculty: Set, sections: Set }
-  const taken = new Map();
-
-  function slotKey(day, time) {
-    return `${day}|${time}`;
-  }
-
-  // Helper: parse availability strings like "Mon:08-12, Tue:13-16" (permissive)
-  function parseAvailability(av) {
-    if (!av) return null;
-    const map = new Map();
-    const parts = String(av).split(/[;,|]/).map((s) => s.trim()).filter(Boolean);
-    for (const p of parts) {
-      const m = p.match(/([A-Za-z]+)[:=\s]+(\d{1,2}(?::\d{2})?)-(\d{1,2}(?::\d{2})?)/);
-      if (!m) continue;
-      let day = m[1];
-      const start = m[2].includes(':') ? m[2] : `${String(m[2]).padStart(2,'0')}:00`;
-      const end = m[3].includes(':') ? m[3] : `${String(m[3]).padStart(2,'0')}:00`;
-      // normalize day names
-      const dayMap = { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday' };
-      day = dayMap[day.slice(0,3)] || day;
-      if (!map.has(day)) map.set(day, []);
-      map.get(day).push([start, end]);
-    }
-    return map;
-  }
-
-  function timeInRanges(time, ranges) {
-    if (!ranges || !ranges.length) return false;
-    // time like '08:00'
-    const [th, tm] = time.split(':').map(Number);
-    const tmins = th * 60 + (tm || 0);
-    for (const r of ranges) {
-      const [s, e] = r;
-      const [sh, sm] = s.split(':').map(Number);
-      const [eh, em] = e.split(':').map(Number);
-      const smins = sh * 60 + (sm || 0);
-      const emins = eh * 60 + (em || 0);
-      if (tmins >= smins && tmins < emins) return true;
-    }
-    return false;
-  }
-
-  // Pre-parse faculty availability
-  const facultyAvailability = new Map();
-  for (const f of faculty) {
-    facultyAvailability.set(f.id, parseAvailability(f.availability));
-  }
-
-  for (let i = 0; i < subjects.length; i++) {
-    const subj = subjects[i];
-    const section = sections[i % sections.length];
-
-    const requiredSlots = Math.max(1, Number(subj.lecture_hours || 0) + Number(subj.lab_hours || 0));
-
-    // Determine preferred faculty
-    let preferredFaculty = null;
-    if (subj.instructor_id) {
-      const found = faculty.find((f) => f.id === subj.instructor_id);
-      if (found) preferredFaculty = found.id;
-    }
-
-    // allocate requiredSlots slots for this subject
-    let slotsAssigned = 0;
-    for (let attemptDay = 0; attemptDay < days.length && slotsAssigned < requiredSlots; attemptDay++) {
-      for (let attemptTime = 0; attemptTime < times.length && slotsAssigned < requiredSlots; attemptTime++) {
-        const day = days[attemptDay];
-        const time = times[attemptTime];
-        const key = slotKey(day, time);
-        if (!taken.has(key)) taken.set(key, { rooms: new Set(), faculty: new Set(), sections: new Set() });
-        const state = taken.get(key);
-
-        if (state.sections.has(String(section.id))) continue;
-
-        // pick faculty candidate considering availability
-        const tryFaculty = (fId) => {
-          if (!fId) return false;
-          if (state.faculty.has(String(fId))) return false;
-          const av = facultyAvailability.get(fId);
-          if (av && av.size > 0) {
-            const ranges = av.get(day);
-            if (!timeInRanges(time, ranges)) return false;
-          }
-          return true;
-        };
-
-        let facCandidate = null;
-        if (preferredFaculty && tryFaculty(preferredFaculty)) {
-          facCandidate = preferredFaculty;
-        } else {
-          const availableFac = faculty.find((f) => tryFaculty(f.id));
-          if (availableFac) facCandidate = availableFac.id;
-        }
-        if (!facCandidate) continue;
-
-        // find suitable room
-        const roomCandidate = rooms.find((r) => {
-          const cap = Number(r.capacity) || 0;
-          const students = Number(section.students) || 0;
-          return cap >= students && !state.rooms.has(r.number);
-        });
-        if (!roomCandidate) continue;
-
-        // assign slot
-        inserts.push([
-          day,
-          time,
-          null,
-          subj.code,
-          section.id,
-          facCandidate,
-          roomCandidate.number,
-          '#2563eb',
-        ]);
-
-        state.sections.add(String(section.id));
-        state.faculty.add(String(facCandidate));
-        state.rooms.add(String(roomCandidate.number));
-        slotsAssigned++;
-      }
-    }
-    // if slotsAssigned < requiredSlots we leave partial assignment
-  }
-
-  // Replace existing schedules with generated ones.
-  await query('DELETE FROM schedules');
-
-  if (inserts.length === 0) return [];
-
-  const placeholders = inserts.map(() => '(?,?,?,?,?,?,?,?)').join(',');
-  const flat = inserts.flat();
-  await query(
-    `INSERT INTO schedules (day, start_time, end_time, subject_code, section_id, faculty_id, room_number, color) VALUES ${placeholders}`,
-    flat,
-  );
-
-  // Return the newly created rows in the frontend-friendly shape.
-  const rows = await listSchedules();
-  return rows;
+  return [];
 }
 
 async function detectConflicts() {
@@ -248,20 +203,18 @@ async function detectConflicts() {
             sc.faculty_id,
             sc.section_id,
             sub.name AS subject_name,
-            f.name AS faculty_name,
+            t.name AS faculty_name,
             sec.course_code,
             sec.year_level,
             sec.section_label
      FROM schedules sc
      INNER JOIN subjects sub ON sub.code = sc.subject_code
-     LEFT JOIN faculty f ON f.id = sc.faculty_id
+     LEFT JOIN teachers t ON t.id = sc.faculty_id
      LEFT JOIN sections sec ON sec.id = sc.section_id`
   );
 
   const conflicts = [];
-
-  // Group schedules by day and start_time to find collisions
-  const slots = new Map(); // key = "day|time" -> Array of schedule records
+  const slots = new Map();
   for (const row of rows) {
     const key = `${row.day}|${row.start_time}`;
     if (!slots.has(key)) {
@@ -272,13 +225,9 @@ async function detectConflicts() {
 
   for (const [key, list] of slots.entries()) {
     const [day, time] = key.split('|');
-
-    // Check Room conflicts
-    const roomMap = new Map(); // room_number -> Array of schedules
-    // Check Faculty conflicts
-    const facultyMap = new Map(); // faculty_id -> Array of schedules
-    // Check Section conflicts
-    const sectionMap = new Map(); // section_id -> Array of schedules
+    const roomMap = new Map();
+    const facultyMap = new Map();
+    const sectionMap = new Map();
 
     for (const item of list) {
       if (item.room_number) {
@@ -295,7 +244,6 @@ async function detectConflicts() {
       }
     }
 
-    // Report Room conflicts
     for (const [room, items] of roomMap.entries()) {
       if (items.length > 1) {
         const subjectsList = items.map(i => `${i.subject_name} (${i.course_code} ${i.year_level}-${i.section_label})`).join(' and ');
@@ -308,7 +256,6 @@ async function detectConflicts() {
       }
     }
 
-    // Report Faculty conflicts
     for (const [facId, items] of facultyMap.entries()) {
       if (items.length > 1) {
         const facName = items[0].faculty_name || facId;
@@ -322,7 +269,6 @@ async function detectConflicts() {
       }
     }
 
-    // Report Section conflicts
     for (const [secId, items] of sectionMap.entries()) {
       if (items.length > 1) {
         const secLabel = `${items[0].course_code} ${items[0].year_level}-${items[0].section_label}`;
@@ -341,7 +287,6 @@ async function detectConflicts() {
 }
 
 const schedulesService = { listSchedules, generateSchedules, detectConflicts };
-// attach create/delete
 schedulesService.createSchedule = createSchedule;
 schedulesService.deleteSchedule = deleteSchedule;
 module.exports = { schedulesService };

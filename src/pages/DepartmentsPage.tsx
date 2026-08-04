@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { PageHeader } from "../components/common/PageHeader";
 
 import { useEffect, useState } from "react";
-import { api } from "../data/mockApi";
+import { api } from "../data/apiClient";
 
 type DepartmentRow = { name: string; faculty: number; focus: string };
 

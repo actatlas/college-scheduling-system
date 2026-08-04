@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { PageHeader } from "../components/common/PageHeader";
 import { useEffect, useMemo, useState } from "react";
-import { api } from "../data/mockApi";
+import { api } from "../data/apiClient";
 import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
 import {
@@ -14,124 +14,7 @@ import {
   Edit2,
 } from "lucide-react";
 import ConfirmModal from "../components/common/ConfirmModal";
-import {
-  programOptions,
-  useProgramContext,
-  type ProgramKey,
-} from "../contexts/ProgramContext";
-
-const fallbackSubjects: Record<
-  ProgramKey,
-  Array<{ code: string; name: string; instructor: string }>
-> = {
-  ITP: [
-    {
-      code: "ITP101",
-      name: "Programming Fundamentals",
-      instructor: "Mr. Uyan",
-    },
-    { code: "ITP201", name: "Database Systems", instructor: "Ms. Rodrigo" },
-  ],
-  BSA: [
-    {
-      code: "BSA101",
-      name: "Principles of Management",
-      instructor: "Mr. Bagaipo",
-    },
-    {
-      code: "BSA201",
-      name: "Marketing Management",
-      instructor: "Mr. Achas",
-    },
-  ],
-  CJEP: [
-    {
-      code: "CJ101",
-      name: "Introduction to Criminology",
-      instructor: "Mr. Valmores",
-    },
-  ],
-  HMP: [
-    {
-      code: "HMP101",
-      name: "Hospitality Operations",
-      instructor: "Mr. Boknoy",
-    },
-  ],
-  TEP: [
-    {
-      code: "TEP101",
-      name: "Child and Adolescent Development",
-      instructor: "Mr. Dela Torre",
-    },
-  ],
-};
-
-const fallbackRooms: Record<
-  ProgramKey,
-  Array<{ name: string; building: string; capacity: number }>
-> = {
-  ITP: [
-    { name: "LAB-02", building: "Science Block", capacity: 24 },
-    { name: "R-101", building: "Main Building", capacity: 40 },
-  ],
-  BSA: [{ name: "R-202", building: "Annex", capacity: 60 }],
-  CJEP: [{ name: "R-305", building: "Law Building", capacity: 35 }],
-  HMP: [{ name: "HMP LAB", building: "Hospitality Building", capacity: 28 }],
-  TEP: [{ name: "R-404", building: "Education Building", capacity: 45 }],
-};
-
-const fallbackSchedules: Record<
-  ProgramKey,
-  Array<{ day: string; time: string; subject: string; room: string }>
-> = {
-  ITP: [
-    {
-      day: "Monday",
-      time: "08:00-10:00",
-      subject: "Programming Fundamentals",
-      room: "LAB-02",
-    },
-    {
-      day: "Thursday",
-      time: "13:00-15:00",
-      subject: "Database Systems",
-      room: "R-101",
-    },
-  ],
-  BSA: [
-    {
-      day: "Tuesday",
-      time: "09:00-11:00",
-      subject: "Principles of Management",
-      room: "R-202",
-    },
-  ],
-  CJEP: [
-    {
-      day: "Friday",
-      time: "10:00-12:00",
-      subject: "Introduction to Criminology",
-      room: "R-305",
-    },
-  ],
-  HMP: [
-    {
-      day: "Saturday",
-      time: "08:00-12:00",
-      subject: "Hospitality Operations",
-      room: "HMP LAB",
-    },
-  ],
-  TEP: [
-    {
-      day: "Monday",
-      time: "14:00-16:00",
-      subject: "Child and Adolescent Development",
-      room: "R-404",
-    },
-  ],
-};
+import { useProgramContext, type ProgramKey } from "../contexts/ProgramContext";
 
 export function CoursesPage() {
   const [subjects, setSubjects] = useState<Array<any>>([]);
@@ -167,8 +50,12 @@ export function CoursesPage() {
     room: "",
   });
   const toast = useToast();
-  const { selectedProgramKey, setSelectedProgramKey, selectedProgram } =
-    useProgramContext();
+  const {
+    selectedProgramKey,
+    setSelectedProgramKey,
+    selectedProgram,
+    programOptions,
+  } = useProgramContext();
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmTitle, setConfirmTitle] = useState("");
@@ -208,8 +95,12 @@ export function CoursesPage() {
   // course list is not shown in the redesigned workspace; keep `courses` state for API sync
 
   const visibleSubjects = useMemo(() => {
-    const source =
-      subjects.length > 0 ? subjects : fallbackSubjects[selectedProgramKey];
+    const source = subjects.length > 0 ? subjects : [];
+
+    if (!selectedProgramKey || selectedProgram.shortLabel === "N/A") {
+      return source;
+    }
+
     return source.filter((subject) => {
       const haystack = [
         subject.code,
@@ -233,7 +124,12 @@ export function CoursesPage() {
   ]);
 
   const visibleRooms = useMemo(() => {
-    const source = rooms.length > 0 ? rooms : fallbackRooms[selectedProgramKey];
+    const source = rooms.length > 0 ? rooms : [];
+
+    if (!selectedProgramKey || selectedProgram.shortLabel === "N/A") {
+      return source;
+    }
+
     return source.filter((room) => {
       const haystack = [
         room.number,
@@ -249,11 +145,15 @@ export function CoursesPage() {
         haystack.includes(selectedProgram.shortLabel.toLowerCase())
       );
     });
-  }, [selectedProgramKey, selectedProgram.shortLabel, rooms]);
+  }, [selectedProgramKey, selectedProgram.shortLabel, rooms, selectedProgram]);
 
   const visibleSchedules = useMemo(() => {
-    const source =
-      schedules.length > 0 ? schedules : fallbackSchedules[selectedProgramKey];
+    const source = schedules.length > 0 ? schedules : [];
+
+    if (!selectedProgramKey || selectedProgram.shortLabel === "N/A") {
+      return source;
+    }
+
     return source.filter((schedule) => {
       const haystack = [
         schedule.subject,

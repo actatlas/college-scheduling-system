@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { PageHeader } from "../components/common/PageHeader";
 import { useEffect, useState } from "react";
-import { api } from "../data/mockApi";
+import { api } from "../data/apiClient";
 import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
 import { Plus, Search, Edit2, Trash2 } from "lucide-react";
@@ -311,8 +311,8 @@ export function UserManagementPage() {
               onChange={(e) => setForm({ ...form, role: e.target.value })}
             >
               <option value="admin">Administrator</option>
+              <option value="program_head">Program Head</option>
               <option value="teacher">Teacher</option>
-              <option value="student">Student</option>
             </select>
           </div>
         </div>

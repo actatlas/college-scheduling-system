@@ -13,8 +13,6 @@ router.post(
     body('email').isEmail(),
     body('password').isString().isLength({ min: 6, max: 200 }),
     body('role').optional().isString(),
-    body('programCode').optional().isString().isLength({ min: 2, max: 30 }),
-    body('yearLevel').optional().isString().isLength({ min: 1, max: 30 }),
   ],
   validateRequest,
   authRegister
