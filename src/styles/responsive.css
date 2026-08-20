@@ -8,7 +8,7 @@
     height: auto;
   }
 
-  .landing-shell,
+  .glass-landing-shell,
   .auth-shell,
   .login-card {
     grid-template-columns: 1fr;
@@ -42,8 +42,8 @@
     min-width: 100%;
   }
 
-  .landing-hero,
-  .landing-panel,
+  .glass-landing-hero,
+  .glass-landing-card,
   .auth-intro,
   .auth-side,
   .login-side {

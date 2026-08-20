@@ -1,5 +1,5 @@
 import { Suspense, lazy } from "react";
-import { Route, Routes } from "react-router-dom";
+import { Route, Routes, Navigate, Outlet } from "react-router-dom";
 import { MainLayout } from "../layouts/MainLayout";
 
 const LoginPage = lazy(() =>
@@ -47,6 +47,11 @@ const SchedulesPage = lazy(() =>
     default: module.SchedulesPage,
   })),
 );
+const ExamSchedulesPage = lazy(() =>
+  import("../pages/ExamSchedulesPage").then((module) => ({
+    default: module.ExamSchedulesPage,
+  })),
+);
 const ConflictPage = lazy(() =>
   import("../pages/ConflictPage").then((module) => ({
     default: module.ConflictPage,
@@ -72,7 +77,6 @@ const LandingPage = lazy(() =>
     default: module.LandingPage,
   })),
 );
-import { Navigate, Outlet } from "react-router-dom";
 
 interface ProtectedRouteProps {
   allowedRoles: string[];
@@ -87,10 +91,7 @@ export function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
   }
 
   if (!allowedRoles.includes(role)) {
-    if (role === "teacher") return <Navigate to="/teacher-dashboard" replace />;
-    if (role === "program_head")
-      return <Navigate to="/program-head-dashboard" replace />;
-    return <Navigate to="/admin-dashboard" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <Outlet />;
@@ -108,52 +109,68 @@ export function AppRoutes() {
         <Route path="/login" element={<LoginPage />} />
 
         <Route element={<MainLayout />}>
-          {/* Shared paths */}
+          {/* Dashboard accessible by all authenticated roles */}
           <Route
             element={
               <ProtectedRoute
-                allowedRoles={["admin", "teacher", "program_head"]}
+                allowedRoles={["super_admin", "admin", "program_head", "teacher"]}
               />
             }
           >
             <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/admin-dashboard" element={<DashboardPage />} />
+            <Route path="/program-head-dashboard" element={<DashboardPage />} />
+            <Route path="/teacher-dashboard" element={<DashboardPage />} />
+          </Route>
+
+          {/* Super Admin only: User Account Management */}
+          <Route
+            element={
+              <ProtectedRoute
+                allowedRoles={["super_admin", "admin"]}
+              />
+            }
+          >
+            <Route path="/users" element={<UserManagementPage />} />
+          </Route>
+
+          {/* Scheduling paths accessible by Admin, Program Head, Teacher */}
+          <Route
+            element={
+              <ProtectedRoute
+                allowedRoles={["admin", "program_head", "teacher"]}
+              />
+            }
+          >
             <Route path="/schedules" element={<SchedulesPage />} />
+            <Route path="/exams" element={<ExamSchedulesPage />} />
             <Route path="/rooms" element={<RoomsPage />} />
           </Route>
 
-          {/* Admin + Program Head paths */}
+          {/* Paths for Admin & Program Head */}
           <Route
             element={
-              <ProtectedRoute allowedRoles={["admin", "program_head"]} />
+              <ProtectedRoute
+                allowedRoles={["admin", "program_head"]}
+              />
             }
           >
             <Route path="/subjects" element={<SubjectsPage />} />
-            <Route path="/sections" element={<SectionsPage />} />
             <Route path="/faculty" element={<FacultyPage />} />
           </Route>
 
-          {/* Admin-only paths */}
-          <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
-            <Route path="/admin-dashboard" element={<DashboardPage />} />
+          {/* Paths for Admin only */}
+          <Route
+            element={
+              <ProtectedRoute allowedRoles={["admin"]} />
+            }
+          >
             <Route path="/programs" element={<ProgramsPage />} />
-            <Route path="/departments" element={<CoursesPage />} />
             <Route path="/courses" element={<CoursesPage />} />
-            <Route path="/conflicts" element={<ConflictPage />} />
-            <Route path="/reports" element={<ReportsPage />} />
-            <Route path="/users" element={<UserManagementPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-          </Route>
-
-          {/* Program Head paths */}
-          <Route element={<ProtectedRoute allowedRoles={["program_head"]} />}>
-            <Route path="/program-head-dashboard" element={<DashboardPage />} />
-          </Route>
-
-          {/* Teacher-only paths */}
-          <Route element={<ProtectedRoute allowedRoles={["teacher"]} />}>
-            <Route path="/teacher-dashboard" element={<DashboardPage />} />
           </Route>
         </Route>
+
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </Suspense>
   );

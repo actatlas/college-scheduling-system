@@ -28,10 +28,14 @@ export function Modal({
     };
 
     document.addEventListener("keydown", handleKeyDown);
-    dialogRef.current?.focus();
-
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (isOpen) {
+      dialogRef.current?.focus();
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

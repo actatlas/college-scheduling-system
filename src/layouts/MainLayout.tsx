@@ -13,11 +13,12 @@ const pageTitles: Record<string, string> = {
   "/courses": "Courses",
   "/subjects": "Subjects",
   "/sections": "Sections",
-  "/rooms": "Rooms",
-  "/schedules": "Schedules",
+  "/rooms": "Campus Rooms & Facilities",
+  "/schedules": "Class Schedules",
+  "/exams": "Examination Schedules",
   "/conflicts": "Conflict Detection",
-  "/reports": "Reports",
-  "/users": "User Management",
+  "/reports": "Reports & Exports",
+  "/users": "User Management (ICT)",
   "/settings": "Settings",
 };
 

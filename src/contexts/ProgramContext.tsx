@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { api } from "../data/apiClient";
+import { storage } from "../data/storage";
 
 export type ProgramKey = string;
 
@@ -31,8 +31,8 @@ const ProgramContext = createContext<ProgramContextValue | undefined>(
 
 const emptyProgram: ProgramOption = {
   key: "",
-  label: "No Program Selected",
-  shortLabel: "N/A",
+  label: "All Programs",
+  shortLabel: "ALL",
 };
 
 export function ProgramProvider({ children }: { children: ReactNode }) {
@@ -40,43 +40,32 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
   const [selectedProgramKey, setSelectedProgramKeyState] =
     useState<ProgramKey>("");
 
-  useEffect(() => {
-    let ignore = false;
+  const loadPrograms = useCallback(() => {
+    const rows = storage.getPrograms();
+    const values: ProgramOption[] = rows.map((row: any) => ({
+      key: String(row.code || row.id || ""),
+      label: String(row.name || row.code || ""),
+      shortLabel: String(row.code || row.name || ""),
+    }));
+    setProgramOptions(values);
 
-    api
-      .get("/programs")
-      .then((res) => {
-        if (ignore) return;
-        const rows = Array.isArray(res.data?.data) ? res.data.data : [];
-        const values = rows.map(
-          (row: any): ProgramOption => ({
-            key: String(row.code || row.id || ""),
-            label: String(row.name || row.code || ""),
-            shortLabel: String(row.code || row.name || ""),
-          }),
-        );
-        setProgramOptions(values);
-        const saved = window.localStorage.getItem("selectedProgram");
-        if (
-          saved &&
-          values.some((option: ProgramOption) => option.key === saved)
-        ) {
-          setSelectedProgramKeyState(saved);
-        } else if (values[0]) {
-          setSelectedProgramKeyState(values[0].key);
-          window.localStorage.setItem("selectedProgram", values[0].key);
-        }
-      })
-      .catch(() => {
-        if (!ignore) {
-          setProgramOptions([]);
-        }
-      });
-
-    return () => {
-      ignore = true;
-    };
+    const saved = window.localStorage.getItem("selectedProgram");
+    if (saved && values.some((option: ProgramOption) => option.key === saved)) {
+      setSelectedProgramKeyState(saved);
+    } else if (values[0]) {
+      setSelectedProgramKeyState(values[0].key);
+      window.localStorage.setItem("selectedProgram", values[0].key);
+    }
   }, []);
+
+  useEffect(() => {
+    loadPrograms();
+    const handleStorageUpdate = () => loadPrograms();
+    window.addEventListener("scheduling_storage_update", handleStorageUpdate);
+    return () => {
+      window.removeEventListener("scheduling_storage_update", handleStorageUpdate);
+    };
+  }, [loadPrograms]);
 
   const setSelectedProgramKey = useCallback((value: ProgramKey) => {
     setSelectedProgramKeyState(value);

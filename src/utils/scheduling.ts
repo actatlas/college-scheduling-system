@@ -1,181 +1,172 @@
-export type UserRole = "admin" | "teacher" | "program_head";
+import type { UserRole, ClassScheduleItem } from '../types'
+import { storage } from '../data/storage'
 
-export interface GeneratedScheduleItem {
-  id: string;
-  subject: string;
-  day: string;
-  time: string;
-  room: string;
-  faculty: string;
-  color: string;
-  program: string;
-  section: string;
-  type: string;
-}
+export type { UserRole }
 
 export interface TeacherAvailabilityEntry {
-  day: string;
-  slots: string[];
+  day: string
+  slots: string[]
 }
 
 export interface AiRecommendation {
-  id: string;
-  title: string;
-  detail: string;
-  suggestion: string;
-  severity: "High" | "Medium" | "Low";
+  id: string
+  title: string
+  detail: string
+  suggestion: string
+  severity: 'High' | 'Medium' | 'Low'
 }
 
 export function parseTeacherAvailability(raw?: string | null): TeacherAvailabilityEntry[] {
-  if (!raw) return [];
+  if (!raw) return []
 
   return raw
-    .split("|")
+    .split('|')
     .map((entry) => entry.trim())
     .filter(Boolean)
     .map((entry) => {
-      const [day, ...slots] = entry.split(":");
+      const [day, ...slots] = entry.split(':')
       return {
         day: day.trim(),
-        slots: slots.join(":").split(",").map((slot) => slot.trim()).filter(Boolean),
-      };
-    });
+        slots: slots
+          .join(':')
+          .split(',')
+          .map((slot) => slot.trim())
+          .filter(Boolean),
+      }
+    })
 }
 
-const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-const times = ["08:00-09:00", "09:00-10:00", "10:00-11:00", "11:00-12:00", "01:00-02:00", "02:00-03:00"];
+export interface SlotValidationResult {
+  valid: boolean
+  errors: string[]
+  warnings: string[]
+}
 
-function pickSlot(usedByTeacher: Map<string, Set<string>>, usedByRoom: Map<string, Set<string>>, usedBySection: Map<string, Set<string>>, teacherAvailability: TeacherAvailabilityEntry[], teacherName: string, roomName: string, sectionName: string) {
-  const availabilityMap = new Map(teacherAvailability.map((entry) => [entry.day, entry.slots]));
+export function validateScheduleSlot(candidate: {
+  id?: string
+  day: string
+  time: string
+  room: string
+  building: string
+  faculty: string
+  facultyId?: string
+  section: string
+  modality: 'Face-to-Face' | 'Online'
+}): SlotValidationResult {
+  const schedules = storage.getClassSchedules().filter((s) => s.id !== candidate.id)
+  const facultyList = storage.getFaculty()
+  const errors: string[] = []
+  const warnings: string[] = []
 
-  for (const day of days) {
-    const availableSlots = availabilityMap.get(day) ?? times;
-    for (const time of availableSlots) {
-      const teacherKey = `${teacherName}:${day}:${time}`;
-      const roomKey = `${roomName}:${day}:${time}`;
-      const sectionKey = `${sectionName}:${day}:${time}`;
-      if (usedByTeacher.get(teacherName)?.has(teacherKey)) continue;
-      if (usedByRoom.get(roomName)?.has(roomKey)) continue;
-      if (usedBySection.get(sectionName)?.has(sectionKey)) continue;
+  // 1. Check Faculty Clash
+  const facultyClash = schedules.find(
+    (s) =>
+      s.day.toLowerCase() === candidate.day.toLowerCase() &&
+      s.time === candidate.time &&
+      (s.facultyId === candidate.facultyId || s.faculty.toLowerCase() === candidate.faculty.toLowerCase())
+  )
+  if (facultyClash) {
+    errors.push(
+      `Faculty double-booking: ${candidate.faculty} is already scheduled for ${facultyClash.subject} (${facultyClash.section}) at this day and time.`
+    )
+  }
 
-      return { day, time };
+  // 2. Check Room Collision (if Face-to-Face)
+  if (candidate.modality === 'Face-to-Face') {
+    const roomClash = schedules.find(
+      (s) =>
+        s.modality === 'Face-to-Face' &&
+        s.day.toLowerCase() === candidate.day.toLowerCase() &&
+        s.time === candidate.time &&
+        s.room.toLowerCase() === candidate.room.toLowerCase() &&
+        s.building.toLowerCase() === candidate.building.toLowerCase()
+    )
+    if (roomClash) {
+      errors.push(
+        `Room collision: Room ${candidate.room} (${candidate.building}) is already occupied by ${roomClash.subject} (${roomClash.section}).`
+      )
     }
   }
 
-  return null;
-}
-
-export function buildAiRecommendations(scheduleItems: GeneratedScheduleItem[]): AiRecommendation[] {
-  const byTeacher = new Map<string, number>();
-  const byRoom = new Map<string, number>();
-  const byTime = new Map<string, number>();
-
-  for (const item of scheduleItems) {
-    byTeacher.set(item.faculty, (byTeacher.get(item.faculty) ?? 0) + 1);
-    byRoom.set(item.room, (byRoom.get(item.room) ?? 0) + 1);
-    byTime.set(`${item.day}:${item.time}`, (byTime.get(`${item.day}:${item.time}`) ?? 0) + 1);
+  // 3. Check Section Overlap
+  const sectionClash = schedules.find(
+    (s) =>
+      s.day.toLowerCase() === candidate.day.toLowerCase() &&
+      s.time === candidate.time &&
+      s.section.toLowerCase() === candidate.section.toLowerCase()
+  )
+  if (sectionClash) {
+    errors.push(
+      `Section overlap: Section ${candidate.section} already has a class scheduled (${sectionClash.subject}) at this day and time.`
+    )
   }
 
-  const recommendations: AiRecommendation[] = [];
+  // 4. Check Part-Time Faculty Availability
+  const teacher = facultyList.find(
+    (f) => f.id === candidate.facultyId || f.name.toLowerCase() === candidate.faculty.toLowerCase()
+  )
+  if (teacher && teacher.status === 'Part-Time' && teacher.availability) {
+    const parsedAvail = parseTeacherAvailability(teacher.availability)
+    const dayEntry = parsedAvail.find((d) => d.day.toLowerCase() === candidate.day.toLowerCase())
+    if (!dayEntry) {
+      warnings.push(
+        `Part-time availability warning: ${teacher.name} is not marked as available on ${candidate.day}. (Availability: ${teacher.availability})`
+      )
+    } else if (dayEntry.slots.length > 0) {
+      const isSlotListed = dayEntry.slots.some((slot) => candidate.time.includes(slot) || slot.includes(candidate.time.split('-')[0]))
+      if (!isSlotListed) {
+        warnings.push(
+          `Part-time time slot advisory: ${teacher.name} preferred times on ${candidate.day} are [${dayEntry.slots.join(', ')}].`
+        )
+      }
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings,
+  }
+}
+
+export function buildAiRecommendations(scheduleItems: ClassScheduleItem[]): AiRecommendation[] {
+  const byTeacher = new Map<string, number>()
+  const byRoom = new Map<string, number>()
+  const byTime = new Map<string, number>()
+
+  for (const item of scheduleItems) {
+    byTeacher.set(item.faculty, (byTeacher.get(item.faculty) ?? 0) + 1)
+    if (item.modality === 'Face-to-Face') {
+      byRoom.set(`${item.room} (${item.building})`, (byRoom.get(`${item.room} (${item.building})`) ?? 0) + 1)
+    }
+    byTime.set(`${item.day}:${item.time}`, (byTime.get(`${item.day}:${item.time}`) ?? 0) + 1)
+  }
+
+  const recommendations: AiRecommendation[] = []
 
   for (const [teacher, count] of byTeacher.entries()) {
-    if (count >= 2) {
+    if (count >= 5) {
       recommendations.push({
         id: `teacher-${teacher}`,
-        title: `Reassign ${teacher}'s overload`,
-        detail: `${teacher} is assigned to ${count} classes in the same window.`,
-        suggestion: "Shift one class to a different instructor or lower-priority slot.",
-        severity: "High",
-      });
+        title: `Workload Alert for ${teacher}`,
+        detail: `${teacher} has ${count} scheduled blocks this week.`,
+        suggestion: 'Review teaching load to prevent instructor fatigue.',
+        severity: 'Medium',
+      })
     }
   }
 
   for (const [room, count] of byRoom.entries()) {
-    if (count >= 2) {
+    if (count >= 4) {
       recommendations.push({
         id: `room-${room}`,
-        title: `Room conflict for ${room}`,
-        detail: `${room} is being used ${count} times at the same period.`,
-        suggestion: "Move one class to an alternate room or stagger the lesson block.",
-        severity: "High",
-      });
+        title: `High Facility Utilization: ${room}`,
+        detail: `${room} is scheduled for ${count} class sessions.`,
+        suggestion: 'Consider utilizing alternative rooms in SHS or JHS buildings.',
+        severity: 'Low',
+      })
     }
   }
 
-  for (const [slot, count] of byTime.entries()) {
-    if (count >= 2) {
-      recommendations.push({
-        id: `slot-${slot}`,
-        title: `Shift a class from ${slot}`,
-        detail: `${count} lessons overlap in ${slot}.`,
-        suggestion: "Spread the timetable by moving one lesson to a nearby slot.",
-        severity: "Medium",
-      });
-    }
-  }
-
-  return recommendations.slice(0, 4);
-}
-
-export function generateScheduleSeed(option?: { role?: UserRole; programKey?: string; section?: string; teacherName?: string; availability?: TeacherAvailabilityEntry[] }) {
-  const role = option?.role ?? "admin";
-  const programKey = option?.programKey ?? "ITP";
-  const section = option?.section ?? "A";
-  const teacherName = option?.teacherName ?? "Mr. Reyes";
-  const availability = option?.availability ?? [
-    { day: "Monday", slots: ["08:00-09:00", "09:00-10:00"] },
-    { day: "Tuesday", slots: ["10:00-11:00", "11:00-12:00"] },
-    { day: "Wednesday", slots: ["01:00-02:00", "02:00-03:00"] },
-    { day: "Thursday", slots: ["08:00-09:00", "09:00-10:00"] },
-    { day: "Friday", slots: ["10:00-11:00", "02:00-03:00"] },
-  ];
-
-  const lessons = [
-    { subject: "Programming 1", faculty: teacherName, room: "R-101", color: "#2563eb", type: "Lecture" },
-    { subject: "Discrete Math", faculty: "Ms. Santos", room: "SCI-05", color: "#0f766e", type: "Lab" },
-    { subject: "English Communication", faculty: "Mrs. Cruz", room: "R-202", color: "#d97706", type: "Lecture" },
-    { subject: "Database Systems", faculty: "Mr. Dela Cruz", room: "LAB-02", color: "#7c3aed", type: "Lab" },
-  ];
-
-  const usedByTeacher = new Map<string, Set<string>>();
-  const usedByRoom = new Map<string, Set<string>>();
-  const usedBySection = new Map<string, Set<string>>();
-
-  const generated: GeneratedScheduleItem[] = [];
-
-  for (const lesson of lessons) {
-    const slot = pickSlot(usedByTeacher, usedByRoom, usedBySection, availability, lesson.faculty, lesson.room, section);
-    if (!slot) continue;
-
-    const teacherSet = usedByTeacher.get(lesson.faculty) ?? new Set<string>();
-    teacherSet.add(`${lesson.faculty}:${slot.day}:${slot.time}`);
-    usedByTeacher.set(lesson.faculty, teacherSet);
-
-    const roomSet = usedByRoom.get(lesson.room) ?? new Set<string>();
-    roomSet.add(`${lesson.room}:${slot.day}:${slot.time}`);
-    usedByRoom.set(lesson.room, roomSet);
-
-    const sectionSet = usedBySection.get(section) ?? new Set<string>();
-    sectionSet.add(`${section}:${slot.day}:${slot.time}`);
-    usedBySection.set(section, sectionSet);
-
-    generated.push({
-      id: `${lesson.subject}-${slot.day}-${slot.time}`,
-      subject: lesson.subject,
-      day: slot.day,
-      time: slot.time,
-      room: lesson.room,
-      faculty: lesson.faculty,
-      color: lesson.color,
-      program: programKey,
-      section,
-      type: lesson.type,
-    });
-  }
-
-  if (role === "teacher") {
-    return generated.filter((entry) => entry.faculty === teacherName);
-  }
-
-  return generated;
+  return recommendations.slice(0, 4)
 }
