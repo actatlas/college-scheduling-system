@@ -11,11 +11,17 @@ import type { FacultyMember } from "../types";
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const SLOTS = [
   "08:00-09:00",
+  "08:30-09:30",
   "09:00-10:00",
+  "09:30-10:30",
   "10:00-11:00",
+  "10:30-11:30",
   "11:00-12:00",
+  "11:30-12:30",
   "01:00-02:00",
+  "01:30-02:30",
   "02:00-03:00",
+  "02:30-03:30",
   "03:00-04:00",
   "04:00-05:00",
 ];
@@ -32,6 +38,8 @@ export function FacultyPage() {
   const [availabilityModalOpen, setAvailabilityModalOpen] = useState(false);
   const [selectedFacultyForAvail, setSelectedFacultyForAvail] = useState<FacultyMember | null>(null);
   const [selectedSlots, setSelectedSlots] = useState<Record<string, string[]>>({});
+  const [isDraggingAvail, setIsDraggingAvail] = useState(false);
+  const [dragMode, setDragMode] = useState<"select" | "deselect">("select");
 
   const { matchesProgram } = useProgramContext();
   const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
@@ -470,62 +478,140 @@ export function FacultyPage() {
       {/* Interactive Availability Matrix Modal */}
       <Modal
         isOpen={availabilityModalOpen}
-        title={`Availability Grid - ${selectedFacultyForAvail?.name}`}
-        description="Review or customize teaching day & timeslot preferences for class schedule alignment."
+        title={`Availability Timesheet - ${selectedFacultyForAvail?.name}`}
+        description="Click and drag across time slots to configure teaching days and hours."
         onClose={() => setAvailabilityModalOpen(false)}
       >
-        <div style={{ marginTop: 12 }}>
-          <div className="table-wrap">
-            <table className="data-table" style={{ textAlign: "center" }}>
-              <thead>
-                <tr>
-                  <th>Time Slot</th>
-                  {DAYS.map((d) => (
-                    <th key={d}>{d.slice(0, 3)}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {SLOTS.map((slot) => (
-                  <tr key={slot}>
-                    <td style={{ fontWeight: 600, fontSize: "0.8rem" }}>{slot}</td>
-                    {DAYS.map((day) => {
-                      const checked = (selectedSlots[day] || []).includes(slot);
-                      return (
-                        <td key={`${day}-${slot}`}>
-                          <button
-                            type="button"
-                            onClick={() => handleSlotToggle(day, slot)}
-                            style={{
-                              background: "none",
-                              border: "none",
-                              cursor: "pointer",
-                              color: checked ? "#0284c7" : "#cbd5e1",
-                              padding: 4,
-                            }}
-                          >
-                            {checked ? <CheckSquare size={20} /> : <Square size={20} />}
-                          </button>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div style={{ marginTop: 10 }}>
+          <div className="timesheet-toolbar" style={{ marginBottom: 12 }}>
+            <div className="timesheet-stats">
+              <Clock size={16} />
+              <span>
+                {Object.values(selectedSlots).reduce((acc, curr) => acc + curr.length, 0)} Hours Selected across{" "}
+                {Object.entries(selectedSlots).filter(([_, s]) => s.length > 0).length} Days
+              </span>
+            </div>
+
+            <div className="timesheet-quick-actions">
+              <button
+                type="button"
+                className="timesheet-quick-btn"
+                onClick={() => {
+                  const next: Record<string, string[]> = {};
+                  ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].forEach((d) => {
+                    next[d] = ["08:00-09:00", "09:00-10:00", "10:00-11:00", "11:00-12:00"];
+                  });
+                  setSelectedSlots(next);
+                }}
+              >
+                Mon-Fri AM
+              </button>
+              <button
+                type="button"
+                className="timesheet-quick-btn"
+                onClick={() => {
+                  const next: Record<string, string[]> = {};
+                  ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].forEach((d) => {
+                    next[d] = ["01:00-02:00", "02:00-03:00", "03:00-04:00", "04:00-05:00"];
+                  });
+                  setSelectedSlots(next);
+                }}
+              >
+                Mon-Fri PM
+              </button>
+              <button
+                type="button"
+                className="timesheet-quick-btn"
+                onClick={() => {
+                  const next: Record<string, string[]> = {};
+                  ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].forEach((d) => {
+                    next[d] = [...SLOTS];
+                  });
+                  setSelectedSlots(next);
+                }}
+              >
+                Select All
+              </button>
+              <button
+                type="button"
+                className="timesheet-quick-btn"
+                onClick={() => setSelectedSlots({})}
+              >
+                Clear
+              </button>
+            </div>
           </div>
 
-          <div className="table-actions" style={{ marginTop: 20 }}>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={() => setAvailabilityModalOpen(false)}
-            >
-              Close
-            </button>
-            <button type="button" className="action-button" onClick={saveAvailabilityFromModal}>
-              Save Availability Preferences
-            </button>
+          <div
+            className="timesheet-drag-container"
+            onMouseLeave={() => setIsDraggingAvail(false)}
+            onMouseUp={() => setIsDraggingAvail(false)}
+          >
+            <div className="table-wrap">
+              <table className="data-table" style={{ textAlign: "center", userSelect: "none" }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: 100 }}>Time Slot</th>
+                    {DAYS.map((d) => (
+                      <th key={d}>{d.slice(0, 3)}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {SLOTS.map((slot) => (
+                    <tr key={slot}>
+                      <td style={{ fontWeight: 700, fontSize: "0.78rem", color: "var(--srcb-navy)", background: "#f8fafc" }}>
+                        {slot}
+                      </td>
+                      {DAYS.map((day) => {
+                        const checked = (selectedSlots[day] || []).includes(slot);
+                        return (
+                          <td
+                            key={`${day}-${slot}`}
+                            className="timesheet-cell"
+                            onMouseDown={(e) => {
+                              if (e.button !== 0) return;
+                              setIsDraggingAvail(true);
+                              const mode = checked ? "deselect" : "select";
+                              setDragMode(mode);
+                              handleSlotToggle(day, slot);
+                            }}
+                            onMouseEnter={() => {
+                              if (!isDraggingAvail) return;
+                              const isCur = (selectedSlots[day] || []).includes(slot);
+                              if (dragMode === "select" && !isCur) handleSlotToggle(day, slot);
+                              else if (dragMode === "deselect" && isCur) handleSlotToggle(day, slot);
+                            }}
+                          >
+                            <div className={`timesheet-cell-slot ${checked ? "is-selected" : ""}`}>
+                              {checked ? <CheckSquare size={13} /> : <span style={{ fontSize: "0.7rem", opacity: 0.6 }}>+</span>}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="table-actions" style={{ marginTop: 18, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: "0.78rem", color: "var(--srcb-text-muted)" }}>
+              💡 Drag to select multiple slots across days.
+            </span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setAvailabilityModalOpen(false)}
+              >
+                Close
+              </button>
+              <button type="button" className="action-button" onClick={saveAvailabilityFromModal}>
+                Save Availability Preferences
+              </button>
+            </div>
           </div>
         </div>
       </Modal>

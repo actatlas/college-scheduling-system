@@ -1,6 +1,6 @@
-import { Search, MoonStar } from "lucide-react";
+import { Search, MoonStar, Bell, HelpCircle } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation, NavLink } from "react-router-dom";
 import { useProgramContext } from "../../contexts/ProgramContext";
 import { useToast } from "../common/Toast";
 
@@ -12,6 +12,7 @@ export function Topbar({ title }: TopbarProps) {
   const [dark, setDark] = useState(false);
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
   const { selectedProgram, setSelectedProgramKey, programOptions } =
     useProgramContext();
@@ -43,34 +44,6 @@ export function Topbar({ title }: TopbarProps) {
     localStorage.setItem("theme", next ? "dark" : "light");
   };
 
-  const handleRoleSwitch = (newRole: string) => {
-    localStorage.setItem("userRole", newRole);
-    if (newRole === "super_admin") {
-      localStorage.setItem("userName", "Engr. Super Admin (ICT)");
-      localStorage.removeItem("teacherId");
-    } else if (newRole === "admin") {
-      localStorage.setItem("userName", "Registrar Admin");
-      localStorage.removeItem("teacherId");
-    } else if (newRole === "program_head") {
-      localStorage.setItem("userName", "Dr. Alan Turing (IT Head)");
-      localStorage.setItem("selectedProgram", "BSIT");
-      localStorage.removeItem("teacherId");
-    } else if (newRole === "teacher_fulltime") {
-      localStorage.setItem("userRole", "teacher");
-      localStorage.setItem("userName", "Mr. Juan Dela Cruz");
-      localStorage.setItem("teacherId", "FAC-001");
-      localStorage.setItem("teacherStatus", "Full-Time");
-    } else if (newRole === "teacher_parttime") {
-      localStorage.setItem("userRole", "teacher");
-      localStorage.setItem("userName", "Engr. Roberto Santos (Part-Time)");
-      localStorage.setItem("teacherId", "FAC-002");
-      localStorage.setItem("teacherStatus", "Part-Time");
-    }
-    toast.push(`Switched role to: ${newRole.replace("_", " ").toUpperCase()}`, "info");
-    navigate("/dashboard");
-    window.location.reload();
-  };
-
   const handleSearch = (event: FormEvent) => {
     event.preventDefault();
     const value = query.trim().toLowerCase();
@@ -96,36 +69,14 @@ export function Topbar({ title }: TopbarProps) {
 
   return (
     <header className="topbar">
-      <div>
-        <p className="eyebrow">Academic Platform</p>
-        <h2>{title}</h2>
+      <div className="topbar__left">
+        <div>
+          <p className="topbar__eyebrow">Academic Logistics</p>
+          <h2 className="topbar__page-title">{title}</h2>
+        </div>
       </div>
 
       <div className="topbar__actions">
-        {/* Quick Role Switcher */}
-        <label className="topbar__program-select" title="Switch view role for demo/testing">
-          <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#64748b", marginRight: 4 }}>
-            Role:
-          </span>
-          <select
-            value={
-              role === "teacher" && localStorage.getItem("teacherStatus") === "Part-Time"
-                ? "teacher_parttime"
-                : role === "teacher"
-                  ? "teacher_fulltime"
-                  : role
-            }
-            onChange={(e) => handleRoleSwitch(e.target.value)}
-            style={{ fontWeight: 600 }}
-          >
-            <option value="super_admin">⚡ Super Admin (ICT)</option>
-            <option value="admin">🏛️ Admin (Registrar)</option>
-            <option value="program_head">🎓 Program Head (IT)</option>
-            <option value="teacher_fulltime">👨‍🏫 Teacher (Full-Time)</option>
-            <option value="teacher_parttime">⏱️ Teacher (Part-Time)</option>
-          </select>
-        </label>
-
         {/* Program Selector */}
         {role !== "teacher" && (
           <label className="topbar__program-select" aria-label="Select program">
@@ -147,7 +98,7 @@ export function Topbar({ title }: TopbarProps) {
         <form className="topbar__search" onSubmit={handleSearch}>
           <Search size={16} />
           <input
-            placeholder="Search faculty, rooms, exams..."
+            placeholder="Search subjects, faculty..."
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -156,13 +107,24 @@ export function Topbar({ title }: TopbarProps) {
         <button
           className="topbar__icon"
           type="button"
-          aria-label="Theme toggle"
-          onClick={toggleTheme}
+          aria-label="Notifications"
+          onClick={() => toast.push("No new system notifications", "info")}
+          title="Notifications"
         >
-          <MoonStar size={18} />
+          <Bell size={17} />
         </button>
 
-        <div className="topbar__profile">
+        <button
+          className="topbar__icon"
+          type="button"
+          aria-label="Theme toggle"
+          onClick={toggleTheme}
+          title="Toggle theme"
+        >
+          <MoonStar size={17} />
+        </button>
+
+        <div className="topbar__profile" onClick={() => navigate("/settings")}>
           <div className="topbar__avatar">
             {role === "super_admin"
               ? "ICT"
@@ -174,10 +136,11 @@ export function Topbar({ title }: TopbarProps) {
           </div>
           <div>
             <p className="topbar__name">{userName}</p>
-            <p className="topbar__meta">1st Sem · SY 2026-2027</p>
+            <p className="topbar__meta">SY 2026-2027</p>
           </div>
         </div>
       </div>
     </header>
   );
 }
+

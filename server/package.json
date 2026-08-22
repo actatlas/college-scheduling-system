@@ -5,8 +5,8 @@
   "type": "commonjs",
   "main": "server.js",
   "scripts": {
-    "dev": "ts-node server.ts",
-    "start": "node dist/server.js",
+    "dev": "node server.js",
+    "start": "node server.js",
     "build": "tsc"
   },
   "dependencies": {
@@ -26,6 +26,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.2.0",
     "@types/node": "^26.2.0",
+    "nodemon": "^3.1.14",
     "ts-node": "^10.9.2",
     "typescript": "^7.0.2"
   }

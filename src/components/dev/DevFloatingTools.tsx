@@ -1,0 +1,440 @@
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import {
+  Wrench,
+  X,
+  UserCheck,
+  Shield,
+  Layers,
+  Sparkles,
+  RefreshCw,
+  Trash2,
+  Database,
+  ExternalLink,
+  ChevronRight,
+  CheckCircle2,
+} from "lucide-react";
+import { api } from "../../data/apiClient";
+import { useToast } from "../common/Toast";
+import "../../styles/devtools.css";
+
+interface PresetAccount {
+  label: string;
+  email: string;
+  pass: string;
+  role: string;
+  icon: string;
+}
+
+const PRESET_ACCOUNTS: PresetAccount[] = [
+  {
+    label: "Super Admin (ICT Office)",
+    email: "admin@srcb.edu.ph",
+    pass: "@admin123",
+    role: "super_admin",
+    icon: "⚡",
+  },
+  {
+    label: "College Registrar (Admin)",
+    email: "admin@srcb.edu.ph",
+    pass: "@admin123",
+    role: "admin",
+    icon: "🏛️",
+  },
+  {
+    label: "Full-Time Faculty (Teacher)",
+    email: "teacher@srcb.edu.ph",
+    pass: "@teacher123",
+    role: "teacher",
+    icon: "👨‍🏫",
+  },
+  {
+    label: "Van Account (Created in DB)",
+    email: "achasjovann5@gmail.com",
+    pass: "@srcb123",
+    role: "admin",
+    icon: "👤",
+  },
+];
+
+export function DevFloatingTools() {
+  const [isOpen, setIsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"accounts" | "roles" | "nav" | "db">("accounts");
+  const [dbHealthy, setDbHealthy] = useState<boolean | null>(null);
+  const [isSwitching, setIsSwitching] = useState(false);
+  const [dbUsers, setDbUsers] = useState<any[]>([]);
+
+  const navigate = useNavigate();
+  const location = useLocation();
+  const toast = useToast();
+
+  const currentEmail = localStorage.getItem("token") ? (localStorage.getItem("userName") || "") : "Not Logged In";
+  const currentRole = (localStorage.getItem("userRole") || "guest").toLowerCase();
+  const currentTeacherId = localStorage.getItem("teacherId") || "";
+  const currentTeacherStatus = localStorage.getItem("teacherStatus") || "";
+
+  // Check DB health
+  useEffect(() => {
+    fetch("http://localhost:4000/health")
+      .then((res) => setDbHealthy(res.ok))
+      .catch(() => setDbHealthy(false));
+  }, [isOpen]);
+
+  // Fetch db users when tab opened and logged in
+  useEffect(() => {
+    if (isOpen && activeTab === "accounts" && localStorage.getItem("token")) {
+      api
+        .get("/users")
+        .then((res: any) => setDbUsers(res.data?.data || []))
+        .catch(() => setDbUsers([]));
+    }
+  }, [isOpen, activeTab]);
+
+  const handleSwitchToPreset = async (acc: PresetAccount) => {
+    setIsSwitching(true);
+    try {
+      const res: any = await api.post("/auth/login", {
+        email: acc.email,
+        password: acc.pass,
+      });
+
+      const payload = res.data || {};
+      const user = payload.user || {};
+      const targetRole = acc.role || String(user.role || "admin").toLowerCase();
+
+      localStorage.setItem("token", payload.token || `token_${Date.now()}`);
+      localStorage.setItem("userRole", targetRole);
+      localStorage.setItem("userName", user.name || acc.label);
+
+      if (targetRole === "teacher") {
+        localStorage.setItem("teacherId", "FAC-001");
+        localStorage.setItem("teacherStatus", "Full-Time");
+      } else {
+        localStorage.removeItem("teacherId");
+        localStorage.removeItem("teacherStatus");
+      }
+
+      toast.push(`Switched account to: ${acc.label}`, "success");
+      navigate("/dashboard");
+      window.location.reload();
+    } catch (err: any) {
+      toast.push(err?.message || "Failed to switch account", "error");
+    } finally {
+      setIsSwitching(false);
+    }
+  };
+
+  const handleRoleOverride = (role: string, extra?: { status?: string; teacherId?: string }) => {
+    localStorage.setItem("userRole", role);
+    if (extra?.status) {
+      localStorage.setItem("teacherStatus", extra.status);
+    }
+    if (extra?.teacherId) {
+      localStorage.setItem("teacherId", extra.teacherId);
+    }
+    toast.push(`Dev Override: Switched view role to ${role.toUpperCase()}`, "info");
+    navigate("/dashboard");
+    window.location.reload();
+  };
+
+  const handleClearAuth = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("userRole");
+    localStorage.removeItem("userName");
+    localStorage.removeItem("teacherId");
+    localStorage.removeItem("teacherStatus");
+    localStorage.removeItem("selectedProgram");
+    toast.push("Cleared authentication session", "info");
+    navigate("/login");
+    window.location.reload();
+  };
+
+  return (
+    <aside className="dev-tools-wrapper" aria-label="Development Tools Widget">
+      {/* Floating Trigger Pill */}
+      {!isOpen && (
+        <button
+          type="button"
+          className="dev-tools-trigger"
+          onClick={() => setIsOpen(true)}
+          title="Open Developer Suite & Account Switcher"
+        >
+          <span
+            className="dev-tools-pulse"
+            style={{
+              backgroundColor: dbHealthy ? "#22c55e" : dbHealthy === false ? "#ef4444" : "#eab308",
+              boxShadow: `0 0 8px ${dbHealthy ? "#22c55e" : dbHealthy === false ? "#ef4444" : "#eab308"}`,
+            }}
+          />
+          <Wrench size={14} color="#38bdf8" />
+          <span>Dev Tools</span>
+        </button>
+      )}
+
+      {/* Expanded Floating HUD Panel */}
+      {isOpen && (
+        <div className="dev-tools-panel">
+          <div className="dev-tools-header">
+            <div className="dev-tools-title">
+              <Sparkles size={16} color="#38bdf8" />
+              <span>Dev Suite</span>
+              <span className="dev-tools-badge">Localhost</span>
+            </div>
+            <button
+              type="button"
+              className="dev-tools-close"
+              onClick={() => setIsOpen(false)}
+              aria-label="Close Dev Tools"
+            >
+              <X size={16} />
+            </button>
+          </div>
+
+          {/* Navigation Tabs */}
+          <div className="dev-tools-tabs">
+            <button
+              type="button"
+              className={`dev-tools-tab ${activeTab === "accounts" ? "active" : ""}`}
+              onClick={() => setActiveTab("accounts")}
+            >
+              Accounts
+            </button>
+            <button
+              type="button"
+              className={`dev-tools-tab ${activeTab === "roles" ? "active" : ""}`}
+              onClick={() => setActiveTab("roles")}
+            >
+              Roles
+            </button>
+            <button
+              type="button"
+              className={`dev-tools-tab ${activeTab === "nav" ? "active" : ""}`}
+              onClick={() => setActiveTab("nav")}
+            >
+              Jump
+            </button>
+            <button
+              type="button"
+              className={`dev-tools-tab ${activeTab === "db" ? "active" : ""}`}
+              onClick={() => setActiveTab("db")}
+            >
+              DB Health
+            </button>
+          </div>
+
+          <div className="dev-tools-content">
+            {/* Active Session Info Box */}
+            <div className="dev-session-card">
+              <div className="dev-session-user">
+                <span className="dev-session-name">{currentEmail || "Guest"}</span>
+                <span
+                  style={{
+                    fontSize: "0.68rem",
+                    padding: "2px 6px",
+                    borderRadius: 4,
+                    background: "rgba(56, 189, 248, 0.2)",
+                    color: "#38bdf8",
+                    fontWeight: 700,
+                  }}
+                >
+                  {currentRole.toUpperCase()}
+                </span>
+              </div>
+              <div className="dev-session-meta">
+                Route: <code style={{ color: "#38bdf8" }}>{location.pathname}</code>
+                {currentTeacherStatus && ` · ${currentTeacherStatus}`}
+              </div>
+            </div>
+
+            {/* TAB 1: ACCOUNTS */}
+            {activeTab === "accounts" && (
+              <div className="dev-account-list">
+                <p style={{ fontSize: "0.72rem", color: "#94a3b8", margin: "0 0 4px 2px", fontWeight: 600 }}>
+                  1-Click Switch & Authenticate:
+                </p>
+                {PRESET_ACCOUNTS.map((acc) => (
+                  <button
+                    key={acc.label}
+                    type="button"
+                    className="dev-account-btn"
+                    disabled={isSwitching}
+                    onClick={() => handleSwitchToPreset(acc)}
+                  >
+                    <div className="dev-account-info">
+                      <span className="dev-account-name">
+                        <span style={{ marginRight: 6 }}>{acc.icon}</span>
+                        {acc.label}
+                      </span>
+                      <span className="dev-account-email">{acc.email}</span>
+                    </div>
+                    <ChevronRight size={14} color="#64748b" />
+                  </button>
+                ))}
+
+                {dbUsers.length > 0 && (
+                  <>
+                    <p style={{ fontSize: "0.72rem", color: "#94a3b8", margin: "8px 0 4px 2px", fontWeight: 600 }}>
+                      Live Database Users ({dbUsers.length}):
+                    </p>
+                    {dbUsers.slice(0, 4).map((u: any) => (
+                      <button
+                        key={u.id}
+                        type="button"
+                        className="dev-account-btn"
+                        disabled={isSwitching}
+                        onClick={() =>
+                          handleSwitchToPreset({
+                            label: `${u.name} (${u.role})`,
+                            email: u.email,
+                            pass: "@srcb123",
+                            role: u.role,
+                            icon: "👤",
+                          })
+                        }
+                      >
+                        <div className="dev-account-info">
+                          <span className="dev-account-name">{u.name}</span>
+                          <span className="dev-account-email">
+                            {u.email} · {u.role}
+                          </span>
+                        </div>
+                        <ChevronRight size={14} color="#64748b" />
+                      </button>
+                    ))}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* TAB 2: ROLES */}
+            {activeTab === "roles" && (
+              <div className="dev-account-list">
+                <p style={{ fontSize: "0.72rem", color: "#94a3b8", margin: "0 0 6px 2px", fontWeight: 600 }}>
+                  Simulate Role Privilege Matrix:
+                </p>
+                <button
+                  type="button"
+                  className={`dev-account-btn ${currentRole === "super_admin" ? "active" : ""}`}
+                  onClick={() => handleRoleOverride("super_admin")}
+                >
+                  <span>⚡ Super Admin (ICT Office - Full CRUD)</span>
+                </button>
+                <button
+                  type="button"
+                  className={`dev-account-btn ${currentRole === "admin" ? "active" : ""}`}
+                  onClick={() => handleRoleOverride("admin")}
+                >
+                  <span>🏛️ Administrator (College Registrar)</span>
+                </button>
+                <button
+                  type="button"
+                  className={`dev-account-btn ${currentRole === "program_head" ? "active" : ""}`}
+                  onClick={() => handleRoleOverride("program_head")}
+                >
+                  <span>🎓 Program Head (Department Head)</span>
+                </button>
+                <button
+                  type="button"
+                  className={`dev-account-btn ${currentRole === "teacher" && currentTeacherStatus === "Full-Time" ? "active" : ""}`}
+                  onClick={() =>
+                    handleRoleOverride("teacher", { status: "Full-Time", teacherId: "FAC-001" })
+                  }
+                >
+                  <span>👨‍🏫 Faculty / Teacher (Full-Time)</span>
+                </button>
+                <button
+                  type="button"
+                  className={`dev-account-btn ${currentRole === "teacher" && currentTeacherStatus === "Part-Time" ? "active" : ""}`}
+                  onClick={() =>
+                    handleRoleOverride("teacher", { status: "Part-Time", teacherId: "FAC-002" })
+                  }
+                >
+                  <span>⏱️ Faculty / Teacher (Part-Time)</span>
+                </button>
+              </div>
+            )}
+
+            {/* TAB 3: QUICK JUMP */}
+            {activeTab === "nav" && (
+              <div className="dev-nav-grid">
+                {[
+                  { label: "Dashboard", path: "/dashboard", icon: "📊" },
+                  { label: "Class Schedules", path: "/schedules", icon: "🗓️" },
+                  { label: "Exam Schedules", path: "/exams", icon: "📝" },
+                  { label: "ICT Users", path: "/users", icon: "👥" },
+                  { label: "Faculty", path: "/faculty", icon: "👩‍🏫" },
+                  { label: "Subjects", path: "/subjects", icon: "📘" },
+                  { label: "Sections", path: "/sections", icon: "🏷️" },
+                  { label: "Rooms & Labs", path: "/rooms", icon: "🏫" },
+                  { label: "Conflicts", path: "/conflicts", icon: "⚠️" },
+                  { label: "Reports", path: "/reports", icon: "📄" },
+                  { label: "Login Page", path: "/login", icon: "🔑" },
+                  { label: "Landing Page", path: "/", icon: "🌐" },
+                ].map((item) => (
+                  <button
+                    key={item.path}
+                    type="button"
+                    className="dev-nav-btn"
+                    onClick={() => {
+                      navigate(item.path);
+                      setIsOpen(false);
+                    }}
+                  >
+                    <span>{item.icon}</span>
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* TAB 4: DB & SYSTEM */}
+            {activeTab === "db" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "8px 12px",
+                    background: "rgba(30, 41, 59, 0.4)",
+                    borderRadius: 8,
+                  }}
+                >
+                  <Database size={16} color={dbHealthy ? "#22c55e" : "#ef4444"} />
+                  <span style={{ fontSize: "0.8rem", fontWeight: 600 }}>
+                    MySQL Database:{" "}
+                    <span style={{ color: dbHealthy ? "#22c55e" : "#ef4444" }}>
+                      {dbHealthy ? "Online (Port 4000)" : "Disconnected / Offline"}
+                    </span>
+                  </span>
+                </div>
+                <div style={{ fontSize: "0.75rem", color: "#94a3b8", lineHeight: 1.5 }}>
+                  <strong>Database Name:</strong> <code>srcb_scheduler</code>
+                  <br />
+                  <strong>Backend:</strong> <code>http://localhost:4000/api</code>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="dev-tools-footer">
+            <button
+              type="button"
+              className="dev-action-link"
+              onClick={() => window.location.reload()}
+            >
+              <RefreshCw size={11} style={{ marginRight: 4 }} /> Reload Page
+            </button>
+            <button
+              type="button"
+              className="dev-action-link danger"
+              onClick={handleClearAuth}
+            >
+              <Trash2 size={11} style={{ marginRight: 4 }} /> Clear Session
+            </button>
+          </div>
+        </div>
+      )}
+    </aside>
+  );
+}

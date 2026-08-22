@@ -134,11 +134,11 @@ export function AppRoutes() {
             <Route path="/users" element={<UserManagementPage />} />
           </Route>
 
-          {/* Scheduling paths accessible by Admin, Program Head, Teacher */}
+          {/* Scheduling paths accessible by Super Admin, Admin, Program Head, Teacher */}
           <Route
             element={
               <ProtectedRoute
-                allowedRoles={["admin", "program_head", "teacher"]}
+                allowedRoles={["super_admin", "admin", "program_head", "teacher"]}
               />
             }
           >
@@ -147,24 +147,16 @@ export function AppRoutes() {
             <Route path="/rooms" element={<RoomsPage />} />
           </Route>
 
-          {/* Paths for Admin & Program Head */}
+          {/* Paths for Super Admin, Admin & Program Head */}
           <Route
             element={
               <ProtectedRoute
-                allowedRoles={["admin", "program_head"]}
+                allowedRoles={["super_admin", "admin", "program_head"]}
               />
             }
           >
             <Route path="/subjects" element={<SubjectsPage />} />
             <Route path="/faculty" element={<FacultyPage />} />
-          </Route>
-
-          {/* Paths for Admin only */}
-          <Route
-            element={
-              <ProtectedRoute allowedRoles={["admin"]} />
-            }
-          >
             <Route path="/programs" element={<ProgramsPage />} />
             <Route path="/courses" element={<CoursesPage />} />
           </Route>

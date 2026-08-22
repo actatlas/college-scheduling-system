@@ -42,19 +42,24 @@ export interface SlotValidationResult {
   warnings: string[]
 }
 
-export function validateScheduleSlot(candidate: {
-  id?: string
-  day: string
-  time: string
-  room: string
-  building: string
-  faculty: string
-  facultyId?: string
-  section: string
-  modality: 'Face-to-Face' | 'Online'
-}): SlotValidationResult {
-  const schedules = storage.getClassSchedules().filter((s) => s.id !== candidate.id)
-  const facultyList = storage.getFaculty()
+export function validateScheduleSlot(
+  candidate: {
+    id?: string
+    day: string
+    time: string
+    room: string
+    building: string
+    faculty: string
+    facultyId?: string
+    section: string
+    modality: 'Face-to-Face' | 'Online'
+  },
+  existingSchedules?: ClassScheduleItem[],
+  existingFacultyList?: any[]
+): SlotValidationResult {
+  const allSchedules = existingSchedules && existingSchedules.length > 0 ? existingSchedules : storage.getClassSchedules()
+  const schedules = allSchedules.filter((s) => String(s.id) !== String(candidate.id))
+  const facultyList = existingFacultyList && existingFacultyList.length > 0 ? existingFacultyList : storage.getFaculty()
   const errors: string[] = []
   const warnings: string[] = []
 

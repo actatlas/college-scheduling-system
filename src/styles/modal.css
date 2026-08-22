@@ -6,25 +6,25 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(5, 20, 42, 0.63);
-  backdrop-filter: blur(7px);
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(5px);
 }
 
 .modal-card {
-  width: min(760px, 100%);
+  width: min(720px, 100%);
   max-height: 90vh;
   overflow: auto;
-  border-radius: 22px;
-  background: #fff;
-  border: 1px solid #d4e2f0;
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.24);
-  animation: modalPop 0.28s ease;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid var(--srcb-border);
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.2);
+  animation: modalPop 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @keyframes modalPop {
   from {
     opacity: 0;
-    transform: translateY(16px) scale(0.98);
+    transform: translateY(12px) scale(0.98);
   }
   to {
     opacity: 1;
@@ -37,13 +37,14 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 18px 22px;
-  border-bottom: 1px solid #edf2f7;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--srcb-border);
 }
 
 .modal-card__body {
-  padding: 22px;
+  padding: 20px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
 }
+

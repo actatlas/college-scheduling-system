@@ -4,46 +4,80 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
-  gap: 16px;
+  gap: 14px;
   padding: 20px 16px;
-  background:
-    linear-gradient(180deg, #003f7f, #0a4b87 58%, #0d5499);
-  color: #fff;
+  background: var(--srcb-sidebar-bg);
+  color: var(--srcb-text);
   overflow-y: auto;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 1px solid var(--srcb-border);
 }
 
 .sidebar__brand {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding-bottom: 18px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--srcb-border);
+}
+
+.sidebar__brand-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: var(--srcb-navy);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(15, 44, 89, 0.2);
 }
 
 .sidebar__logo {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
   flex-shrink: 0;
-  padding: 3px;
-  background: #fff;
   object-fit: cover;
 }
 
 .sidebar__brand-name {
   margin: 0;
-  font-size: 1rem;
-  line-height: 1.2;
-  font-weight: 700;
-  color: #fff;
+  font-size: 1.05rem;
+  line-height: 1.25;
+  font-weight: 800;
+  color: var(--srcb-navy);
+  letter-spacing: -0.01em;
 }
 
 .sidebar__brand-sub {
-  margin: 3px 0 0;
-  font-size: 0.78rem;
-  color: rgba(255, 255, 255, 0.78);
-  font-weight: 600;
+  margin: 2px 0 0;
+  font-size: 0.76rem;
+  color: var(--srcb-text-muted);
+  font-weight: 500;
+}
+
+.sidebar__cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 16px;
+  border-radius: 10px;
+  background: var(--srcb-navy);
+  color: #ffffff;
+  border: none;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(15, 44, 89, 0.18);
+  transition: all var(--srcb-transition);
+}
+
+.sidebar__cta:hover {
+  background: var(--srcb-navy-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(15, 44, 89, 0.24);
 }
 
 .sidebar__role-pill {
@@ -51,11 +85,11 @@
   align-items: center;
   gap: 8px;
   width: fit-content;
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  color: #fff;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--srcb-blue-soft);
+  border: 1px solid rgba(15, 44, 89, 0.12);
+  color: var(--srcb-navy);
   font-size: 0.78rem;
   font-weight: 700;
 }
@@ -63,7 +97,7 @@
 .sidebar__nav {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .sidebar__link {
@@ -71,24 +105,25 @@
   align-items: center;
   gap: 12px;
   text-decoration: none;
-  color: rgba(255, 255, 255, 0.9);
-  padding: 11px 13px;
-  border-radius: 12px;
-  font-size: 0.94rem;
+  color: var(--srcb-slate);
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.9rem;
   font-weight: 600;
   transition: all var(--srcb-transition);
+  border-left: 4px solid transparent;
 }
 
 .sidebar__link:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-  transform: translateX(2px);
+  background: #f1f5f9;
+  color: var(--srcb-navy);
 }
 
 .sidebar__link.is-active {
-  background: #fff;
-  color: var(--srcb-blue);
-  box-shadow: var(--srcb-shadow-soft);
+  background: #e2e8f0;
+  color: var(--srcb-navy);
+  border-left-color: var(--srcb-navy);
+  font-weight: 700;
 }
 
 .sidebar__link svg {
@@ -97,25 +132,33 @@
   flex-shrink: 0;
 }
 
-.sidebar__logout {
+.sidebar__bottom {
   margin-top: auto;
   display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--srcb-border);
+}
+
+.sidebar__logout {
+  display: flex;
   align-items: center;
-  justify-content: center;
   gap: 10px;
   width: 100%;
-  padding: 12px 16px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: transparent;
-  color: #fff;
-  font-size: 0.94rem;
-  font-weight: 700;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--srcb-border);
+  background: #ffffff;
+  color: #dc2626;
+  font-size: 0.88rem;
+  font-weight: 600;
   cursor: pointer;
   transition: all var(--srcb-transition);
 }
 
 .sidebar__logout:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.4);
+  background: #fef2f2;
+  border-color: #fca5a5;
 }
+

@@ -1,16 +1,23 @@
 import { motion } from "framer-motion";
 import { PageHeader } from "../components/common/PageHeader";
 import { FileDown, Printer, Building, GraduationCap, CalendarCheck } from "lucide-react";
-import { storage } from "../data/storage";
-import { useMemo } from "react";
+import { api } from "../data/apiClient";
+import { useState, useEffect } from "react";
 import { useToast } from "../components/common/Toast";
 
 export function ReportsPage() {
   const toast = useToast();
-  const faculty = useMemo(() => storage.getFaculty(), []);
-  const rooms = useMemo(() => storage.getRooms(), []);
-  const schedules = useMemo(() => storage.getClassSchedules(), []);
-  const exams = useMemo(() => storage.getExamSchedules(), []);
+  const [faculty, setFaculty] = useState<any[]>([]);
+  const [rooms, setRooms] = useState<any[]>([]);
+  const [schedules, setSchedules] = useState<any[]>([]);
+  const [exams, setExams] = useState<any[]>([]);
+
+  useEffect(() => {
+    api.get("/faculty").then((res: any) => setFaculty(res.data?.data || [])).catch(() => setFaculty([]));
+    api.get("/rooms").then((res: any) => setRooms(res.data?.data || [])).catch(() => setRooms([]));
+    api.get("/schedules").then((res: any) => setSchedules(res.data?.data || [])).catch(() => setSchedules([]));
+    api.get("/exams").then((res: any) => setExams(res.data?.data || [])).catch(() => setExams([]));
+  }, []);
 
   const handlePrint = () => {
     window.print();

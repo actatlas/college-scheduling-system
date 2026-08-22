@@ -5,7 +5,7 @@ import { api } from "../data/apiClient";
 import { storage } from "../data/storage";
 import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
-import { Plus, Search, Edit2, Trash2, KeyRound, UserX, UserCheck } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, KeyRound, UserX, UserCheck, Eye, EyeOff, Lock } from "lucide-react";
 import type { UserAccount, UserRole } from "../types";
 
 export function UserManagementPage() {
@@ -16,9 +16,10 @@ export function UserManagementPage() {
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [isOpen, setIsOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
-  const programs = useMemo(() => storage.getPrograms(), []);
-  const faculty = useMemo(() => storage.getFaculty(), []);
+  const [programs, setPrograms] = useState<any[]>([]);
+  const [faculty, setFaculty] = useState<any[]>([]);
 
   const [form, setForm] = useState({
     name: "",
@@ -43,6 +44,8 @@ export function UserManagementPage() {
 
   useEffect(() => {
     fetchUsers();
+    api.get("/programs").then((res: any) => setPrograms(res.data?.data || [])).catch(() => setPrograms([]));
+    api.get("/faculty").then((res: any) => setFaculty(res.data?.data || [])).catch(() => setFaculty([]));
   }, []);
 
   const handleDelete = async (id: string) => {
@@ -53,7 +56,7 @@ export function UserManagementPage() {
       toast.push("User account removed", "success");
       fetchUsers();
     } catch (err: any) {
-      toast.push(err?.response?.data?.error || "Failed to delete user", "error");
+      toast.push(err?.message || "Failed to delete user", "error");
     } finally {
       setDeletingId(null);
     }
@@ -73,14 +76,22 @@ export function UserManagementPage() {
     }
   };
 
-  const handleResetPassword = (user: UserAccount) => {
-    const newPass = window.prompt(`Enter new password for ${user.name}:`);
-    if (!newPass) return;
-    toast.push(`Password reset successfully for ${user.email}`, "success");
+  const handleResetPassword = async (user: UserAccount) => {
+    const newPass = window.prompt(`Enter new password for ${user.name} (${user.email}):`);
+    if (!newPass || !newPass.trim()) return;
+    try {
+      await api.put(`/users/${encodeURIComponent(user.id)}`, {
+        password: newPass.trim(),
+      });
+      toast.push(`Password updated in database for ${user.email}`, "success");
+    } catch (err: any) {
+      toast.push(err?.message || "Failed to reset password", "error");
+    }
   };
 
   const handleEdit = (user: UserAccount) => {
     setEditingUser(user);
+    setShowPassword(false);
     setForm({
       name: user.name,
       email: user.email,
@@ -106,27 +117,29 @@ export function UserManagementPage() {
           name: form.name,
           email: form.email,
           role: form.role,
+          password: form.password ? form.password.trim() : undefined,
           program: form.role === "program_head" ? form.program : undefined,
           teacherId: form.role === "teacher" ? form.teacherId : undefined,
           status: form.status,
         });
-        toast.push("User profile updated successfully", "success");
+        toast.push("User profile and password updated in database", "success");
       } else {
         await api.post("/users", {
           name: form.name,
           email: form.email,
           role: form.role,
+          password: form.password ? form.password.trim() : undefined,
           program: form.role === "program_head" ? form.program : undefined,
           teacherId: form.role === "teacher" ? form.teacherId : undefined,
           status: form.status,
         });
-        toast.push("User account created successfully", "success");
+        toast.push("User account saved to database with password", "success");
       }
       setIsOpen(false);
       setEditingUser(null);
       fetchUsers();
     } catch (err: any) {
-      toast.push(err?.response?.data?.error || "Failed to save user", "error");
+      toast.push(err?.message || "Failed to save user", "error");
     } finally {
       setLoading(false);
     }
@@ -361,6 +374,40 @@ export function UserManagementPage() {
               placeholder="name@srcb.edu.ph"
               required
             />
+          </div>
+
+          <div className="field-group">
+            <label htmlFor="userPassword">
+              {editingUser ? "Change Password (Optional)" : "Account Password"}
+            </label>
+            <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+              <input
+                id="userPassword"
+                type={showPassword ? "text" : "password"}
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                placeholder={editingUser ? "Leave blank to keep existing" : "e.g. @srcb123"}
+                style={{ width: "100%", paddingRight: 38 }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                style={{
+                  position: "absolute",
+                  right: 8,
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "#64748b",
+                  display: "flex",
+                  alignItems: "center",
+                  padding: 4,
+                }}
+                title={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
 
           <div className="field-group">

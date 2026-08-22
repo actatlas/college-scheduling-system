@@ -22,8 +22,9 @@ export function SubjectsPage() {
   const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
   const canEdit = role === "super_admin" || role === "admin" || role === "program_head";
 
-  const facultyList = useMemo(() => storage.getFaculty(), []);
-  const programsList = useMemo(() => storage.getPrograms(), []);
+  const [facultyList, setFacultyList] = useState<FacultyMember[]>([]);
+  const [programsList, setProgramsList] = useState<any[]>([]);
+  const [coursesList, setCoursesList] = useState<any[]>([]);
 
   const [form, setForm] = useState({
     code: "",
@@ -34,6 +35,7 @@ export function SubjectsPage() {
     semester: "1st Semester",
     department: "Information Technology",
     program: selectedProgram.key || "BSIT",
+    courseCode: "BSIT",
     isMajor: true,
     instructorId: "",
     instructor: "",
@@ -49,6 +51,9 @@ export function SubjectsPage() {
 
   useEffect(() => {
     fetchSubjects();
+    api.get("/faculty").then((res: any) => setFacultyList(res.data?.data || [])).catch(() => setFacultyList([]));
+    api.get("/programs").then((res: any) => setProgramsList(res.data?.data || [])).catch(() => setProgramsList([]));
+    api.get("/courses").then((res: any) => setCoursesList(res.data?.data || [])).catch(() => setCoursesList([]));
   }, []);
 
   const handleEdit = (subject: SubjectItem) => {
@@ -63,6 +68,7 @@ export function SubjectsPage() {
       semester: subject.semester,
       department: subject.department,
       program: subject.program || selectedProgram.key || "BSIT",
+      courseCode: subject.courseCode || subject.program || "BSIT",
       isMajor: Boolean(subject.isMajor),
       instructorId: subject.instructorId || "",
       instructor: subject.instructor || "",
@@ -103,6 +109,7 @@ export function SubjectsPage() {
         semester: form.semester,
         department: form.department,
         program: form.program,
+        courseCode: form.courseCode,
         isMajor: Boolean(form.isMajor),
         instructorId: form.instructorId || undefined,
         instructor: selectedFac ? selectedFac.name : form.instructor || "Unassigned",
@@ -376,6 +383,22 @@ export function SubjectsPage() {
             >
               <option value="true">Major Subject (Program Specific)</option>
               <option value="false">General Education / Minor</option>
+            </select>
+          </div>
+
+          <div className="field-group">
+            <label htmlFor="subjectCourse">Course / Major Degree</label>
+            <select
+              id="subjectCourse"
+              value={form.courseCode}
+              onChange={(e) => setForm({ ...form, courseCode: e.target.value })}
+            >
+              <option value="">General / All Courses</option>
+              {coursesList.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.code} - {c.name}
+                </option>
+              ))}
             </select>
           </div>
 

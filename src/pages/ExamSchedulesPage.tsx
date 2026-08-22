@@ -22,10 +22,10 @@ export function ExamSchedulesPage() {
   const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
   const canManage = role === "super_admin" || role === "admin" || role === "program_head";
 
-  const facultyList = useMemo(() => storage.getFaculty(), []);
-  const subjectsList = useMemo(() => storage.getSubjects(), []);
-  const roomsList = useMemo(() => storage.getRooms(), []);
-  const sectionsList = useMemo(() => storage.getSections(), []);
+  const [facultyList, setFacultyList] = useState<any[]>([]);
+  const [subjectsList, setSubjectsList] = useState<any[]>([]);
+  const [roomsList, setRoomsList] = useState<any[]>([]);
+  const [sectionsList, setSectionsList] = useState<any[]>([]);
 
   const [form, setForm] = useState({
     term: "Midterm" as ExamTerm,
@@ -54,6 +54,10 @@ export function ExamSchedulesPage() {
 
   useEffect(() => {
     fetchExams();
+    api.get("/faculty").then((res: any) => setFacultyList(res.data?.data || [])).catch(() => setFacultyList([]));
+    api.get("/subjects").then((res: any) => setSubjectsList(res.data?.data || [])).catch(() => setSubjectsList([]));
+    api.get("/rooms").then((res: any) => setRoomsList(res.data?.data || [])).catch(() => setRoomsList([]));
+    api.get("/sections").then((res: any) => setSectionsList(res.data?.data || [])).catch(() => setSectionsList([]));
   }, []);
 
   const handleSubjectSelect = (code: string) => {

@@ -1,0 +1,310 @@
+/* Floating Developer Tools Widget Styles */
+.dev-tools-wrapper {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 999999;
+  font-family: inherit;
+}
+
+/* Floating Trigger Button */
+.dev-tools-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  color: #f8fafc;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 15px rgba(56, 189, 248, 0.2);
+  padding: 8px 14px;
+  border-radius: 9999px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  backdrop-filter: blur(12px);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+}
+
+.dev-tools-trigger:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px -5px rgba(0, 0, 0, 0.6), 0 0 20px rgba(56, 189, 248, 0.4);
+  border-color: rgba(56, 189, 248, 0.5);
+}
+
+.dev-tools-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #22c55e;
+  box-shadow: 0 0 8px #22c55e;
+  animation: devPulse 2s infinite;
+}
+
+@keyframes devPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.85); }
+}
+
+/* Expanded Floating Panel */
+.dev-tools-panel {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  right: 0;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  background: rgba(15, 23, 42, 0.94);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 30px rgba(0, 0, 0, 0.5);
+  color: #f1f5f9;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: devSlideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes devSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Header */
+.dev-tools-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: rgba(30, 41, 59, 0.6);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.dev-tools-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #e2e8f0;
+}
+
+.dev-tools-badge {
+  font-size: 0.65rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  text-transform: uppercase;
+  font-weight: 800;
+}
+
+.dev-tools-close {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.dev-tools-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
+}
+
+/* Tabs */
+.dev-tools-tabs {
+  display: flex;
+  padding: 6px 12px;
+  gap: 6px;
+  background: rgba(15, 23, 42, 0.5);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.dev-tools-tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  padding: 6px 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: center;
+}
+
+.dev-tools-tab:hover {
+  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.dev-tools-tab.active {
+  background: rgba(56, 189, 248, 0.16);
+  color: #38bdf8;
+  font-weight: 700;
+}
+
+/* Content Area */
+.dev-tools-content {
+  padding: 14px 16px;
+  max-height: 380px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+/* Current Session Card */
+.dev-session-card {
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+
+.dev-session-user {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.dev-session-name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.dev-session-meta {
+  font-size: 0.72rem;
+  color: #94a3b8;
+}
+
+/* Account List */
+.dev-account-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dev-account-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 10px;
+  background: rgba(30, 41, 59, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: left;
+}
+
+.dev-account-btn:hover {
+  background: rgba(56, 189, 248, 0.1);
+  border-color: rgba(56, 189, 248, 0.3);
+  transform: translateX(2px);
+}
+
+.dev-account-btn.active {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+.dev-account-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dev-account-name {
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.dev-account-email {
+  font-size: 0.7rem;
+  color: #64748b;
+}
+
+/* Quick Nav Grid */
+.dev-nav-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+.dev-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: rgba(30, 41, 59, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  color: #cbd5e1;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.dev-nav-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+/* Footer / Actions */
+.dev-tools-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: rgba(30, 41, 59, 0.6);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.72rem;
+  color: #94a3b8;
+}
+
+.dev-action-link {
+  background: transparent;
+  border: none;
+  color: #38bdf8;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.dev-action-link:hover {
+  text-decoration: underline;
+  color: #7dd3fc;
+}
+
+.dev-action-link.danger {
+  color: #f87171;
+}
+
+.dev-action-link.danger:hover {
+  color: #fca5a5;
+}

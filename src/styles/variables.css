@@ -1,21 +1,32 @@
 :root {
-  --srcb-blue: #003f7f;
-  --srcb-blue-strong: #0b5cad;
-  --srcb-blue-soft: #eaf3ff;
-  --srcb-green: #0f8a6d;
-  --srcb-green-soft: #ebfaf5;
-  --srcb-gold: #d4a574;
+  /* EduSched Primary & Accent Palette */
+  --srcb-navy: #0f2c59;
+  --srcb-navy-dark: #0a1e3f;
+  --srcb-navy-soft: #e2e8f0;
+  --srcb-blue: #0f2c59;
+  --srcb-blue-strong: #1e40af;
+  --srcb-blue-soft: #dbeafe;
+  --srcb-terracotta: #963800;
+  --srcb-amber-bg: #ffece3;
+  --srcb-amber-border: #c2410c;
+  --srcb-amber-text: #7c2d12;
+  --srcb-red-bg: #fee2e2;
+  --srcb-red-border: #fca5a5;
+  --srcb-red-text: #991b1b;
+  --srcb-green: #059669;
+  --srcb-green-soft: #d1fae5;
   --srcb-slate: #475569;
-  --srcb-border: #dce8f5;
-  --srcb-bg: #f4f8fc;
+  --srcb-border: #e2e8f0;
+  --srcb-bg: #f4f6f9;
   --srcb-surface: #ffffff;
-  --srcb-text: #10233b;
+  --srcb-sidebar-bg: #fafafc;
+  --srcb-text: #0f172a;
   --srcb-text-muted: #64748b;
-  --srcb-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
-  --srcb-shadow-soft: 0 8px 20px rgba(15, 23, 42, 0.06);
-  --srcb-radius: 18px;
-  --srcb-radius-sm: 12px;
-  --srcb-transition: 220ms ease;
+  --srcb-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+  --srcb-shadow-soft: 0 2px 8px rgba(15, 23, 42, 0.04);
+  --srcb-radius: 14px;
+  --srcb-radius-sm: 10px;
+  --srcb-transition: 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 * {
@@ -30,11 +41,10 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at top left, rgba(17, 95, 166, 0.14), transparent 28%),
-    var(--srcb-bg);
+  background: var(--srcb-bg);
   color: var(--srcb-text);
-  font-family: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 #root {
@@ -53,5 +63,6 @@ img {
 }
 
 ::selection {
-  background: rgba(11, 92, 173, 0.22);
+  background: rgba(15, 44, 89, 0.15);
 }
+

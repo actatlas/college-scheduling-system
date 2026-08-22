@@ -121,6 +121,12 @@ async function login({ email, password }) {
   const normalizedEmail = (email || '').trim().toLowerCase();
   const normalizedPassword = (password || '').trim();
 
+  if (!normalizedEmail || !normalizedPassword) {
+    const err = new Error('Please enter your email and password');
+    err.statusCode = 400;
+    throw err;
+  }
+
   if (normalizedEmail === DEFAULT_ADMIN_EMAIL.toLowerCase() && normalizedPassword === DEFAULT_ADMIN_PASSWORD) {
     const jwtSecret = process.env.JWT_SECRET || 'dev-jwt-secret-change-me';
     const token = jwt.sign(
@@ -141,18 +147,18 @@ async function login({ email, password }) {
   }
 
   const rows = await query(
-    'SELECT id, name, email, password_hash, role FROM users WHERE email = ? LIMIT 1',
-    [email]
+    'SELECT id, name, email, password_hash, role FROM users WHERE LOWER(TRIM(email)) = ? LIMIT 1',
+    [normalizedEmail]
   );
 
   const user = rows[0];
-  if (!user) {
+  if (!user || !user.password_hash) {
     const err = new Error('Invalid email or password');
     err.statusCode = 401;
     throw err;
   }
 
-  const ok = await bcrypt.compare(password, user.password_hash);
+  const ok = await bcrypt.compare(normalizedPassword, user.password_hash);
   if (!ok) {
     const err = new Error('Invalid email or password');
     err.statusCode = 401;

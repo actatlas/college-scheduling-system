@@ -1,20 +1,25 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
 :root {
-  font-family: Inter, 'Segoe UI', Roboto, sans-serif;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   line-height: 1.5;
   font-weight: 400;
   color: #0f172a;
-  background-color: #f5f7fb;
+  background-color: #f4f6f9;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  --srcb-blue: #003f7f;
-  --srcb-blue-dark: #0d5499;
+
+  /* Keep legacy vars for App.css compatibility */
+  --srcb-blue: #0f2c59;
+  --srcb-blue-dark: #0a1e3f;
+  --srcb-navy: #0f2c59;
   --srcb-gold: #d4a574;
-  --srcb-gold-soft: #fce8c8;
+  --srcb-gold-soft: #fef3c7;
   --srcb-slate: #475569;
   --srcb-border: #e2e8f0;
-  --srcb-bg: #f5f7fb;
+  --srcb-bg: #f4f6f9;
 }
 
 * {
@@ -48,5 +53,6 @@ a {
 }
 
 ::selection {
-  background: rgba(212, 165, 116, 0.3);
+  background: rgba(15, 44, 89, 0.15);
 }
+

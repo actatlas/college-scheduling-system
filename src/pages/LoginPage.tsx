@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Lock, Mail, ArrowRight, Eye, EyeOff, Sparkles, GraduationCap } from "lucide-react";
+import { Lock, Mail, ArrowRight, Eye, EyeOff, GraduationCap } from "lucide-react";
 import { api } from "../data/apiClient";
 import { useToast } from "../components/common/Toast";
 import Logo from "../assets/images/Logo.png";
@@ -17,13 +17,6 @@ export function LoginPage() {
   const navigate = useNavigate();
   const toast = useToast();
 
-  const demoAccounts = [
-    { label: "Super Admin (ICT)", email: "[EMAIL_ADDRESS]", icon: "⚡" },
-    { label: "Admin (Dean of College)", email: "[EMAIL_ADDRESS]", icon: "🏛️" },
-    { label: "Program Head (IT)", email: "[EMAIL_ADDRESS]", icon: "🎓" },
-    { label: "Teacher (Full-Time)", email: "[EMAIL_ADDRESS]", icon: "👨‍🏫" },
-    { label: "Teacher (Part-Time)", email: "[EMAIL_ADDRESS]", icon: "⏱️" },
-  ];
 
   const handleLoginWithEmail = async (targetEmail: string, targetPass = "password123") => {
     setIsSubmitting(true);
@@ -62,7 +55,7 @@ export function LoginPage() {
       toast.push(`Welcome, ${user.name || userRole.toUpperCase()}!`, "success");
       navigate("/dashboard");
     } catch (err: any) {
-      setLoginError(err?.response?.data?.error || "Invalid email or password");
+      setLoginError(err?.message || "Invalid email or password");
     } finally {
       setIsSubmitting(false);
     }
@@ -123,31 +116,6 @@ export function LoginPage() {
             An institutional platform engineered for Super Admins, College Registrars, Program Heads, and Faculty members.
           </p>
 
-          <div className="glass-role-presets">
-            <div className="glass-role-presets-title">
-              <Sparkles size={14} />
-              <span>Quick 1-Click Role Login</span>
-            </div>
-            <div className="glass-role-grid">
-              {demoAccounts.map((acc) => (
-                <button
-                  key={acc.email}
-                  type="button"
-                  className="glass-role-btn"
-                  onClick={() => {
-                    setEmail(acc.email);
-                    setPassword("password123");
-                    handleLoginWithEmail(acc.email);
-                  }}
-                >
-                  <span>
-                    <span style={{ marginRight: 6 }}>{acc.icon}</span> {acc.label}
-                  </span>
-                  <span className="glass-role-email">{acc.email}</span>
-                </button>
-              ))}
-            </div>
-          </div>
         </section>
 
         {/* Right Floating Frosted Glass Login Card */}

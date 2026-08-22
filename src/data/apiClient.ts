@@ -1,188 +1,94 @@
-import { storage } from './storage'
+const API_BASE_URL = 'http://localhost:4000/api';
 
-// Emulated API client with local storage backend for standalone offline-first operation
+const getHeaders = () => {
+  const token = localStorage.getItem('token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+};
+
+const handleResponse = async (response: Response) => {
+  const text = await response.text();
+  let json: any;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error('Invalid JSON response from server');
+  }
+
+  if (!response.ok) {
+    // Auto-logout on 401: clear stale token and redirect to login
+    if (response.status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('userRole');
+      localStorage.removeItem('userName');
+      localStorage.removeItem('teacherId');
+      localStorage.removeItem('teacherStatus');
+      // Only redirect if not already on the login page
+      if (!window.location.pathname.includes('/login')) {
+        window.location.href = '/login';
+      }
+    }
+
+    // Backend sends errors as { error: "message" } or { error: { message: "..." } } or { message: "..." }
+    let errorMsg = response.statusText;
+    if (typeof json.error === 'string') {
+      errorMsg = json.error;
+    } else if (typeof json.error === 'object' && json.error?.message) {
+      errorMsg = json.error.message;
+    } else if (typeof json.message === 'string') {
+      errorMsg = json.message;
+    }
+    const err: any = new Error(errorMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  // Normalize: the frontend expects { data: { success: boolean, data: ... } }
+  // Backend returns various shapes: { data: [...] }, { token, user }, { message }, etc.
+  if (json.success !== undefined) {
+    return { data: json };
+  }
+  if (json.data !== undefined) {
+    return { data: { success: true, data: json.data } };
+  }
+  // For login responses like { token, user }
+  return { data: { success: true, ...json } };
+};
+
 export const api = {
-  async get(url: string): Promise<{ data: { success: boolean; data: any } }> {
-    const cleanUrl = url.split('?')[0]
-
-    if (cleanUrl === '/users') {
-      return { data: { success: true, data: storage.getUsers() } }
-    }
-    if (cleanUrl === '/programs') {
-      return { data: { success: true, data: storage.getPrograms() } }
-    }
-    if (cleanUrl === '/faculty') {
-      return { data: { success: true, data: storage.getFaculty() } }
-    }
-    if (cleanUrl === '/rooms') {
-      return { data: { success: true, data: storage.getRooms() } }
-    }
-    if (cleanUrl === '/subjects') {
-      return { data: { success: true, data: storage.getSubjects() } }
-    }
-    if (cleanUrl === '/sections') {
-      return { data: { success: true, data: storage.getSections() } }
-    }
-    if (cleanUrl === '/schedules') {
-      return { data: { success: true, data: storage.getClassSchedules() } }
-    }
-    if (cleanUrl === '/schedules/conflicts') {
-      return { data: { success: true, data: storage.getConflicts() } }
-    }
-    if (cleanUrl === '/exams' || cleanUrl === '/schedules/exams') {
-      return { data: { success: true, data: storage.getExamSchedules() } }
-    }
-
-    return { data: { success: true, data: [] } }
+  async get(url: string) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'GET',
+      headers: getHeaders(),
+    });
+    return handleResponse(response);
   },
 
-  async post(url: string, body?: any): Promise<{ data: { success: boolean; data?: any; token?: string; user?: any } }> {
-    const cleanUrl = url.split('?')[0]
-
-    if (cleanUrl === '/auth/login') {
-      const email = body?.email?.toLowerCase().trim()
-      const users = storage.getUsers()
-      const user = users.find((u) => u.email.toLowerCase() === email) || {
-        id: 'USR-TEMP',
-        name: email.split('@')[0] || 'User',
-        email,
-        role: email.includes('super') ? 'super_admin' : email.includes('admin') ? 'admin' : email.includes('head') ? 'program_head' : 'teacher',
-        status: 'Active',
-      }
-      return {
-        data: {
-          success: true,
-          token: `token_${Date.now()}`,
-          user: {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            program: (user as any).program || 'BSIT',
-            teacher: (user as any).teacherId ? storage.getFaculty().find(f => f.id === (user as any).teacherId) : null,
-          },
-        },
-      }
-    }
-
-    if (cleanUrl === '/auth/register' || cleanUrl === '/users') {
-      const created = storage.saveUser(body)
-      return { data: { success: true, data: created } }
-    }
-
-    if (cleanUrl === '/programs') {
-      const created = storage.saveProgram(body)
-      return { data: { success: true, data: created } }
-    }
-
-    if (cleanUrl === '/faculty') {
-      const created = storage.saveFaculty(body)
-      return { data: { success: true, data: created } }
-    }
-
-    if (cleanUrl === '/rooms') {
-      const created = storage.saveRoom(body)
-      return { data: { success: true, data: created } }
-    }
-
-    if (cleanUrl === '/subjects') {
-      const created = storage.saveSubject(body)
-      return { data: { success: true, data: created } }
-    }
-
-    if (cleanUrl === '/sections') {
-      const created = storage.saveSection(body)
-      return { data: { success: true, data: created } }
-    }
-
-    if (cleanUrl === '/schedules') {
-      const created = storage.saveClassSchedule(body)
-      return { data: { success: true, data: created } }
-    }
-
-    if (cleanUrl === '/schedules/generate') {
-      return { data: { success: true, data: storage.getClassSchedules() } }
-    }
-
-    if (cleanUrl === '/exams' || cleanUrl === '/schedules/exams') {
-      const created = storage.saveExamSchedule(body)
-      return { data: { success: true, data: created } }
-    }
-
-    return { data: { success: true, data: body } }
+  async post(url: string, body?: any) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return handleResponse(response);
   },
 
-  async put(url: string, body?: any): Promise<{ data: { success: boolean; data?: any } }> {
-    const parts = url.split('/').filter(Boolean)
-    const resource = parts[0]
-    const id = decodeURIComponent(parts[1] || '')
-
-    if (resource === 'users') {
-      const updated = storage.saveUser({ ...body, id })
-      return { data: { success: true, data: updated } }
-    }
-    if (resource === 'faculty') {
-      const updated = storage.saveFaculty({ ...body, id: id || body.id })
-      return { data: { success: true, data: updated } }
-    }
-    if (resource === 'rooms') {
-      const updated = storage.saveRoom({ ...body, number: id || body.number })
-      return { data: { success: true, data: updated } }
-    }
-    if (resource === 'subjects') {
-      const updated = storage.saveSubject({ ...body, code: id || body.code })
-      return { data: { success: true, data: updated } }
-    }
-    if (resource === 'sections') {
-      const updated = storage.saveSection({ ...body, id })
-      return { data: { success: true, data: updated } }
-    }
-    if (resource === 'schedules') {
-      const updated = storage.saveClassSchedule({ ...body, id })
-      return { data: { success: true, data: updated } }
-    }
-    if (resource === 'exams') {
-      const updated = storage.saveExamSchedule({ ...body, id })
-      return { data: { success: true, data: updated } }
-    }
-
-    return { data: { success: true, data: body } }
+  async put(url: string, body?: any) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return handleResponse(response);
   },
 
-  async delete(url: string): Promise<{ data: { success: boolean } }> {
-    const parts = url.split('/').filter(Boolean)
-    const resource = parts[0]
-    const id = decodeURIComponent(parts[1] || '')
-
-    if (resource === 'users') {
-      storage.deleteUser(id)
-      return { data: { success: true } }
-    }
-    if (resource === 'faculty') {
-      storage.deleteFaculty(id)
-      return { data: { success: true } }
-    }
-    if (resource === 'rooms') {
-      storage.deleteRoom(id)
-      return { data: { success: true } }
-    }
-    if (resource === 'subjects') {
-      storage.deleteSubject(id)
-      return { data: { success: true } }
-    }
-    if (resource === 'sections') {
-      storage.deleteSection(id)
-      return { data: { success: true } }
-    }
-    if (resource === 'schedules') {
-      storage.deleteClassSchedule(id)
-      return { data: { success: true } }
-    }
-    if (resource === 'exams') {
-      storage.deleteExamSchedule(id)
-      return { data: { success: true } }
-    }
-
-    return { data: { success: true } }
+  async delete(url: string) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+    return handleResponse(response);
   },
-}
+};

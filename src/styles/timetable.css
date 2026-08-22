@@ -1,21 +1,237 @@
-.availability-form {
-  display: grid;
-  gap: 18px;
+/* ===================================================
+   INTERACTIVE DRAG-TO-SELECT TIMESHEET & SCHEDULE STYLES
+   =================================================== */
+
+.timesheet-drag-container {
+  user-select: none;
+  -webkit-user-select: none;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
-.availability-grid {
-  display: grid;
-  gap: 12px;
+.timesheet-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid var(--srcb-border);
 }
 
-.availability-pill {
-  display: inline-flex;
+.timesheet-stats {
+  display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(11, 92, 173, 0.08);
-  color: var(--srcb-blue);
-  font-size: 0.78rem;
-  font-weight: 800;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--srcb-navy);
 }
+
+.timesheet-quick-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.timesheet-quick-btn {
+  padding: 5px 11px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid var(--srcb-border);
+  background: #ffffff;
+  color: var(--srcb-text);
+  cursor: pointer;
+  transition: all var(--srcb-transition);
+}
+
+.timesheet-quick-btn:hover {
+  background: #f1f5f9;
+  border-color: var(--srcb-navy);
+  color: var(--srcb-navy);
+}
+
+.timesheet-cell {
+  position: relative;
+  height: 48px;
+  padding: 4px;
+  cursor: pointer;
+  user-select: none;
+  text-align: center;
+}
+
+.timesheet-cell-slot {
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: 1.5px dashed #cbd5e1;
+  background: #ffffff;
+  color: #94a3b8;
+  transition: all 120ms ease;
+}
+
+.timesheet-cell-slot.is-selected {
+  background: var(--srcb-navy);
+  color: #ffffff;
+  border: 1.5px solid var(--srcb-navy);
+  box-shadow: 0 2px 6px rgba(15, 44, 89, 0.22);
+}
+
+.timesheet-cell-slot.is-dragging {
+  background: #dbeafe;
+  border: 1.5px solid #3b82f6;
+  color: #1e40af;
+}
+
+.timesheet-cell-slot:hover:not(.is-selected) {
+  border-color: var(--srcb-navy);
+  background: #f0f9ff;
+  color: var(--srcb-navy);
+}
+
+/* Draggable Weekly Schedule Grid Cells */
+.schedule-grid-cell {
+  position: relative;
+  min-height: 65px;
+  padding: 6px;
+  vertical-align: top;
+  transition: background 150ms ease;
+}
+
+.schedule-grid-cell.drag-hover,
+.schedule-grid-cell.drag-target-hover {
+  background: #dbeafe !important;
+  border: 2px dashed #2563eb !important;
+  border-radius: 8px;
+}
+
+.schedule-empty-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 48px;
+  border-radius: 6px;
+  border: 1.5px dashed transparent;
+  color: #94a3b8;
+  font-size: 0.74rem;
+  cursor: crosshair;
+  transition: all 150ms ease;
+  user-select: none;
+}
+
+.schedule-empty-slot:hover {
+  border-color: #93c5fd;
+  background: #f0f9ff;
+  color: var(--srcb-navy);
+}
+
+.schedule-drag-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  color: #0284c7;
+  font-weight: 600;
+}
+
+/* Drag and Drop Subject Drawer */
+.dnd-tray-container {
+  margin-bottom: 16px;
+  border: 1px solid var(--srcb-border);
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 14px 16px;
+}
+
+.dnd-tray-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.dnd-tray-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--srcb-navy);
+}
+
+.dnd-tray-scroll {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.dnd-subject-card {
+  min-width: 175px;
+  max-width: 200px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 8px;
+  cursor: grab;
+  transition: all 150ms ease;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.dnd-subject-card:hover {
+  background: #ffffff;
+  border-color: var(--srcb-navy);
+  box-shadow: 0 4px 12px rgba(15, 44, 89, 0.12);
+  transform: translateY(-2px);
+}
+
+.dnd-subject-card:active {
+  cursor: grabbing;
+  opacity: 0.6;
+}
+
+.dnd-subject-code {
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--srcb-navy);
+  margin-bottom: 2px;
+}
+
+.dnd-subject-name {
+  font-size: 0.76rem;
+  color: var(--srcb-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+
+.dnd-subject-meta {
+  font-size: 0.7rem;
+  color: var(--srcb-text-muted);
+}
+
+.schedule-card-draggable {
+  cursor: grab;
+  user-select: none;
+}
+
+.schedule-card-draggable:active {
+  cursor: grabbing;
+  opacity: 0.6;
+}
+
+

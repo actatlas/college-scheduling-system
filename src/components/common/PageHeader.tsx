@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 
 interface PageHeaderProps {
   title: string;
-  description: string;
+  description?: string;
+  category?: string;
   actions?: ReactNode;
   breadcrumbs?: ReactNode;
   helpText?: string;
@@ -11,6 +12,7 @@ interface PageHeaderProps {
 export function PageHeader({
   title,
   description,
+  category,
   actions,
   breadcrumbs,
   helpText,
@@ -22,9 +24,9 @@ export function PageHeader({
       ) : null}
       <div className="page-header">
         <div>
-          <p className="eyebrow">Registrar Office</p>
+          {category ? <p className="eyebrow">{category}</p> : null}
           <h1>{title}</h1>
-          <p className="muted">{description}</p>
+          {description ? <p className="muted">{description}</p> : null}
         </div>
         {actions ? <div className="page-header__actions">{actions}</div> : null}
       </div>

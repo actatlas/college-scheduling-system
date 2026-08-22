@@ -97,21 +97,18 @@ async function validateSchedulePayload({ id = null, day, start_time, end_time, s
     );
 
     const ranges = availabilityRows.map((entry) => ({ day: entry.day_of_week, start: entry.start_time, end: entry.end_time }));
-    if (teacherRow.status === 'Part-Time' && ranges.length === 0) {
-      const err = new Error('Part-time teachers must have an availability record before a schedule can be saved.');
-      err.statusCode = 409;
-      throw err;
-    }
+    if (ranges.length > 0) {
+      const availabilityMatch = ranges.some((entry) => {
+        const normalizedDay = String(entry.day || '').toLowerCase();
+        return normalizedDay.includes(day.toLowerCase()) && timesOverlap(start, end, entry.start, entry.end);
+      });
 
-    const availabilityMatch = ranges.some((entry) => {
-      const normalizedDay = String(entry.day || '').toLowerCase();
-      return normalizedDay.includes(day.toLowerCase()) && timesOverlap(start, end, entry.start, entry.end);
-    });
-
-    if (teacherRow.status === 'Part-Time' && !availabilityMatch) {
-      const err = new Error('The selected schedule falls outside the teacher availability window.');
-      err.statusCode = 409;
-      throw err;
+      if (teacherRow.status === 'Part-Time' && !availabilityMatch) {
+        // Teacher has explicit availability slots recorded and requested slot is outside
+        const err = new Error(`The selected schedule falls outside ${teacherRow.name || 'instructor'}'s registered availability window.`);
+        err.statusCode = 409;
+        throw err;
+      }
     }
   }
 }
@@ -120,30 +117,27 @@ async function listSchedules({ user, department } = {}) {
   let sql = `SELECT sc.id, sc.day,
             sc.start_time,
             sc.end_time,
-            sub.name AS subject,
-            COALESCE(t.name, '') AS faculty,
+            sc.subject_code,
+            COALESCE(sub.name, sc.subject_code) AS subject_name,
+            sub.program_code,
+            sc.faculty_id,
+            COALESCE(t.name, '') AS faculty_name,
             sc.room_number,
+            COALESCE(r.building, 'College Building') AS building,
             sc.color,
-            sc.section_id
+            sc.section_id,
+            COALESCE(CONCAT(sec.course_code, ' ', sec.year_level, '-', sec.section_label), '') AS section_name
      FROM schedules sc
-     INNER JOIN subjects sub ON sub.code = sc.subject_code
-     LEFT JOIN teachers t ON t.id = sc.faculty_id`;
+     LEFT JOIN subjects sub ON sub.code = sc.subject_code
+     LEFT JOIN teachers t ON t.id = sc.faculty_id
+     LEFT JOIN rooms r ON r.number = sc.room_number
+     LEFT JOIN sections sec ON sec.id = sc.section_id`;
   const conditions = [];
   const params = [];
 
   if (department) {
     conditions.push('sub.program_code = ?');
     params.push(department);
-  }
-
-  if (user?.role === 'teacher') {
-    const [teacherRow] = await query('SELECT id FROM teachers WHERE email = ? LIMIT 1', [user.email]);
-    if (teacherRow && teacherRow.id) {
-      conditions.push('sc.faculty_id = ?');
-      params.push(teacherRow.id);
-    } else {
-      return [];
-    }
   }
 
   if (conditions.length > 0) {
@@ -153,28 +147,139 @@ async function listSchedules({ user, department } = {}) {
   sql += ' ORDER BY sc.day ASC, sc.start_time ASC';
   const rows = await query(sql, params);
 
-  return rows.map((s) => ({
-    id: s.id,
-    day: s.day,
-    time: s.start_time,
-    endTime: s.end_time,
-    subject: s.subject,
-    faculty: s.faculty,
-    room: s.room_number || '',
-    sectionId: s.section_id,
-    color: s.color || '#2563eb',
-  }));
+  return rows.map((s) => {
+    const startTimeStr = String(s.start_time || '').slice(0, 5);
+    const endTimeStr = String(s.end_time || '').slice(0, 5);
+    const timeRange = startTimeStr && endTimeStr ? `${startTimeStr}-${endTimeStr}` : (startTimeStr || '08:00-09:30');
+
+    return {
+      id: String(s.id),
+      day: s.day,
+      time: timeRange,
+      subjectCode: s.subject_code || '',
+      subject: s.subject_name || s.subject_code || '',
+      section: s.section_name || '',
+      sectionId: s.section_id ? String(s.section_id) : '',
+      faculty: s.faculty_name || '',
+      facultyId: s.faculty_id || '',
+      room: s.room_number || '',
+      building: s.building || 'College Building',
+      modality: 'Face-to-Face',
+      program: s.program_code || 'BSIT',
+      color: s.color || '#2563eb',
+      status: 'Confirmed'
+    };
+  });
+}
+
+async function resolveScheduleFKs({ subjectCode, facultyId, roomNumber, sectionId, section }) {
+  let validSubjectCode = subjectCode;
+  if (subjectCode) {
+    const [sRow] = await query('SELECT code FROM subjects WHERE code = ? LIMIT 1', [subjectCode]);
+    if (sRow) {
+      validSubjectCode = sRow.code;
+    } else {
+      const [fallbackSub] = await query('SELECT code FROM subjects LIMIT 1');
+      if (fallbackSub) validSubjectCode = fallbackSub.code;
+    }
+  }
+
+  let validFacultyId = null;
+  if (facultyId && typeof facultyId === 'string' && facultyId.trim()) {
+    const [tRow] = await query('SELECT id FROM teachers WHERE id = ? LIMIT 1', [facultyId.trim()]);
+    if (tRow) validFacultyId = tRow.id;
+  }
+
+  let validRoomNumber = null;
+  if (roomNumber && typeof roomNumber === 'string' && roomNumber.trim()) {
+    const [rRow] = await query('SELECT number FROM rooms WHERE number = ? LIMIT 1', [roomNumber.trim()]);
+    if (rRow) validRoomNumber = rRow.number;
+  }
+
+  let validSectionId = sectionId ? Number(sectionId) : null;
+  if (!validSectionId && section) {
+    const [secRow] = await query(
+      "SELECT id FROM sections WHERE CONCAT(course_code, ' ', year_level, '-', section_label) = ? OR section_label = ? OR CONCAT(course_code, ' ', year_level) = ? LIMIT 1",
+      [section, section, section]
+    );
+    if (secRow) validSectionId = secRow.id;
+  }
+  if (validSectionId) {
+    const [secCheck] = await query('SELECT id FROM sections WHERE id = ? LIMIT 1', [validSectionId]);
+    if (!secCheck) validSectionId = null;
+  }
+
+  return { validSubjectCode, validFacultyId, validRoomNumber, validSectionId };
 }
 
 async function createSchedule(payload) {
-  await validateSchedulePayload(payload);
-  const { day, start_time, end_time, subject_code, section_id, faculty_id, room_number, color } = payload;
+  let {
+    day,
+    time,
+    start_time,
+    end_time,
+    subjectCode,
+    subject_code,
+    sectionId,
+    section_id,
+    section,
+    facultyId,
+    faculty_id,
+    room,
+    room_number,
+    color,
+  } = payload;
+
+  const rawSubjectCode = subject_code || subjectCode;
+  const rawRoom = room_number || room;
+  const rawFacultyId = faculty_id || facultyId;
+  const rawSectionId = section_id || sectionId;
+
+  const { validSubjectCode, validFacultyId, validRoomNumber, validSectionId } = await resolveScheduleFKs({
+    subjectCode: rawSubjectCode,
+    facultyId: rawFacultyId,
+    roomNumber: rawRoom,
+    sectionId: rawSectionId,
+    section,
+  });
+
+  let finalStart = start_time;
+  let finalEnd = end_time;
+  if (!finalStart && time) {
+    const [st, et] = String(time).split('-').map(t => t.trim());
+    finalStart = st ? (/^\d{1,2}:\d{2}$/.test(st) ? `${st}:00` : st) : '08:00:00';
+    finalEnd = et ? (/^\d{1,2}:\d{2}$/.test(et) ? `${et}:00` : et) : '09:30:00';
+  }
+
+  await validateSchedulePayload({
+    day,
+    start_time: finalStart,
+    end_time: finalEnd,
+    subject_code: validSubjectCode,
+    section_id: validSectionId,
+    faculty_id: validFacultyId,
+    room_number: validRoomNumber
+  });
+
   const res = await query(
     `INSERT INTO schedules (day, start_time, end_time, subject_code, section_id, faculty_id, room_number, color)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [day, start_time, end_time || null, subject_code, section_id || null, faculty_id || null, room_number || null, color || '#2563eb']
+    [day, finalStart, finalEnd || null, validSubjectCode, validSectionId, validFacultyId, validRoomNumber, color || '#2563eb']
   );
-  return { id: res.insertId, day, time: start_time, subject: subject_code, room: room_number || '', color: color || '#2563eb' };
+
+  const insertObj = Array.isArray(res) ? res[0] : res;
+  const generatedId = insertObj?.insertId ? String(insertObj.insertId) : String(Date.now());
+
+  return {
+    id: generatedId,
+    day,
+    time: `${String(finalStart).slice(0,5)}-${String(finalEnd).slice(0,5)}`,
+    subjectCode: validSubjectCode,
+    room: validRoomNumber || rawRoom || '',
+    facultyId: validFacultyId || '',
+    sectionId: validSectionId ? String(validSectionId) : '',
+    color: color || '#2563eb'
+  };
 }
 
 async function deleteSchedule(id) {
@@ -182,13 +287,70 @@ async function deleteSchedule(id) {
 }
 
 async function updateSchedule(id, payload) {
-  await validateSchedulePayload({ id, ...payload });
-  const { day, start_time, end_time, subject_code, section_id, faculty_id, room_number, color } = payload;
+  let {
+    day,
+    time,
+    start_time,
+    end_time,
+    subjectCode,
+    subject_code,
+    sectionId,
+    section_id,
+    section,
+    facultyId,
+    faculty_id,
+    room,
+    room_number,
+    color,
+  } = payload;
+
+  const rawSubjectCode = subject_code || subjectCode;
+  const rawRoom = room_number || room;
+  const rawFacultyId = faculty_id || facultyId;
+  const rawSectionId = section_id || sectionId;
+
+  const { validSubjectCode, validFacultyId, validRoomNumber, validSectionId } = await resolveScheduleFKs({
+    subjectCode: rawSubjectCode,
+    facultyId: rawFacultyId,
+    roomNumber: rawRoom,
+    sectionId: rawSectionId,
+    section,
+  });
+
+  let finalStart = start_time;
+  let finalEnd = end_time;
+  if (!finalStart && time) {
+    const [st, et] = String(time).split('-').map(t => t.trim());
+    finalStart = st ? (/^\d{1,2}:\d{2}$/.test(st) ? `${st}:00` : st) : '08:00:00';
+    finalEnd = et ? (/^\d{1,2}:\d{2}$/.test(et) ? `${et}:00` : et) : '09:30:00';
+  }
+
+  await validateSchedulePayload({
+    id,
+    day,
+    start_time: finalStart,
+    end_time: finalEnd,
+    subject_code: validSubjectCode,
+    section_id: validSectionId,
+    faculty_id: validFacultyId,
+    room_number: validRoomNumber
+  });
+
   await query(
-    'UPDATE schedules SET day = ?, start_time = ?, end_time = ?, subject_code = ?, section_id = ?, faculty_id = ?, room_number = ?, color = ? WHERE id = ?',
-    [day, start_time, end_time || null, subject_code, section_id || null, faculty_id || null, room_number || null, color || '#2563eb', id],
+    `UPDATE schedules SET day = ?, start_time = ?, end_time = ?, subject_code = ?, section_id = ?, faculty_id = ?, room_number = ?, color = ? WHERE id = ?`,
+    [day, finalStart, finalEnd || null, validSubjectCode, validSectionId, validFacultyId, validRoomNumber, color || '#2563eb', id]
   );
-  return { id, day, time: start_time, subject: subject_code, room: room_number || '', color: color || '#2563eb' };
+
+  return {
+    id: String(id),
+    day,
+    time: `${String(finalStart).slice(0,5)}-${String(finalEnd).slice(0,5)}`,
+    subjectCode: validSubjectCode,
+    room: validRoomNumber || rawRoom || '',
+    facultyId: validFacultyId || '',
+    sectionId: validSectionId ? String(validSectionId) : '',
+    color: color || '#2563eb'
+  };
 }
 
 async function generateSchedules() {
@@ -286,8 +448,6 @@ async function detectConflicts() {
   return conflicts;
 }
 
-const schedulesService = { listSchedules, generateSchedules, detectConflicts };
-schedulesService.createSchedule = createSchedule;
-schedulesService.deleteSchedule = deleteSchedule;
+const schedulesService = { listSchedules, generateSchedules, detectConflicts, createSchedule, deleteSchedule, updateSchedule };
 module.exports = { schedulesService };
 

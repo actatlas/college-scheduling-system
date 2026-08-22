@@ -6,7 +6,7 @@ function authMiddleware(req, res, next) {
 
   if (!token) {
     return res.status(401).json({
-      error: { message: 'Missing Bearer token' },
+      error: 'Missing Bearer token. Please log in again.',
     });
   }
 
@@ -17,7 +17,7 @@ function authMiddleware(req, res, next) {
     return next();
   } catch (e) {
     return res.status(401).json({
-      error: { message: 'Invalid or expired token' },
+      error: 'Invalid or expired token. Please log in again.',
     });
   }
 }

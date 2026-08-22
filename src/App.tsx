@@ -3,6 +3,7 @@ import "./styles/index.css";
 import { AppRoutes } from "./routes/AppRoutes";
 import { ToastProvider } from "./components/common/Toast";
 import { ProgramProvider } from "./contexts/ProgramContext";
+import { DevFloatingTools } from "./components/dev/DevFloatingTools";
 
 function App() {
   return (
@@ -10,6 +11,7 @@ function App() {
       <ToastProvider>
         <ProgramProvider>
           <AppRoutes />
+          <DevFloatingTools />
         </ProgramProvider>
       </ToastProvider>
     </BrowserRouter>

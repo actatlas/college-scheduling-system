@@ -21,8 +21,8 @@ export function SectionsPage() {
   const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
   const canEdit = role === "super_admin" || role === "admin" || role === "program_head";
 
-  const facultyList = useMemo(() => storage.getFaculty(), []);
-  const programsList = useMemo(() => storage.getPrograms(), []);
+  const [facultyList, setFacultyList] = useState<FacultyMember[]>([]);
+  const [programsList, setProgramsList] = useState<any[]>([]);
 
   const [form, setForm] = useState({
     course: "BSIT",
@@ -46,6 +46,8 @@ export function SectionsPage() {
 
   useEffect(() => {
     fetchSections();
+    api.get("/faculty").then((res: any) => setFacultyList(res.data?.data || [])).catch(() => setFacultyList([]));
+    api.get("/programs").then((res: any) => setProgramsList(res.data?.data || [])).catch(() => setProgramsList([]));
   }, []);
 
   const handleEdit = (section: SectionItem) => {

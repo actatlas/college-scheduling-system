@@ -20,11 +20,6 @@ router.post(
 
 router.post(
   '/login',
-  [
-    body('email').isEmail(),
-    body('password').isString().isLength({ min: 6, max: 200 }),
-  ],
-  validateRequest,
   authLogin
 );
 

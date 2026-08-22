@@ -39,6 +39,7 @@ export interface SubjectItem {
   semester: string
   department: string
   program?: string
+  courseCode?: string
   isMajor?: boolean
   instructor: string
   instructorId?: string

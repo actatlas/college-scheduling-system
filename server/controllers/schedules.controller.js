@@ -26,12 +26,15 @@ async function generateSchedules(req, res, next) {
 
 async function createSchedule(req, res, next) {
   try {
-    if (!['admin', 'program_head'].includes(req.user?.role)) {
+    if (!['admin', 'super_admin', 'program_head'].includes(req.user?.role)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const payload = req.body || {};
-    if (!payload.day || !payload.start_time || !payload.subject_code) {
-      return res.status(400).json({ error: 'day, start_time and subject_code are required' });
+    const day = payload.day;
+    const startTime = payload.start_time || (payload.time ? String(payload.time).split('-')[0].trim() : null);
+    const subjectCode = payload.subject_code || payload.subjectCode;
+    if (!day || !startTime || !subjectCode) {
+      return res.status(400).json({ error: 'Day, time slot, and subject code are required' });
     }
     const row = await schedulesService.createSchedule(payload);
     res.status(201).json({ data: row });
@@ -43,7 +46,7 @@ async function createSchedule(req, res, next) {
 
 async function deleteSchedule(req, res, next) {
   try {
-    if (!['admin', 'program_head'].includes(req.user?.role)) {
+    if (!['admin', 'super_admin', 'program_head'].includes(req.user?.role)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const id = req.params.id;
@@ -56,7 +59,7 @@ async function deleteSchedule(req, res, next) {
 
 async function updateSchedule(req, res, next) {
   try {
-    if (!['admin', 'program_head'].includes(req.user?.role)) {
+    if (!['admin', 'super_admin', 'program_head'].includes(req.user?.role)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const id = req.params.id;

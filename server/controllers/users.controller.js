@@ -2,12 +2,31 @@ const { usersService } = require('../services/users.service');
 
 async function listUsers(req, res, next) {
   try {
-    if (req.user?.role !== 'admin') {
+    if (req.user?.role !== 'admin' && req.user?.role !== 'super_admin') {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const rows = await usersService.listUsers();
     res.json({ data: rows });
   } catch (err) {
+    next(err);
+  }
+}
+
+async function createUser(req, res, next) {
+  try {
+    if (req.user?.role !== 'admin' && req.user?.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const payload = req.body || {};
+    if (!payload.name || !payload.email) {
+      return res.status(400).json({ error: 'name and email are required' });
+    }
+    const row = await usersService.createUser(payload);
+    res.status(201).json({ data: row });
+  } catch (err) {
+    if (err.statusCode === 409) {
+      return res.status(409).json({ error: err.message });
+    }
     next(err);
   }
 }
@@ -39,5 +58,5 @@ async function deleteUser(req, res, next) {
   }
 }
 
-module.exports = { listUsers, updateUser, deleteUser };
+module.exports = { listUsers, createUser, updateUser, deleteUser };
 

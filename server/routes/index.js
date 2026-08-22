@@ -31,6 +31,7 @@ router.use('/buildings', buildingsRoutes);
 router.use('/rooms', roomRoutes);
 router.use('/schedules', scheduleRoutes);
 router.use('/exam-schedules', examSchedulesRoutes);
+router.use('/exams', examSchedulesRoutes);
 router.use('/conflicts', conflictsRoutes);
 router.use('/reports', reportsRoutes);
 router.use('/programs', programsRoutes);
