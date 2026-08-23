@@ -1,6 +1,16 @@
 const { pool } = require('../database/pool');
 
+let mockExecutor = null;
+
+function setQueryExecutor(fn) {
+  mockExecutor = fn;
+}
+
 async function query(sql, params) {
+  if (mockExecutor) {
+    return mockExecutor(sql, params);
+  }
+
   const [result] = await pool.execute(sql, params);
   const normalizedSql = String(sql).trim().toLowerCase();
 
@@ -11,5 +21,4 @@ async function query(sql, params) {
   return [result];
 }
 
-module.exports = { query };
-
+module.exports = { query, setQueryExecutor };

@@ -2,8 +2,8 @@ const { usersService } = require('../services/users.service');
 
 async function listUsers(req, res, next) {
   try {
-    if (req.user?.role !== 'admin' && req.user?.role !== 'super_admin') {
-      return res.status(403).json({ error: 'Forbidden' });
+    if (req.user?.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Forbidden. Only Super Administrator (ICT Office) can view user accounts.', code: 'UNAUTHORIZED_ROLE' });
     }
     const rows = await usersService.listUsers();
     res.json({ data: rows });
@@ -14,8 +14,8 @@ async function listUsers(req, res, next) {
 
 async function createUser(req, res, next) {
   try {
-    if (req.user?.role !== 'admin' && req.user?.role !== 'super_admin') {
-      return res.status(403).json({ error: 'Forbidden' });
+    if (req.user?.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Forbidden. Only Super Administrator (ICT Office) can create user accounts.', code: 'UNAUTHORIZED_ROLE' });
     }
     const payload = req.body || {};
     if (!payload.name || !payload.email) {
@@ -33,8 +33,8 @@ async function createUser(req, res, next) {
 
 async function updateUser(req, res, next) {
   try {
-    if (req.user?.role !== 'admin') {
-      return res.status(403).json({ error: 'Forbidden' });
+    if (req.user?.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Forbidden. Only Super Administrator (ICT Office) can update user accounts.', code: 'UNAUTHORIZED_ROLE' });
     }
     const { id } = req.params;
     const payload = req.body || {};
@@ -47,8 +47,8 @@ async function updateUser(req, res, next) {
 
 async function deleteUser(req, res, next) {
   try {
-    if (req.user?.role !== 'admin') {
-      return res.status(403).json({ error: 'Forbidden' });
+    if (req.user?.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Forbidden. Only Super Administrator (ICT Office) can delete user accounts.', code: 'UNAUTHORIZED_ROLE' });
     }
     const { id } = req.params;
     await usersService.deleteUser(id);

@@ -9,10 +9,12 @@ async function listFaculty(req, res, next) {
   }
 }
 
+const { query } = require('../utils/db');
+
 async function createFaculty(req, res, next) {
   try {
-    if (req.user?.role !== 'admin') {
-      return res.status(403).json({ error: 'Forbidden' });
+    if (!['admin', 'super_admin', 'program_head'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Forbidden', code: 'UNAUTHORIZED_ROLE' });
     }
     const payload = req.body || {};
     const row = await facultyService.createFaculty(payload);
@@ -27,21 +29,58 @@ async function createFaculty(req, res, next) {
 
 async function updateFaculty(req, res, next) {
   try {
-    const { id } = req.params;
+    let { id } = req.params;
     const payload = req.body || {};
+    const userRole = req.user?.role;
 
-    if (req.user?.role !== 'admin') {
-      const teacherId = req.user?.teacher?.id;
-      const allowedKeys = ['availability'];
-      const invalidUpdate = Object.keys(payload).some(
-        (key) => !allowedKeys.includes(key),
-      );
-      if (!teacherId || teacherId !== id || invalidUpdate) {
-        return res.status(403).json({ error: 'Forbidden' });
+    if (!['admin', 'super_admin', 'program_head'].includes(userRole)) {
+      if (userRole !== 'teacher') {
+        return res.status(403).json({ error: 'Forbidden', code: 'UNAUTHORIZED_ROLE' });
+      }
+
+      // Check if user is a teacher updating their own availability
+      let teacherRow = null;
+      if (req.user?.teacherId) {
+        const [row] = await query('SELECT id, name, email, status FROM teachers WHERE id = ? LIMIT 1', [req.user.teacherId]);
+        if (row) teacherRow = row;
+      }
+      if (!teacherRow && req.user?.email) {
+        const [row] = await query('SELECT id, name, email, status FROM teachers WHERE LOWER(email) = LOWER(?) LIMIT 1', [req.user.email]);
+        if (row) teacherRow = row;
+      }
+      if (!teacherRow && id) {
+        const [row] = await query('SELECT id, name, email, status FROM teachers WHERE id = ? LIMIT 1', [id]);
+        if (row && (!row.email || (req.user?.email && row.email.toLowerCase() === req.user.email.toLowerCase()))) {
+          teacherRow = row;
+        }
+      }
+
+      const teacherStatus = teacherRow?.status || req.user?.teacher?.status || 'Part-Time';
+
+      if (teacherStatus === 'Full-Time') {
+        return res.status(403).json({
+          error: 'Full-time faculty cannot configure availability. Availability follows the standard institutional schedule.',
+          code: 'FULL_TIME_FIXED_SCHEDULE',
+        });
+      }
+
+      const invalidUpdate = Object.keys(payload).some((key) => key !== 'availability');
+      if (invalidUpdate) {
+        return res.status(403).json({ error: 'Forbidden. Teachers may only update their availability.', code: 'UNAUTHORIZED_ROLE' });
+      }
+
+      if (teacherRow) {
+        id = teacherRow.id;
+      } else if (!id || id === 'undefined' || id === 'null') {
+        id = req.user?.teacherId || `FAC-${Date.now().toString().slice(-4)}`;
       }
     }
 
-    const row = await facultyService.updateFaculty(id, payload);
+    const row = await facultyService.updateFaculty(id, {
+      ...payload,
+      email: payload.email || req.user?.email,
+      name: payload.name || req.user?.name,
+    });
     res.json({ data: row });
   } catch (err) {
     next(err);
@@ -50,8 +89,8 @@ async function updateFaculty(req, res, next) {
 
 async function deleteFaculty(req, res, next) {
   try {
-    if (req.user?.role !== 'admin') {
-      return res.status(403).json({ error: 'Forbidden' });
+    if (!['admin', 'super_admin'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Forbidden', code: 'UNAUTHORIZED_ROLE' });
     }
     const { id } = req.params;
     await facultyService.deleteFaculty(id);

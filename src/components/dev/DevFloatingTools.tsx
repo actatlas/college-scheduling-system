@@ -3,16 +3,11 @@ import { useNavigate, useLocation } from "react-router-dom";
 import {
   Wrench,
   X,
-  UserCheck,
-  Shield,
-  Layers,
   Sparkles,
   RefreshCw,
   Trash2,
   Database,
-  ExternalLink,
   ChevronRight,
-  CheckCircle2,
 } from "lucide-react";
 import { api } from "../../data/apiClient";
 import { useToast } from "../common/Toast";
@@ -29,8 +24,8 @@ interface PresetAccount {
 const PRESET_ACCOUNTS: PresetAccount[] = [
   {
     label: "Super Admin (ICT Office)",
-    email: "admin@srcb.edu.ph",
-    pass: "@admin123",
+    email: "superadmin@srcb.edu.ph",
+    pass: "@superadmin123",
     role: "super_admin",
     icon: "⚡",
   },
@@ -47,6 +42,13 @@ const PRESET_ACCOUNTS: PresetAccount[] = [
     pass: "@teacher123",
     role: "teacher",
     icon: "👨‍🏫",
+  },
+  {
+    label: "Part-Time Faculty (Teacher)",
+    email: "parttime@srcb.edu.ph",
+    pass: "@teacher123",
+    role: "teacher",
+    icon: "⏱️",
   },
   {
     label: "Van Account (Created in DB)",
@@ -70,7 +72,6 @@ export function DevFloatingTools() {
 
   const currentEmail = localStorage.getItem("token") ? (localStorage.getItem("userName") || "") : "Not Logged In";
   const currentRole = (localStorage.getItem("userRole") || "guest").toLowerCase();
-  const currentTeacherId = localStorage.getItem("teacherId") || "";
   const currentTeacherStatus = localStorage.getItem("teacherStatus") || "";
 
   // Check DB health
@@ -102,13 +103,15 @@ export function DevFloatingTools() {
       const user = payload.user || {};
       const targetRole = acc.role || String(user.role || "admin").toLowerCase();
 
-      localStorage.setItem("token", payload.token || `token_${Date.now()}`);
+      localStorage.setItem("token", payload.token || "token_preset");
       localStorage.setItem("userRole", targetRole);
       localStorage.setItem("userName", user.name || acc.label);
 
       if (targetRole === "teacher") {
-        localStorage.setItem("teacherId", "FAC-001");
-        localStorage.setItem("teacherStatus", "Full-Time");
+        const teacher = user.teacher || {};
+        const isPartTime = acc.label.includes("Part-Time") || teacher.status === "Part-Time" || acc.email.includes("parttime") || acc.email.includes("sabuero");
+        localStorage.setItem("teacherId", user.teacherId || teacher.id || (isPartTime ? "FAC-003" : "T001"));
+        localStorage.setItem("teacherStatus", isPartTime ? "Part-Time" : "Full-Time");
       } else {
         localStorage.removeItem("teacherId");
         localStorage.removeItem("teacherStatus");
@@ -337,7 +340,7 @@ export function DevFloatingTools() {
                   type="button"
                   className={`dev-account-btn ${currentRole === "teacher" && currentTeacherStatus === "Full-Time" ? "active" : ""}`}
                   onClick={() =>
-                    handleRoleOverride("teacher", { status: "Full-Time", teacherId: "FAC-001" })
+                    handleRoleOverride("teacher", { status: "Full-Time", teacherId: "T001" })
                   }
                 >
                   <span>👨‍🏫 Faculty / Teacher (Full-Time)</span>
@@ -346,7 +349,7 @@ export function DevFloatingTools() {
                   type="button"
                   className={`dev-account-btn ${currentRole === "teacher" && currentTeacherStatus === "Part-Time" ? "active" : ""}`}
                   onClick={() =>
-                    handleRoleOverride("teacher", { status: "Part-Time", teacherId: "FAC-002" })
+                    handleRoleOverride("teacher", { status: "Part-Time", teacherId: "FAC-003" })
                   }
                 >
                   <span>⏱️ Faculty / Teacher (Part-Time)</span>

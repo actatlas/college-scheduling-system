@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS users (
   name VARCHAR(120) NOT NULL,
   email VARCHAR(190) NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
-  role ENUM('admin', 'teacher', 'program_head') NOT NULL DEFAULT 'admin',
+  role ENUM('super_admin', 'admin', 'teacher', 'program_head') NOT NULL DEFAULT 'admin',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uq_users_email (email)
@@ -186,3 +186,28 @@ CREATE TABLE IF NOT EXISTS schedules (
   CONSTRAINT fk_schedules_semester FOREIGN KEY (semester_id) REFERENCES semesters(id) ON UPDATE CASCADE ON DELETE RESTRICT,
   CONSTRAINT fk_schedules_ay FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON UPDATE CASCADE ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS exam_schedules (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  term VARCHAR(50) NOT NULL DEFAULT 'Midterm',
+  exam_date DATE NOT NULL,
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  subject_code VARCHAR(30) NOT NULL,
+  section_names TEXT DEFAULT NULL,
+  room_number VARCHAR(30) DEFAULT NULL,
+  building VARCHAR(120) DEFAULT 'College Building',
+  proctor_id VARCHAR(30) DEFAULT NULL,
+  proctor_name VARCHAR(160) DEFAULT NULL,
+  program_code VARCHAR(30) NOT NULL DEFAULT 'BSIT',
+  color VARCHAR(20) NOT NULL DEFAULT '#2563eb',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_exam_schedules_subject (subject_code),
+  KEY idx_exam_schedules_proctor (proctor_id),
+  KEY idx_exam_schedules_room (room_number),
+  CONSTRAINT fk_exam_schedules_subject FOREIGN KEY (subject_code) REFERENCES subjects(code) ON UPDATE CASCADE ON DELETE RESTRICT,
+  CONSTRAINT fk_exam_schedules_proctor FOREIGN KEY (proctor_id) REFERENCES teachers(id) ON UPDATE CASCADE ON DELETE SET NULL,
+  CONSTRAINT fk_exam_schedules_room FOREIGN KEY (room_number) REFERENCES rooms(number) ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+

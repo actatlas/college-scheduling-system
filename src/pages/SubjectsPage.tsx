@@ -1,13 +1,12 @@
 import { motion } from "framer-motion";
 import { PageHeader } from "../components/common/PageHeader";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../data/apiClient";
-import { storage } from "../data/storage";
 import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
 import { Plus, Search, Edit2, Trash2, GraduationCap } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
-import type { SubjectItem } from "../types";
+import type { SubjectItem, FacultyMember } from "../types";
 
 export function SubjectsPage() {
   const [subjects, setSubjects] = useState<SubjectItem[]>([]);
@@ -186,6 +185,7 @@ export function SubjectsPage() {
                   semester: "1st Semester",
                   department: "Information Technology",
                   program: selectedProgram.key || "BSIT",
+                  courseCode: coursesList[0]?.code || "BSIT",
                   isMajor: true,
                   instructorId: facultyList[0]?.id || "",
                   instructor: facultyList[0]?.name || "",

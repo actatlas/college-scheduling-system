@@ -22,5 +22,27 @@ async function createCourse(req, res, next) {
   }
 }
 
-module.exports = { listCourses, createCourse };
+async function updateCourse(req, res, next) {
+  try {
+    const code = req.params.code;
+    const payload = req.body || {};
+    const row = await coursesService.updateCourse(code, payload);
+    res.json({ data: row });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function deleteCourse(req, res, next) {
+  try {
+    const code = req.params.code;
+    await coursesService.deleteCourse(code);
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { listCourses, createCourse, updateCourse, deleteCourse };
+
 

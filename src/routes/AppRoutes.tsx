@@ -127,7 +127,7 @@ export function AppRoutes() {
           <Route
             element={
               <ProtectedRoute
-                allowedRoles={["super_admin", "admin"]}
+                allowedRoles={["super_admin"]}
               />
             }
           >
@@ -156,9 +156,13 @@ export function AppRoutes() {
             }
           >
             <Route path="/subjects" element={<SubjectsPage />} />
+            <Route path="/sections" element={<SectionsPage />} />
             <Route path="/faculty" element={<FacultyPage />} />
             <Route path="/programs" element={<ProgramsPage />} />
             <Route path="/courses" element={<CoursesPage />} />
+            <Route path="/conflicts" element={<ConflictPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Route>
 

@@ -22,4 +22,26 @@ async function createProgram(req, res, next) {
   }
 }
 
-module.exports = { listPrograms, createProgram };
+async function updateProgram(req, res, next) {
+  try {
+    const code = req.params.code;
+    const payload = req.body || {};
+    const row = await programsService.updateProgram(code, payload);
+    res.json({ data: row });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function deleteProgram(req, res, next) {
+  try {
+    const code = req.params.code;
+    await programsService.deleteProgram(code);
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { listPrograms, createProgram, updateProgram, deleteProgram };
+

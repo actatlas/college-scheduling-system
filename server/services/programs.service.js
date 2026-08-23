@@ -18,5 +18,16 @@ async function createProgram({ code, name, focus }) {
   return rows.find((d) => d.code === code);
 }
 
-const programsService = { listPrograms, createProgram };
+async function updateProgram(code, { name, focus }) {
+  await query('UPDATE programs SET name = COALESCE(?, name), focus = COALESCE(?, focus) WHERE code = ?', [name || null, focus || null, code]);
+  const rows = await listPrograms();
+  return rows.find((d) => d.code === code);
+}
+
+async function deleteProgram(code) {
+  await query('DELETE FROM programs WHERE code = ?', [code]);
+}
+
+const programsService = { listPrograms, createProgram, updateProgram, deleteProgram };
 module.exports = { programsService };
+

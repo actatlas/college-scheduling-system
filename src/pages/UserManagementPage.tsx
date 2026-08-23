@@ -1,11 +1,10 @@
 import { motion } from "framer-motion";
 import { PageHeader } from "../components/common/PageHeader";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../data/apiClient";
-import { storage } from "../data/storage";
 import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
-import { Plus, Search, Edit2, Trash2, KeyRound, UserX, UserCheck, Eye, EyeOff, Lock } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, KeyRound, UserX, UserCheck, Eye, EyeOff } from "lucide-react";
 import type { UserAccount, UserRole } from "../types";
 
 export function UserManagementPage() {
@@ -32,6 +31,7 @@ export function UserManagementPage() {
   });
 
   const toast = useToast();
+  const currentRole = (localStorage.getItem("userRole") || "admin").toLowerCase();
 
   const fetchUsers = async () => {
     try {
@@ -43,10 +43,23 @@ export function UserManagementPage() {
   };
 
   useEffect(() => {
-    fetchUsers();
-    api.get("/programs").then((res: any) => setPrograms(res.data?.data || [])).catch(() => setPrograms([]));
-    api.get("/faculty").then((res: any) => setFaculty(res.data?.data || [])).catch(() => setFaculty([]));
-  }, []);
+    if (currentRole === "super_admin") {
+      fetchUsers();
+      api.get("/programs").then((res: any) => setPrograms(res.data?.data || [])).catch(() => setPrograms([]));
+      api.get("/faculty").then((res: any) => setFaculty(res.data?.data || [])).catch(() => setFaculty([]));
+    }
+  }, [currentRole]);
+
+  if (currentRole !== "super_admin") {
+    return (
+      <div className="card" style={{ padding: 40, textAlign: "center", marginTop: 20 }}>
+        <h3 style={{ color: "var(--srcb-navy)", marginBottom: 8 }}>Access Restricted</h3>
+        <p style={{ color: "var(--srcb-text-muted)", fontSize: "0.9rem" }}>
+          User Account Governance is exclusively reserved for the Super Administrator (ICT Office). Regular Administrators manage academic catalog records, faculty assignments, rooms, and timetables.
+        </p>
+      </div>
+    );
+  }
 
   const handleDelete = async (id: string) => {
     if (!window.confirm("Remove this user account from the institutional scheduling platform?")) return;

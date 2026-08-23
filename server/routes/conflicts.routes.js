@@ -1,6 +1,10 @@
 const express = require('express');
-const router = express.Router();
+const { authMiddleware } = require('../middleware/authMiddleware');
+const { listConflicts } = require('../controllers/schedules.controller');
 
-router.get('/', (req, res) => res.json({ message: 'Conflicts API' }));
+const router = express.Router();
+router.use(authMiddleware);
+router.get('/', listConflicts);
 
 module.exports = router;
+

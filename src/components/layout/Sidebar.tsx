@@ -10,9 +10,7 @@ import {
   DoorOpen,
   ShieldCheck,
   Plus,
-  HelpCircle,
   Clock,
-  LayoutGrid,
   GraduationCap,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
@@ -45,7 +43,6 @@ const superAdminRoutes = [
 const adminRoutes = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/schedules", label: "Schedules", icon: CalendarDays },
-  { to: "/users", label: "User Management", icon: Users },
   { to: "/programs", label: "Programs", icon: Building2 },
   { to: "/courses", label: "Courses", icon: GraduationCap },
   { to: "/faculty", label: "Faculty", icon: Users },
@@ -64,15 +61,19 @@ const programHeadRoutes = [
   { to: "/subjects", label: "Subjects Catalog", icon: BookOpen },
 ];
 
-const teacherRoutes = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/schedules", label: "Schedules", icon: CalendarDays },
-  { to: "/dashboard", label: "My Availability", icon: Clock },
-];
-
 export function Sidebar() {
   const navigate = useNavigate();
   const role = getRole();
+  const teacherStatus = window.localStorage.getItem("teacherStatus") || "";
+
+  const teacherRoutes = [
+    { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { to: "/schedules", label: "Schedules", icon: CalendarDays },
+    ...(teacherStatus === "Part-Time"
+      ? [{ to: "/dashboard", label: "My Availability", icon: Clock }]
+      : []),
+  ];
+
   const routes =
     role === "super_admin"
       ? superAdminRoutes

@@ -1,13 +1,12 @@
 import { motion } from "framer-motion";
 import { PageHeader } from "../components/common/PageHeader";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../data/apiClient";
-import { storage } from "../data/storage";
 import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
 import { Plus, Search, Edit2, Trash2, Users } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
-import type { SectionItem } from "../types";
+import type { SectionItem, FacultyMember } from "../types";
 
 export function SectionsPage() {
   const [sections, setSections] = useState<SectionItem[]>([]);

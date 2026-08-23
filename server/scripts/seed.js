@@ -8,6 +8,7 @@ async function run() {
     // 1. Clear tables (in order of child to parent)
     await conn.query('SET FOREIGN_KEY_CHECKS = 0');
     await conn.query('TRUNCATE TABLE reset_tokens');
+    await conn.query('TRUNCATE TABLE exam_schedules');
     await conn.query('TRUNCATE TABLE schedules');
     await conn.query('TRUNCATE TABLE sections');
     await conn.query('TRUNCATE TABLE year_levels');
@@ -22,6 +23,7 @@ async function run() {
     await conn.query('TRUNCATE TABLE semesters');
     await conn.query('TRUNCATE TABLE academic_years');
     await conn.query('SET FOREIGN_KEY_CHECKS = 1');
+
 
     // 2. Academic Years
     await conn.query('INSERT INTO academic_years (id, name, is_active) VALUES (1, "2026-2027", TRUE)');
@@ -100,7 +102,15 @@ async function run() {
     // 15. Schedules
     await conn.query('INSERT INTO schedules (day, start_time, end_time, subject_code, section_id, faculty_id, room_number, semester_id, academic_year_id, color) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', ['Monday', '08:00:00', '11:00:00', 'CS101', 1, 'T001', 'LAB-02', 1, 1, '#2563eb']);
 
+    // 16. Exam Schedules
+    await conn.query(
+      `INSERT INTO exam_schedules (term, exam_date, start_time, end_time, subject_code, section_names, room_number, building, proctor_id, proctor_name, program_code, color)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ['Midterm', '2026-10-15', '08:00:00', '10:00:00', 'CS101', JSON.stringify(['BSCS 1-A']), 'LAB-02', 'Science Block', 'T001', 'Maria Santos', 'ITP', '#2563eb']
+    );
+
     console.log('Sample 3NF data seeded successfully.');
+
   } catch (err) {
     console.error('Seeding failed:', err);
   } finally {

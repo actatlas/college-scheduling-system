@@ -12,8 +12,17 @@
     "allowJs": true,
     "checkJs": false,
     "resolveJsonModule": true,
-    "types": ["node", "express"]
+    "types": [
+      "node",
+      "express"
+    ]
   },
-  "include": ["./**/*.ts", "./**/*.js"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "./**/*.ts",
+    "./**/*.js"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

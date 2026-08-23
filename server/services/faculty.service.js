@@ -1,5 +1,37 @@
 const { query } = require('../utils/db');
 
+const ALL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+function formatTo24HourTime(timeStr) {
+  if (!timeStr) return null;
+  const parts = String(timeStr).trim().split(':');
+  let h = Number(parts[0]) || 0;
+  const m = String(parts[1] || '00').padStart(2, '0').slice(0, 2);
+  if (h >= 1 && h <= 7) h += 12;
+  return `${String(h).padStart(2, '0')}:${m}:00`;
+}
+
+function expandDayPart(dayPart) {
+  const d = String(dayPart || '').trim();
+  const lower = d.toLowerCase();
+
+  // Range syntax: "Monday-Friday", "Mon-Fri", "Monday to Friday"
+  if (lower.includes('-') || lower.includes(' to ')) {
+    const parts = lower.split(/-|\bto\b/).map((p) => p.trim());
+    if (parts.length === 2) {
+      const startIdx = ALL_DAYS.findIndex((day) => day.toLowerCase().startsWith(parts[0].slice(0, 3)));
+      const endIdx = ALL_DAYS.findIndex((day) => day.toLowerCase().startsWith(parts[1].slice(0, 3)));
+      if (startIdx !== -1 && endIdx !== -1 && startIdx <= endIdx) {
+        return ALL_DAYS.slice(startIdx, endIdx + 1);
+      }
+    }
+  }
+
+  // Single day match
+  const found = ALL_DAYS.find((day) => day.toLowerCase() === lower || day.toLowerCase().startsWith(lower.slice(0, 3)));
+  return found ? [found] : [d];
+}
+
 function normalizeAvailability(input) {
   if (!input) return [];
   const segments = String(input).split('|').map((segment) => segment.trim()).filter(Boolean);
@@ -7,12 +39,18 @@ function normalizeAvailability(input) {
   for (const segment of segments) {
     const [dayPart, ...rest] = segment.split(':');
     if (!dayPart || rest.length === 0) continue;
-    const day = dayPart.trim();
+    const days = expandDayPart(dayPart);
     const slots = rest.join(':').split(',').map((slot) => slot.trim()).filter(Boolean);
     for (const slot of slots) {
-      const [start, end] = slot.split('-').map((value) => value.trim()).filter(Boolean);
-      if (start && end) {
-        entries.push({ day_of_week: day, start_time: start, end_time: end });
+      const [startRaw, endRaw] = slot.split('-').map((value) => value.trim()).filter(Boolean);
+      if (startRaw && endRaw) {
+        const start = formatTo24HourTime(startRaw);
+        const end = formatTo24HourTime(endRaw);
+        if (start && end) {
+          for (const day of days) {
+            entries.push({ day_of_week: day, start_time: start, end_time: end });
+          }
+        }
       }
     }
   }
@@ -73,6 +111,8 @@ async function listFaculty() {
   }));
 }
 
+const bcrypt = require('bcrypt');
+
 async function createFaculty(payload) {
   const { id, name, department, email, phone, status, availability } = payload;
   const [major] = await query('SELECT id FROM program_majors WHERE code = ? LIMIT 1', [department || 'BSIT']);
@@ -90,11 +130,41 @@ async function createFaculty(payload) {
       await Promise.all(inserts);
     }
   }
+
+  if (email && email.trim()) {
+    const [existingUser] = await query('SELECT id FROM users WHERE email = ? LIMIT 1', [email.trim()]);
+    if (!existingUser) {
+      const passwordHash = await bcrypt.hash('@teacher123', 10);
+      await query(
+        'INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)',
+        [name, email.trim(), passwordHash, 'teacher']
+      );
+    }
+  }
+
   return { id, name, department, email, phone, status, availability };
 }
 
+
 async function updateFaculty(id, payload) {
-  const [oldTeacher] = await query('SELECT email FROM teachers WHERE id = ? LIMIT 1', [id]);
+  let [oldTeacher] = await query('SELECT id, name, email, phone, status, program_major_id FROM teachers WHERE id = ? LIMIT 1', [id]);
+  
+  if (!oldTeacher && payload.email) {
+    const [byEmail] = await query('SELECT id, name, email, phone, status, program_major_id FROM teachers WHERE LOWER(email) = LOWER(?) LIMIT 1', [payload.email]);
+    if (byEmail) {
+      oldTeacher = byEmail;
+      id = byEmail.id;
+    }
+  }
+
+  if (!oldTeacher) {
+    const [major] = await query('SELECT id FROM program_majors WHERE code = ? LIMIT 1', [payload.department || 'BSIT']);
+    await query(
+      `INSERT INTO teachers (id, name, email, phone, status, program_major_id) VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, payload.name || 'Faculty Member', payload.email || null, payload.phone || null, payload.status || 'Part-Time', major?.id || null]
+    );
+    oldTeacher = { id, name: payload.name || 'Faculty Member', email: payload.email || null, status: payload.status || 'Part-Time' };
+  }
 
   const updates = [];
   const params = [];
@@ -147,16 +217,13 @@ async function updateFaculty(id, payload) {
   }
 
   const [row] = await query('SELECT id, name, email, phone, status FROM teachers WHERE id = ? LIMIT 1', [id]);
-  if (!row) {
-    throw new Error('Faculty member not found');
-  }
   return {
-    id: String(row.id),
-    name: row.name,
+    id: String(row?.id || id),
+    name: row?.name || payload.name || oldTeacher?.name || 'Faculty Member',
     department: '',
-    email: row.email || '',
-    phone: row.phone || '',
-    status: row.status,
+    email: row?.email || payload.email || oldTeacher?.email || '',
+    phone: row?.phone || payload.phone || '',
+    status: row?.status || payload.status || oldTeacher?.status || 'Part-Time',
     availability: payload.availability || '',
     subjects: [],
   };

@@ -2,7 +2,6 @@ import { motion } from "framer-motion";
 import { PageHeader } from "../components/common/PageHeader";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../data/apiClient";
-import { storage } from "../data/storage";
 import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
 import {
@@ -35,7 +34,9 @@ const TIME_SLOTS = [
 
 function slotToMinutes(timeStr: string) {
   if (!timeStr) return 0;
-  let [h, m = "0"] = timeStr.trim().split(":").map(Number);
+  const parts = timeStr.trim().split(":");
+  let h = Number(parts[0]) || 0;
+  const m = Number(parts[1]) || 0;
   // Convert 12-hour afternoon times if needed (01:00 - 07:00 pm in college schedules)
   if (h >= 1 && h <= 7) h += 12;
   return h * 60 + m;
@@ -242,6 +243,7 @@ export function SchedulesPage() {
       }
     } catch (err: any) {
       toast.push(err?.response?.data?.error || "Failed to update schedule location", "error");
+      fetchSchedules();
     }
   };
 

@@ -36,16 +36,14 @@ export function LoginPage() {
       localStorage.setItem("userName", user.name || "User");
 
       if (userRole === "teacher") {
-        localStorage.setItem(
-          "teacherId",
-          String(user.teacher?.id || (targetEmail.includes("parttime") ? "FAC-002" : "FAC-001"))
-        );
-        localStorage.setItem(
-          "teacherStatus",
-          targetEmail.includes("parttime") ? "Part-Time" : "Full-Time"
-        );
+        const teacherObj = user.teacher || {};
+        const isPartTime = teacherObj.status === "Part-Time" || targetEmail.includes("parttime") || targetEmail.includes("sabuero");
+        const resolvedId = String(teacherObj.id || user.teacherId || (isPartTime ? "FAC-003" : "T001"));
+        localStorage.setItem("teacherId", resolvedId);
+        localStorage.setItem("teacherStatus", teacherObj.status || (isPartTime ? "Part-Time" : "Full-Time"));
       } else {
         localStorage.removeItem("teacherId");
+        localStorage.removeItem("teacherStatus");
       }
 
       if (user.program) {

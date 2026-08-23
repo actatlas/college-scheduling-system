@@ -2,13 +2,10 @@ import {
   CalendarClock,
   Users,
   BookOpen,
-  DoorOpen,
   CalendarRange,
   RefreshCw,
   BadgeCheck,
   CheckSquare,
-  Square,
-  Plus,
   ChevronRight,
   AlertTriangle,
   Search,
@@ -17,7 +14,6 @@ import {
   Clock,
 } from "lucide-react";
 import { motion } from "framer-motion";
-import { PageHeader } from "../components/common/PageHeader";
 import { StatCard } from "../components/common/StatCard";
 import { api } from "../data/apiClient";
 import { useEffect, useState } from "react";
@@ -62,8 +58,6 @@ export function DashboardPage() {
   const [teacherStatus, setTeacherStatus] = useState<string>("Full-Time");
   const [schedules, setSchedules] = useState<ClassScheduleItem[]>([]);
   const [facultyList, setFacultyList] = useState<any[]>([]);
-  const [subjectsList, setSubjectsList] = useState<any[]>([]);
-  const [conflictsList, setConflictsList] = useState<any[]>([]);
   const [availabilityMessage, setAvailabilityMessage] = useState("");
   const [selectedSlots, setSelectedSlots] = useState<Record<string, string[]>>({});
 
@@ -101,8 +95,6 @@ export function DashboardPage() {
       const exms = exmRes.data?.data || [];
 
       setFacultyList(facs);
-      setSubjectsList(subs);
-      setConflictsList(confs);
 
       setMetrics({
         faculty: String(facs.length),
@@ -116,16 +108,24 @@ export function DashboardPage() {
       });
 
       if (role === "teacher") {
-        const teacherId = window.localStorage.getItem("teacherId");
+        const storedTeacherId = window.localStorage.getItem("teacherId");
         const currentTeacher = facs.find(
-          (f: any) => String(f.id) === String(teacherId) || (f.name && f.name.toLowerCase().includes(userName.toLowerCase()))
+          (f: any) =>
+            (storedTeacherId && String(f.id) === String(storedTeacherId)) ||
+            (f.name && f.name.toLowerCase().includes(userName.toLowerCase()))
         );
         if (currentTeacher) {
           setTeacherStatus(currentTeacher.status || "Full-Time");
           setAvailabilityMessage(currentTeacher.availability || "");
+          if (currentTeacher.id) {
+            window.localStorage.setItem("teacherId", String(currentTeacher.id));
+          }
         }
+        const activeTeacherId = currentTeacher?.id || storedTeacherId;
         const myScheds = scheds.filter(
-          (s: any) => (teacherId && s.facultyId === teacherId) || (s.faculty && s.faculty.toLowerCase().includes(userName.toLowerCase()))
+          (s: any) =>
+            (activeTeacherId && String(s.facultyId) === String(activeTeacherId)) ||
+            (s.faculty && s.faculty.toLowerCase().includes(userName.toLowerCase()))
         );
         setSchedules(myScheds);
       } else if (role === "program_head") {
@@ -197,23 +197,23 @@ export function DashboardPage() {
       .map(([day, slots]) => `${day}: ${slots.join(", ")}`)
       .join(" | ");
 
-    const teacherId = window.localStorage.getItem("teacherId");
-    if (teacherId) {
-      try {
-        await api.put(`/faculty/${encodeURIComponent(teacherId)}`, {
-          availability: nextValue || "Monday: 08:00-12:00",
-        });
-        setAvailabilityMessage(nextValue);
-        toast.push("Part-time availability saved successfully", "success");
-      } catch (error: any) {
-        toast.push(error?.response?.data?.error || "Failed to update availability", "error");
-      }
-    } else {
-      window.localStorage.setItem("teacherAvailability", nextValue);
+    const resolvedTeacherId =
+      window.localStorage.getItem("teacherId") ||
+      facultyList.find((f: any) => f.name && f.name.toLowerCase().includes(userName.toLowerCase()))?.id ||
+      "FAC-003";
+
+    try {
+      await api.put(`/faculty/${encodeURIComponent(resolvedTeacherId)}`, {
+        availability: nextValue || "Monday: 08:00-12:00",
+      });
       setAvailabilityMessage(nextValue);
-      toast.push("Availability updated locally", "success");
+      window.localStorage.setItem("teacherAvailability", nextValue);
+      toast.push("Part-time availability saved successfully", "success");
+    } catch (error: any) {
+      toast.push(error?.response?.data?.error || "Failed to update availability", "error");
+    } finally {
+      setIsSavingAvailability(false);
     }
-    setIsSavingAvailability(false);
   };
 
   const isChecked = (day: string, slot: string) => {
@@ -267,7 +267,7 @@ export function DashboardPage() {
       (s.subject && s.subject.toLowerCase().includes(q)) ||
       (s.faculty && s.faculty.toLowerCase().includes(q)) ||
       (s.room && s.room.toLowerCase().includes(q)) ||
-      (s.code && s.code.toLowerCase().includes(q))
+      (s.subjectCode && s.subjectCode.toLowerCase().includes(q))
     );
   });
 
@@ -573,7 +573,11 @@ export function DashboardPage() {
           <div className="edusched-header">
             <div className="edusched-title-box">
               <h1>Teacher Portal & Schedule Overview</h1>
-              <p>Manage your availability preferences, review assigned subjects, rooms, and weekly classes.</p>
+              <p>
+                {teacherStatus === "Full-Time"
+                  ? "View your official teaching timetable, assigned subjects, designated classrooms, and modality breakdown."
+                  : "Configure your teaching availability, review assigned subjects, rooms, and weekly classes."}
+              </p>
             </div>
             <div className="edusched-header-actions">
               <span className={`pill ${teacherStatus === "Full-Time" ? "pill--royal" : "pill--navy"}`}>
@@ -585,26 +589,94 @@ export function DashboardPage() {
             </div>
           </div>
 
-          <div className="grid-2">
-            {/* Interactive Drag-to-Select Availability Timesheet */}
-            <article className="card" style={{ gridColumn: "1 / -1" }}>
-              <div className="card__header">
-                <div>
-                  <h3>
-                    {teacherStatus === "Full-Time"
-                      ? "Standard Teaching Schedule (Full-Time)"
-                      : "Interactive Teaching Availability Timesheet"}
-                  </h3>
-                  <p className="muted" style={{ margin: "4px 0 0", fontSize: "0.84rem" }}>
-                    {teacherStatus === "Full-Time"
-                      ? "Full-time faculty follow standard Mon-Fri 08:00 - 17:00 teaching schedules."
-                      : "Click and drag across time slots to highlight your available teaching hours. Use the quick presets below to fill quickly."}
-                  </p>
+          {/* Full-Time Teacher Overview Cards */}
+          {teacherStatus === "Full-Time" && (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                gap: 16,
+                marginBottom: 20,
+              }}
+            >
+              <div className="card" style={{ padding: "16px 20px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <p className="eyebrow">Teaching Load</p>
+                    <h3 style={{ margin: "4px 0 0", fontSize: "1.6rem", color: "var(--srcb-navy)" }}>
+                      {schedules.length}
+                    </h3>
+                    <p style={{ fontSize: "0.78rem", color: "var(--srcb-text-muted)", margin: "2px 0 0" }}>
+                      Assigned Class Sessions
+                    </p>
+                  </div>
+                  <CalendarRange size={28} color="var(--srcb-navy)" style={{ opacity: 0.8 }} />
                 </div>
-                <CalendarClock size={20} color="var(--srcb-navy)" />
               </div>
 
-              {teacherStatus !== "Full-Time" && (
+              <div className="card" style={{ padding: "16px 20px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <p className="eyebrow">Subjects Handled</p>
+                    <h3 style={{ margin: "4px 0 0", fontSize: "1.6rem", color: "#2563eb" }}>
+                      {new Set(schedules.map((s) => s.subjectCode || s.subject)).size}
+                    </h3>
+                    <p style={{ fontSize: "0.78rem", color: "var(--srcb-text-muted)", margin: "2px 0 0" }}>
+                      Active Academic Courses
+                    </p>
+                  </div>
+                  <BookOpen size={28} color="#2563eb" style={{ opacity: 0.8 }} />
+                </div>
+              </div>
+
+              <div className="card" style={{ padding: "16px 20px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <p className="eyebrow">Rooms & Laboratories</p>
+                    <h3 style={{ margin: "4px 0 0", fontSize: "1.6rem", color: "#059669" }}>
+                      {new Set(schedules.map((s) => s.room)).size}
+                    </h3>
+                    <p style={{ fontSize: "0.78rem", color: "var(--srcb-text-muted)", margin: "2px 0 0" }}>
+                      Designated Facilities
+                    </p>
+                  </div>
+                  <LayoutGrid size={28} color="#059669" style={{ opacity: 0.8 }} />
+                </div>
+              </div>
+
+              <div className="card" style={{ padding: "16px 20px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <p className="eyebrow">Modality Breakdown</p>
+                    <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                      <span className="pill pill--f2f" style={{ fontSize: "0.75rem" }}>
+                        F2F: {schedules.filter((s) => s.modality !== "Online").length}
+                      </span>
+                      <span className="pill pill--online" style={{ fontSize: "0.75rem" }}>
+                        Online: {schedules.filter((s) => s.modality === "Online").length}
+                      </span>
+                    </div>
+                  </div>
+                  <BadgeCheck size={28} color="#7c3aed" style={{ opacity: 0.8 }} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="grid-2">
+            {/* PART-TIME ONLY: Interactive Drag-to-Select Availability Timesheet */}
+            {teacherStatus !== "Full-Time" && (
+              <article className="card" style={{ gridColumn: "1 / -1" }}>
+                <div className="card__header">
+                  <div>
+                    <h3>Interactive Teaching Availability Timesheet</h3>
+                    <p className="muted" style={{ margin: "4px 0 0", fontSize: "0.84rem" }}>
+                      Click and drag across time slots to highlight your available teaching hours. Use the quick presets below to fill quickly.
+                    </p>
+                  </div>
+                  <CalendarClock size={20} color="var(--srcb-navy)" />
+                </div>
+
                 <div className="timesheet-toolbar" style={{ marginTop: 12 }}>
                   <div className="timesheet-stats">
                     <Clock size={16} />
@@ -663,73 +735,70 @@ export function DashboardPage() {
                     </button>
                   </div>
                 </div>
-              )}
 
-              <div
-                className="timesheet-drag-container"
-                style={{ marginTop: 14 }}
-                onMouseLeave={() => setIsDraggingAvail(false)}
-                onMouseUp={() => setIsDraggingAvail(false)}
-              >
-                <div className="table-wrap">
-                  <table className="data-table" style={{ textAlign: "center", userSelect: "none" }}>
-                    <thead>
-                      <tr>
-                        <th style={{ width: 110 }}>Time Slot</th>
-                        {AVAILABILITY_DAYS.map((d) => (
-                          <th key={d}>{d}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {AVAILABILITY_SLOTS.map((slot) => (
-                        <tr key={slot}>
-                          <td style={{ fontWeight: 700, fontSize: "0.8rem", color: "var(--srcb-navy)", background: "#f8fafc" }}>
-                            {slot}
-                          </td>
-                          {AVAILABILITY_DAYS.map((day) => {
-                            const selected = isChecked(day, slot);
-                            const disabled = teacherStatus === "Full-Time";
-
-                            return (
-                              <td
-                                key={`${day}-${slot}`}
-                                className="timesheet-cell"
-                                onMouseDown={(e) => {
-                                  if (disabled || e.button !== 0) return;
-                                  setIsDraggingAvail(true);
-                                  const mode = selected ? "deselect" : "select";
-                                  setDragMode(mode);
-                                  handleCheckboxChange(day, slot, mode === "select");
-                                }}
-                                onMouseEnter={() => {
-                                  if (disabled || !isDraggingAvail) return;
-                                  handleCheckboxChange(day, slot, dragMode === "select");
-                                }}
-                              >
-                                <div
-                                  className={`timesheet-cell-slot ${selected ? "is-selected" : ""}`}
-                                  title={disabled ? "Full-Time standard schedule" : "Click and drag to select/deselect"}
-                                >
-                                  {selected ? (
-                                    <>
-                                      <CheckSquare size={13} />
-                                      <span>Available</span>
-                                    </>
-                                  ) : (
-                                    <span style={{ fontSize: "0.72rem", opacity: 0.7 }}>+ Add</span>
-                                  )}
-                                </div>
-                              </td>
-                            );
-                          })}
+                <div
+                  className="timesheet-drag-container"
+                  style={{ marginTop: 14 }}
+                  onMouseLeave={() => setIsDraggingAvail(false)}
+                  onMouseUp={() => setIsDraggingAvail(false)}
+                >
+                  <div className="table-wrap">
+                    <table className="data-table" style={{ textAlign: "center", userSelect: "none" }}>
+                      <thead>
+                        <tr>
+                          <th style={{ width: 110 }}>Time Slot</th>
+                          {AVAILABILITY_DAYS.map((d) => (
+                            <th key={d}>{d}</th>
+                          ))}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {AVAILABILITY_SLOTS.map((slot) => (
+                          <tr key={slot}>
+                            <td style={{ fontWeight: 700, fontSize: "0.8rem", color: "var(--srcb-navy)", background: "#f8fafc" }}>
+                              {slot}
+                            </td>
+                            {AVAILABILITY_DAYS.map((day) => {
+                              const selected = isChecked(day, slot);
 
-                {teacherStatus !== "Full-Time" && (
+                              return (
+                                <td
+                                  key={`${day}-${slot}`}
+                                  className="timesheet-cell"
+                                  onMouseDown={(e) => {
+                                    if (e.button !== 0) return;
+                                    setIsDraggingAvail(true);
+                                    const mode = selected ? "deselect" : "select";
+                                    setDragMode(mode);
+                                    handleCheckboxChange(day, slot, mode === "select");
+                                  }}
+                                  onMouseEnter={() => {
+                                    if (!isDraggingAvail) return;
+                                    handleCheckboxChange(day, slot, dragMode === "select");
+                                  }}
+                                >
+                                  <div
+                                    className={`timesheet-cell-slot ${selected ? "is-selected" : ""}`}
+                                    title="Click and drag to select/deselect"
+                                  >
+                                    {selected ? (
+                                      <>
+                                        <CheckSquare size={13} />
+                                        <span>Available</span>
+                                      </>
+                                    ) : (
+                                      <span style={{ fontSize: "0.72rem", opacity: 0.7 }}>+ Add</span>
+                                    )}
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
                   <div style={{ marginTop: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ fontSize: "0.8rem", color: "var(--srcb-text-muted)" }}>
                       💡 Tip: Click and drag your mouse across hours and days to select multiple slots simultaneously.
@@ -744,43 +813,103 @@ export function DashboardPage() {
                       {isSavingAvailability ? "Saving…" : "Save My Teaching Availability"}
                     </button>
                   </div>
-                )}
-              </div>
-            </article>
+                </div>
+              </article>
+            )}
 
             {/* Teacher Schedule List */}
             <article className="card" style={{ gridColumn: "1 / -1" }}>
               <div className="card__header">
-                <h3>My Assigned Class Timetable</h3>
+                <div>
+                  <h3>My Assigned Class Timetable</h3>
+                  <p className="muted" style={{ margin: "2px 0 0", fontSize: "0.82rem" }}>
+                    {teacherStatus === "Full-Time"
+                      ? "Official schedule covering Monday to Friday standard academic periods."
+                      : "Official assigned schedule aligned with your confirmed availability."}
+                  </p>
+                </div>
                 <CalendarRange size={18} color="var(--srcb-navy)" />
               </div>
-              <div className="schedule-list">
+
+              <div className="table-wrap" style={{ marginTop: 8 }}>
                 {schedules.length === 0 ? (
                   <div className="empty-state">No scheduled classes assigned yet.</div>
                 ) : (
-                  schedules.map((slot) => (
-                    <div className="schedule-item" key={slot.id}>
-                      <div
-                        className="schedule-item__dot"
-                        style={{ backgroundColor: slot.color || "var(--srcb-navy)" }}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <p className="schedule-item__title">{slot.subject}</p>
-                          <span
-                            className={`pill ${slot.modality === "Online" ? "pill--online" : "pill--f2f"}`}
-                            style={{ fontSize: "0.7rem", padding: "1px 6px" }}
-                          >
-                            {slot.modality}
-                          </span>
-                        </div>
-                        <p className="schedule-item__meta">
-                          {slot.day} • {slot.time} • <strong>{slot.room}</strong> ({slot.building})
-                        </p>
-                      </div>
-                      <span className="pill">{slot.section}</span>
-                    </div>
-                  ))
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Subject</th>
+                        <th>Day & Time</th>
+                        <th>Room & Facility</th>
+                        <th>Building</th>
+                        <th>Section</th>
+                        <th>Modality</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {schedules
+                        .filter((slot) => {
+                          if (teacherStatus === "Full-Time" && String(slot.day).toLowerCase() === "saturday") {
+                            return false;
+                          }
+                          return true;
+                        })
+                        .map((slot) => (
+                          <tr key={slot.id}>
+                            <td>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <div
+                                  style={{
+                                    width: 10,
+                                    height: 10,
+                                    borderRadius: "50%",
+                                    backgroundColor: slot.color || "var(--srcb-navy)",
+                                  }}
+                                />
+                                <div>
+                                  <strong style={{ color: "var(--srcb-navy)" }}>{slot.subjectCode || slot.subject}</strong>
+                                  {slot.subject && slot.subjectCode && slot.subject !== slot.subjectCode && (
+                                    <span style={{ display: "block", fontSize: "0.78rem", color: "var(--srcb-text-muted)" }}>
+                                      {slot.subject}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            <td>
+                              <span style={{ fontWeight: 600 }}>{slot.day}</span>
+                              <br />
+                              <span style={{ fontSize: "0.8rem", color: "var(--srcb-text-muted)" }}>{slot.time}</span>
+                            </td>
+                            <td>
+                              <strong>{slot.room}</strong>
+                            </td>
+                            <td>{slot.building || "College Building"}</td>
+                            <td>
+                              <span className="pill">{slot.section}</span>
+                            </td>
+                            <td>
+                              <span
+                                className={`pill ${slot.modality === "Online" ? "pill--online" : "pill--f2f"}`}
+                                style={{ fontSize: "0.72rem" }}
+                              >
+                                {slot.modality || "Face-to-Face"}
+                              </span>
+                              {slot.modality === "Online" && slot.onlineLink && (
+                                <a
+                                  href={slot.onlineLink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{ display: "inline-block", marginLeft: 6, fontSize: "0.75rem", color: "#2563eb" }}
+                                >
+                                  Join Link
+                                </a>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
                 )}
               </div>
             </article>

@@ -14,12 +14,21 @@ function createApp() {
     cors({
       origin: (origin, cb) => {
         const raw = process.env.CORS_ORIGIN || '*';
-        const allowed = raw === '*' ? ['*'] : raw.split(',').map((s) => s.trim());
-        if (!origin) return cb(null, true);
-        if (allowed.includes('*') || allowed.includes(origin)) return cb(null, true);
-        return cb(new Error('Not allowed by CORS'));
+        if (!origin || raw === '*') return cb(null, true);
+        const allowed = raw.split(',').map((s) => s.trim().toLowerCase());
+        const lowerOrigin = origin.toLowerCase();
+        if (
+          allowed.includes(lowerOrigin) ||
+          allowed.includes('*') ||
+          /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
+        ) {
+          return cb(null, true);
+        }
+        return cb(null, false);
       },
       credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
     })
   );
 

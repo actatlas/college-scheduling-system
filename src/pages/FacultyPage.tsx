@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { api } from "../data/apiClient";
 import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
-import { Plus, Search, Edit2, Trash2, Clock, CheckSquare, Square } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Clock, CheckSquare } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
 import type { FacultyMember } from "../types";
 

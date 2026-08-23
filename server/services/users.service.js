@@ -29,6 +29,7 @@ async function createUser({ name, email, role, password }) {
     throw err;
   }
   const [result] = await query('INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)', [name, email, passwordHash, role]);
+  const newId = (Array.isArray(result) ? result[0] : result)?.insertId || result.insertId || Date.now();
   
   if (role === 'teacher') {
     const teacherId = `T${Date.now().toString().slice(-6)}`;
@@ -38,7 +39,8 @@ async function createUser({ name, email, role, password }) {
       [teacherId, name, email, null, 'Full-Time', majorRow?.id || null]
     );
   }
-  return { id: String(result.insertId), name, email, role };
+  return { id: String(newId), name, email, role };
+
 }
 
 async function updateUser(id, { name, email, role, password }) {

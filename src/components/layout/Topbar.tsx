@@ -1,6 +1,6 @@
-import { Search, MoonStar, Bell, HelpCircle } from "lucide-react";
+import { Search, MoonStar, Bell } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
-import { useNavigate, useLocation, NavLink } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useProgramContext } from "../../contexts/ProgramContext";
 import { useToast } from "../common/Toast";
 
@@ -12,7 +12,6 @@ export function Topbar({ title }: TopbarProps) {
   const [dark, setDark] = useState(false);
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
-  const location = useLocation();
   const toast = useToast();
   const { selectedProgram, setSelectedProgramKey, programOptions } =
     useProgramContext();
