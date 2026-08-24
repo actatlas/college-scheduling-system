@@ -81,9 +81,10 @@ export function DevFloatingTools() {
       .catch(() => setDbHealthy(false));
   }, [isOpen]);
 
-  // Fetch db users when tab opened and logged in
+  // Fetch db users when tab opened and logged in as super_admin
   useEffect(() => {
-    if (isOpen && activeTab === "accounts" && localStorage.getItem("token")) {
+    const role = localStorage.getItem("userRole");
+    if (isOpen && activeTab === "accounts" && localStorage.getItem("token") && role === "super_admin") {
       api
         .get("/users")
         .then((res: any) => setDbUsers(res.data?.data || []))

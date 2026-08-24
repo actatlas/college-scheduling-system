@@ -2,8 +2,8 @@ const { programMajorsService } = require('../services/programMajors.service');
 
 async function listProgramMajors(req, res, next) {
   try {
-    if (!['admin', 'program_head'].includes(req.user?.role)) {
-      return res.status(403).json({ error: 'Forbidden' });
+    if (!['admin', 'super_admin', 'program_head'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Forbidden', code: 'UNAUTHORIZED_ROLE' });
     }
     const rows = await programMajorsService.listProgramMajors();
     return res.json({ data: rows });
@@ -14,8 +14,8 @@ async function listProgramMajors(req, res, next) {
 
 async function getProgramMajorById(req, res, next) {
   try {
-    if (!['admin', 'program_head'].includes(req.user?.role)) {
-      return res.status(403).json({ error: 'Forbidden' });
+    if (!['admin', 'super_admin', 'program_head'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Forbidden', code: 'UNAUTHORIZED_ROLE' });
     }
     const row = await programMajorsService.getProgramMajorById(req.params.id);
     return res.json({ data: row });
@@ -27,8 +27,8 @@ async function getProgramMajorById(req, res, next) {
 
 async function createProgramMajor(req, res, next) {
   try {
-    if (req.user?.role !== 'admin') {
-      return res.status(403).json({ error: 'Forbidden' });
+    if (!['admin', 'super_admin'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Forbidden. Only Administrators can create program majors.', code: 'UNAUTHORIZED_ROLE' });
     }
     const row = await programMajorsService.createProgramMajor(req.body || {});
     return res.status(201).json({ data: row });
@@ -40,8 +40,8 @@ async function createProgramMajor(req, res, next) {
 
 async function updateProgramMajor(req, res, next) {
   try {
-    if (req.user?.role !== 'admin') {
-      return res.status(403).json({ error: 'Forbidden' });
+    if (!['admin', 'super_admin'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Forbidden. Only Administrators can update program majors.', code: 'UNAUTHORIZED_ROLE' });
     }
     const row = await programMajorsService.updateProgramMajor(req.params.id, req.body || {});
     return res.json({ data: row });
@@ -53,8 +53,8 @@ async function updateProgramMajor(req, res, next) {
 
 async function deleteProgramMajor(req, res, next) {
   try {
-    if (req.user?.role !== 'admin') {
-      return res.status(403).json({ error: 'Forbidden' });
+    if (!['admin', 'super_admin'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Forbidden. Only Administrators can delete program majors.', code: 'UNAUTHORIZED_ROLE' });
     }
     await programMajorsService.deleteProgramMajor(req.params.id);
     return res.status(204).end();

@@ -12,6 +12,9 @@ async function listSubjects(req, res, next) {
 
 async function createSubject(req, res, next) {
   try {
+    if (!['admin', 'super_admin'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Forbidden. Only Administrators can create subjects.', code: 'UNAUTHORIZED_ROLE' });
+    }
     const payload = req.body || {};
     if (!payload.code || !payload.name) {
       return res.status(400).json({ error: 'Subject code and name are required' });
@@ -31,6 +34,9 @@ async function createSubject(req, res, next) {
 
 async function deleteSubject(req, res, next) {
   try {
+    if (!['admin', 'super_admin'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Forbidden. Only Administrators can delete subjects.', code: 'UNAUTHORIZED_ROLE' });
+    }
     const code = req.params.code;
     await subjectsService.deleteSubject(code);
     res.status(204).end();
@@ -47,6 +53,9 @@ async function deleteSubject(req, res, next) {
 
 async function updateSubject(req, res, next) {
   try {
+    if (!['admin', 'super_admin'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Forbidden. Only Administrators can update subjects.', code: 'UNAUTHORIZED_ROLE' });
+    }
     const code = req.params.code;
     const payload = req.body || {};
     const row = await subjectsService.updateSubject(code, payload);

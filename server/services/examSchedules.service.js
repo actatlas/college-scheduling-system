@@ -56,7 +56,29 @@ async function validateExamPayload({
     throw err;
   }
 
-  // 2. Program Head authorization
+  if (endMin - startMin < 30) {
+    const err = new Error('Exam duration must be at least 30 minutes.');
+    err.statusCode = 400;
+    err.code = 'INVALID_TIME_RANGE';
+    throw err;
+  }
+
+  // 2. Room Usability & Status Check
+  if (room) {
+    const [roomRow] = await query('SELECT number, capacity, building, type, status FROM rooms WHERE number = ? LIMIT 1', [room]);
+    if (roomRow) {
+      const status = String(roomRow.status || '').trim().toLowerCase();
+      const isUnavailable = ['maintenance', 'under maintenance', 'inactive', 'unavailable', 'closed', 'disabled'].includes(status);
+      if (isUnavailable) {
+        const err = new Error(`Room ${roomRow.number} is currently marked as "${roomRow.status}" and cannot be booked for examinations.`);
+        err.statusCode = 409;
+        err.code = 'ROOM_UNAVAILABLE';
+        throw err;
+      }
+    }
+  }
+
+  // 3. Program Head authorization
   if (user && String(user.role).toLowerCase() === 'program_head') {
     let allowedPrograms = [];
     if (user.sub) {
@@ -162,20 +184,43 @@ async function listExamSchedules({ user, program } = {}) {
   const role = String(user?.role || '').toLowerCase();
   if (role === 'teacher') {
     let teacherId = user?.teacherId || null;
+    let teacherName = user?.name || null;
     if (!teacherId && user?.email) {
-      const [tRow] = await query('SELECT id FROM teachers WHERE LOWER(TRIM(email)) = ? LIMIT 1', [user.email.trim().toLowerCase()]);
-      if (tRow) teacherId = tRow.id;
-    }
-    if (!teacherId && user?.sub) {
-      const [uRow] = await query('SELECT email FROM users WHERE id = ? LIMIT 1', [user.sub]);
-      if (uRow && uRow.email) {
-        const [tRow] = await query('SELECT id FROM teachers WHERE LOWER(TRIM(email)) = ? LIMIT 1', [uRow.email.trim().toLowerCase()]);
-        if (tRow) teacherId = tRow.id;
+      const [tRow] = await query('SELECT id, name FROM teachers WHERE LOWER(TRIM(email)) = ? LIMIT 1', [user.email.trim().toLowerCase()]);
+      if (tRow) {
+        teacherId = tRow.id;
+        if (!teacherName) teacherName = tRow.name;
       }
     }
+    if (!teacherId && user?.sub) {
+      const [uRow] = await query('SELECT id, name, email FROM users WHERE id = ? LIMIT 1', [user.sub]);
+      if (uRow) {
+        if (!teacherName) teacherName = uRow.name;
+        if (uRow.email) {
+          const [tRow] = await query('SELECT id, name FROM teachers WHERE LOWER(TRIM(email)) = ? OR LOWER(TRIM(name)) = ? LIMIT 1', [
+            uRow.email.trim().toLowerCase(),
+            (uRow.name || '').trim().toLowerCase(),
+          ]);
+          if (tRow) {
+            teacherId = tRow.id;
+            if (!teacherName) teacherName = tRow.name;
+          }
+        }
+      }
+    }
+
+    const orConds = [];
     if (teacherId) {
-      conditions.push('es.proctor_id = ?');
+      orConds.push('es.proctor_id = ?');
       params.push(teacherId);
+    }
+    if (teacherName) {
+      orConds.push('LOWER(TRIM(es.proctor_name)) = ? OR LOWER(TRIM(t.name)) = ?');
+      params.push(teacherName.trim().toLowerCase(), teacherName.trim().toLowerCase());
+    }
+
+    if (orConds.length > 0) {
+      conditions.push(`(${orConds.join(' OR ')})`);
     } else {
       return [];
     }
@@ -276,6 +321,16 @@ async function createExamSchedule(payload, user) {
   const formattedStart = normalizeTime(finalStart);
   const formattedEnd = normalizeTime(finalEnd);
 
+  let finalProctorId = proctorId || null;
+  let finalProctorName = proctor || null;
+  if (finalProctorId && !finalProctorName) {
+    const [t] = await query('SELECT name FROM teachers WHERE id = ? LIMIT 1', [finalProctorId]);
+    if (t) finalProctorName = t.name;
+  } else if (!finalProctorId && finalProctorName) {
+    const [t] = await query('SELECT id FROM teachers WHERE LOWER(TRIM(name)) = ? LIMIT 1', [finalProctorName.trim().toLowerCase()]);
+    if (t) finalProctorId = t.id;
+  }
+
   await validateExamPayload({
     term,
     examDate,
@@ -283,7 +338,7 @@ async function createExamSchedule(payload, user) {
     endTime: formattedEnd,
     subjectCode,
     room,
-    proctorId,
+    proctorId: finalProctorId,
     synchronizedSections,
     program,
     user,
@@ -303,8 +358,8 @@ async function createExamSchedule(payload, user) {
       sectionNamesStr,
       room || null,
       building,
-      proctorId || null,
-      proctor || null,
+      finalProctorId,
+      finalProctorName,
       program,
       color,
     ]
@@ -322,8 +377,8 @@ async function createExamSchedule(payload, user) {
     synchronizedSections: Array.isArray(synchronizedSections) ? synchronizedSections : [synchronizedSections],
     room,
     building,
-    proctor,
-    proctorId,
+    proctor: finalProctorName,
+    proctorId: finalProctorId,
     program,
     color,
   };
@@ -361,7 +416,17 @@ async function updateExamSchedule(id, payload, user) {
     if (et) formattedEnd = normalizeTime(et);
   }
 
-  if (examDate || formattedStart || formattedEnd || room || proctorId) {
+  let finalProctorId = proctorId !== undefined ? proctorId : null;
+  let finalProctorName = proctor !== undefined ? proctor : null;
+  if (finalProctorId && !finalProctorName) {
+    const [t] = await query('SELECT name FROM teachers WHERE id = ? LIMIT 1', [finalProctorId]);
+    if (t) finalProctorName = t.name;
+  } else if (!finalProctorId && finalProctorName) {
+    const [t] = await query('SELECT id FROM teachers WHERE LOWER(TRIM(name)) = ? LIMIT 1', [finalProctorName.trim().toLowerCase()]);
+    if (t) finalProctorId = t.id;
+  }
+
+  if (examDate || formattedStart || formattedEnd || room || finalProctorId) {
     const [existing] = await query('SELECT * FROM exam_schedules WHERE id = ? LIMIT 1', [id]);
     if (!existing) {
       const err = new Error('Exam schedule not found');
@@ -378,7 +443,7 @@ async function updateExamSchedule(id, payload, user) {
       endTime: formattedEnd || existing.end_time,
       subjectCode: subjectCode || existing.subject_code,
       room: room !== undefined ? room : existing.room_number,
-      proctorId: proctorId !== undefined ? proctorId : existing.proctor_id,
+      proctorId: finalProctorId !== null ? finalProctorId : existing.proctor_id,
       synchronizedSections: synchronizedSections !== undefined ? synchronizedSections : existing.section_names,
       program: program || existing.program_code,
       user,
@@ -411,8 +476,8 @@ async function updateExamSchedule(id, payload, user) {
       sectionNamesStr,
       room || null,
       building || null,
-      proctorId || null,
-      proctor || null,
+      finalProctorId,
+      finalProctorName,
       program || null,
       color || null,
       id,

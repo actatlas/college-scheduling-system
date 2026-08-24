@@ -87,7 +87,7 @@ export function ReportsPage() {
           </div>
           <h3 style={{ marginTop: 8 }}>Campus Utilization</h3>
           <p className="muted">
-            Rooms in College ({rooms.filter((r) => r.building.includes("College")).length}), SHS ({rooms.filter((r) => r.building.includes("SHS")).length}), and JHS ({rooms.filter((r) => r.building.includes("JHS")).length}).
+            Rooms in College ({rooms.filter((r) => (r.building || '').includes("College")).length}), SHS ({rooms.filter((r) => (r.building || '').includes("SHS")).length}), and JHS ({rooms.filter((r) => (r.building || '').includes("JHS")).length}).
           </p>
           <div style={{ marginTop: 12 }}>
             <span className="pill pill--navy">{rooms.length} Total Classrooms & Labs</span>
@@ -133,7 +133,7 @@ export function ReportsPage() {
             <tbody>
               {faculty.map((f) => {
                 const assigned = schedules.filter(
-                  (s) => s.facultyId === f.id || s.faculty.toLowerCase().includes(f.name.toLowerCase())
+                  (s) => (s.facultyId && s.facultyId === f.id) || ((s.faculty || '').toLowerCase().includes((f.name || '').toLowerCase()))
                 );
                 return (
                   <tr key={f.id}>

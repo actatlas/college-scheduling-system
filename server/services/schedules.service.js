@@ -157,7 +157,37 @@ async function validateSchedulePayload({
     }
   }
 
-  // 5. Room Capacity Compatibility
+  // 5. Room Status Usability Check
+  if (roomRow) {
+    const status = String(roomRow.status || '').trim().toLowerCase();
+    const isUnavailable = ['maintenance', 'under maintenance', 'inactive', 'unavailable', 'closed', 'disabled'].includes(status);
+    if (isUnavailable) {
+      const err = new Error(`Room ${roomRow.number} is currently marked as "${roomRow.status}" and cannot be scheduled.`);
+      err.statusCode = 409;
+      err.code = 'ROOM_UNAVAILABLE';
+      throw err;
+    }
+  }
+
+  // 6. Subject-Section Program Relationship Compatibility
+  if (subjectRow && sectionRow) {
+    const subProg = String(subjectRow.program_code || '').trim().toUpperCase();
+    const secCourse = String(sectionRow.course_code || '').trim().toUpperCase();
+    if (subProg && secCourse && subProg !== secCourse && !secCourse.includes(subProg) && !subProg.includes(secCourse)) {
+      const [courseMatch] = await query('SELECT code FROM courses WHERE code = ? AND program_code = ? LIMIT 1', [sectionRow.course_code, subjectRow.program_code]);
+      const [majorMatch] = await query('SELECT code FROM program_majors WHERE code = ? AND program_code = ? LIMIT 1', [sectionRow.course_code, subjectRow.program_code]);
+      const allMajors = await query('SELECT program_code, code FROM program_majors WHERE program_head_id IS NOT NULL OR code IS NOT NULL');
+      const matchingFromAll = Array.isArray(allMajors) && allMajors.some((m) => String(m.code).toUpperCase() === secCourse && String(m.program_code).toUpperCase() === subProg);
+      if (!courseMatch && !majorMatch && !matchingFromAll) {
+        const err = new Error(`Subject "${subjectRow.code}" (${subProg}) is not part of the curriculum for section "${sectionRow.course_code} ${sectionRow.year_level}-${sectionRow.section_label}".`);
+        err.statusCode = 400;
+        err.code = 'INVALID_SUBJECT_SECTION_RELATIONSHIP';
+        throw err;
+      }
+    }
+  }
+
+  // 7. Room Capacity Compatibility
   if (roomRow && sectionRow && sectionRow.students) {
     if (Number(roomRow.capacity) < Number(sectionRow.students)) {
       const err = new Error(`Room ${roomRow.number} capacity (${roomRow.capacity}) is smaller than the section student headcount (${sectionRow.students}).`);
@@ -167,7 +197,7 @@ async function validateSchedulePayload({
     }
   }
 
-  // 6. Subject & Room Type Compatibility (Laboratory vs Lecture)
+  // 8. Subject & Room Type Compatibility (Laboratory vs Lecture)
   if (roomRow && subjectRow) {
     const isLabSubject = Number(subjectRow.lab_hours || 0) > 0;
     const isLabRoom = /lab/i.test(roomRow.type || '') || /lab/i.test(roomRow.building || '');
@@ -179,7 +209,7 @@ async function validateSchedulePayload({
     }
   }
 
-  // 7. Faculty Availability Windows
+  // 9. Faculty Availability Windows
   if (teacherRow) {
     const availabilityRows = await query(
       `SELECT day_of_week, start_time, end_time
@@ -189,45 +219,90 @@ async function validateSchedulePayload({
     );
 
     if (teacherRow.status === 'Part-Time') {
-      if (availabilityRows.length > 0) {
-        const dayRows = availabilityRows.filter((entry) => {
-          const entryDay = String(entry.day_of_week || '').toLowerCase();
-          const targetDay = normalizedDay.toLowerCase();
-          return entryDay.includes(targetDay) || targetDay.includes(entryDay);
-        });
+      if (availabilityRows.length === 0) {
+        const err = new Error(`Part-Time instructor ${teacherRow.name} has no registered availability configured.`);
+        err.statusCode = 409;
+        err.code = 'FACULTY_UNAVAILABLE';
+        throw err;
+      }
 
-        const intervals = dayRows.map((r) => ({
-          start: toMinutes(r.start_time),
-          end: toMinutes(r.end_time),
-        })).sort((a, b) => a.start - b.start);
+      const dayRows = availabilityRows.filter((entry) => {
+        const entryDay = String(entry.day_of_week || '').toLowerCase();
+        const targetDay = normalizedDay.toLowerCase();
+        return entryDay.includes(targetDay) || targetDay.includes(entryDay);
+      });
 
-        const merged = [];
-        for (const iv of intervals) {
-          if (merged.length === 0) {
-            merged.push({ ...iv });
+      const intervals = dayRows.map((r) => ({
+        start: toMinutes(r.start_time),
+        end: toMinutes(r.end_time),
+      })).sort((a, b) => a.start - b.start);
+
+      const merged = [];
+      for (const iv of intervals) {
+        if (merged.length === 0) {
+          merged.push({ ...iv });
+        } else {
+          const prev = merged[merged.length - 1];
+          if (iv.start <= prev.end) {
+            prev.end = Math.max(prev.end, iv.end);
           } else {
-            const prev = merged[merged.length - 1];
-            if (iv.start <= prev.end) {
-              prev.end = Math.max(prev.end, iv.end);
-            } else {
-              merged.push({ ...iv });
-            }
+            merged.push({ ...iv });
           }
         }
+      }
 
-        const startMin = toMinutes(start);
-        const endMin = toMinutes(end);
-        const matchesWindow = merged.some((m) => m.start <= startMin && m.end >= endMin);
+      const startMin = toMinutes(start);
+      const endMin = toMinutes(end);
+      const matchesWindow = merged.some((m) => m.start <= startMin && m.end >= endMin);
 
-        if (!matchesWindow) {
-          const availableSlotsStr = availabilityRows
-            .map((r) => `${r.day_of_week} ${String(r.start_time).slice(0, 5)}-${String(r.end_time).slice(0, 5)}`)
-            .join(', ');
-          const err = new Error(`The requested schedule (${normalizedDay} ${start}-${end}) falls outside Part-Time instructor ${teacherRow.name}'s registered availability window (${availableSlotsStr}).`);
-          err.statusCode = 409;
-          err.code = 'FACULTY_UNAVAILABLE';
-          throw err;
+      if (!matchesWindow) {
+        const availableSlotsStr = availabilityRows
+          .map((r) => `${r.day_of_week} ${String(r.start_time).slice(0, 5)}-${String(r.end_time).slice(0, 5)}`)
+          .join(', ');
+        const err = new Error(`The requested schedule (${normalizedDay} ${start}-${end}) falls outside Part-Time instructor ${teacherRow.name}'s registered availability window (${availableSlotsStr}).`);
+        err.statusCode = 409;
+        err.code = 'FACULTY_UNAVAILABLE';
+        throw err;
+      }
+    } else if (teacherRow.status === 'Full-Time' && availabilityRows.length > 0) {
+      // Full-Time faculty with explicitly configured availability rules by Admin
+      const dayRows = availabilityRows.filter((entry) => {
+        const entryDay = String(entry.day_of_week || '').toLowerCase();
+        const targetDay = normalizedDay.toLowerCase();
+        return entryDay.includes(targetDay) || targetDay.includes(entryDay);
+      });
+
+      const intervals = dayRows.map((r) => ({
+        start: toMinutes(r.start_time),
+        end: toMinutes(r.end_time),
+      })).sort((a, b) => a.start - b.start);
+
+      const merged = [];
+      for (const iv of intervals) {
+        if (merged.length === 0) {
+          merged.push({ ...iv });
+        } else {
+          const prev = merged[merged.length - 1];
+          if (iv.start <= prev.end) {
+            prev.end = Math.max(prev.end, iv.end);
+          } else {
+            merged.push({ ...iv });
+          }
         }
+      }
+
+      const startMin = toMinutes(start);
+      const endMin = toMinutes(end);
+      const matchesWindow = merged.some((m) => m.start <= startMin && m.end >= endMin);
+
+      if (!matchesWindow) {
+        const availableSlotsStr = availabilityRows
+          .map((r) => `${r.day_of_week} ${String(r.start_time).slice(0, 5)}-${String(r.end_time).slice(0, 5)}`)
+          .join(', ');
+        const err = new Error(`The requested schedule (${normalizedDay} ${start}-${end}) falls outside Full-Time instructor ${teacherRow.name}'s configured availability window (${availableSlotsStr}).`);
+        err.statusCode = 409;
+        err.code = 'FACULTY_UNAVAILABLE';
+        throw err;
       }
     }
   }
@@ -298,12 +373,17 @@ async function listSchedules({ user, department, facultyId, program } = {}) {
             sc.section_id,
             COALESCE(CONCAT(sec.course_code, ' ', sec.year_level, '-', sec.section_label), '') AS section_name,
             sec.course_code AS section_course_code,
-            sec.students AS section_students
+            sec.year_level AS year_level,
+            sec.students AS section_students,
+            sem.name AS semester_name,
+            ay.name AS academic_year_name
      FROM schedules sc
      LEFT JOIN subjects sub ON sub.code = sc.subject_code
      LEFT JOIN teachers t ON t.id = sc.faculty_id
      LEFT JOIN rooms r ON r.number = sc.room_number
-     LEFT JOIN sections sec ON sec.id = sc.section_id`;
+     LEFT JOIN sections sec ON sec.id = sc.section_id
+     LEFT JOIN semesters sem ON sem.id = sc.semester_id
+     LEFT JOIN academic_years ay ON ay.id = sc.academic_year_id`;
 
   const conditions = [];
   const params = [];
@@ -312,21 +392,43 @@ async function listSchedules({ user, department, facultyId, program } = {}) {
 
   if (role === 'teacher') {
     let teacherId = user?.teacherId || null;
+    let teacherName = user?.name || null;
     if (!teacherId && user?.email) {
-      const [tRow] = await query('SELECT id FROM teachers WHERE LOWER(TRIM(email)) = ? LIMIT 1', [user.email.trim().toLowerCase()]);
-      if (tRow) teacherId = tRow.id;
+      const [tRow] = await query('SELECT id, name FROM teachers WHERE LOWER(TRIM(email)) = ? LIMIT 1', [user.email.trim().toLowerCase()]);
+      if (tRow) {
+        teacherId = tRow.id;
+        if (!teacherName) teacherName = tRow.name;
+      }
     }
     if (!teacherId && user?.sub) {
-      const [uRow] = await query('SELECT email FROM users WHERE id = ? LIMIT 1', [user.sub]);
-      if (uRow && uRow.email) {
-        const [tRow] = await query('SELECT id FROM teachers WHERE LOWER(TRIM(email)) = ? LIMIT 1', [uRow.email.trim().toLowerCase()]);
-        if (tRow) teacherId = tRow.id;
+      const [uRow] = await query('SELECT id, name, email FROM users WHERE id = ? LIMIT 1', [user.sub]);
+      if (uRow) {
+        if (!teacherName) teacherName = uRow.name;
+        if (uRow.email) {
+          const [tRow] = await query('SELECT id, name FROM teachers WHERE LOWER(TRIM(email)) = ? OR LOWER(TRIM(name)) = ? LIMIT 1', [
+            uRow.email.trim().toLowerCase(),
+            (uRow.name || '').trim().toLowerCase(),
+          ]);
+          if (tRow) {
+            teacherId = tRow.id;
+            if (!teacherName) teacherName = tRow.name;
+          }
+        }
       }
     }
 
+    const orConds = [];
     if (teacherId) {
-      conditions.push('sc.faculty_id = ?');
+      orConds.push('sc.faculty_id = ?');
       params.push(teacherId);
+    }
+    if (teacherName) {
+      orConds.push('LOWER(TRIM(t.name)) = ?');
+      params.push(teacherName.trim().toLowerCase());
+    }
+
+    if (orConds.length > 0) {
+      conditions.push(`(${orConds.join(' OR ')})`);
     } else {
       return [];
     }
@@ -376,6 +478,13 @@ async function listSchedules({ user, department, facultyId, program } = {}) {
     const endTimeStr = String(s.end_time || '').slice(0, 5);
     const timeRange = startTimeStr && endTimeStr ? `${startTimeStr}-${endTimeStr}` : (startTimeStr || '08:00-09:30');
 
+    let yl = s.year_level ? String(s.year_level) : '';
+    if (yl && !yl.includes('Year')) {
+      yl = `${yl}${yl === '1' ? 'st' : yl === '2' ? 'nd' : yl === '3' ? 'rd' : 'th'} Year`;
+    }
+
+    const classMode = (Number(s.lab_hours || 0) > 0 || String(s.room_type || '').toLowerCase().includes('lab')) ? 'Laboratory' : 'Lecture';
+
     return {
       id: String(s.id),
       day: s.day,
@@ -390,8 +499,14 @@ async function listSchedules({ user, department, facultyId, program } = {}) {
       facultyId: s.faculty_id || '',
       room: s.room_number || '',
       building: s.building || 'College Building',
-      modality: 'Face-to-Face',
+      roomType: s.room_type || 'Lecture',
+      classMode,
+      yearLevel: yl || '1st Year',
       program: s.program_code || s.section_course_code || 'BSIT',
+      course: s.section_course_code || s.program_code || 'BSIT',
+      semester: s.semester_name || '1st Semester',
+      academicYear: s.academic_year_name || '2026-2027',
+      modality: 'Face-to-Face',
       color: s.color || '#2563eb',
       status: 'Confirmed'
     };
@@ -672,9 +787,31 @@ async function generateSchedules({ user } = {}) {
     };
   }
 
+  let targetSections = sections;
+  if (user && String(user.role).toLowerCase() === 'program_head') {
+    let allowedPrograms = [];
+    if (user.sub) {
+      const majors = await query('SELECT program_code, code FROM program_majors WHERE program_head_id = ?', [user.sub]);
+      for (const m of majors) {
+        if (m.program_code) allowedPrograms.push(m.program_code);
+        if (m.code) allowedPrograms.push(m.code);
+      }
+    }
+    if (user.program) allowedPrograms.push(user.program);
+    if (user.programCode) allowedPrograms.push(user.programCode);
+    allowedPrograms = [...new Set(allowedPrograms.map((p) => String(p).toUpperCase()))];
+
+    if (allowedPrograms.length > 0) {
+      targetSections = sections.filter((sec) => {
+        const secCourse = String(sec.course_code || '').toUpperCase();
+        return allowedPrograms.includes(secCourse) || allowedPrograms.some((p) => secCourse.includes(p));
+      });
+    }
+  }
+
   let totalRequested = 0;
 
-  for (const sec of sections) {
+  for (const sec of targetSections) {
     const matchingSubjects = subjects.filter(
       (s) => !s.program_code || s.program_code === sec.course_code || sec.course_code.includes(s.program_code)
     );
@@ -705,52 +842,60 @@ async function generateSchedules({ user } = {}) {
         continue;
       }
 
-      const instructorId = sub.instructor_id || (teachers.length > 0 ? teachers[0].id : null);
+      const candidateTeachers = sub.instructor_id
+        ? teachers.filter((t) => t.id === sub.instructor_id)
+        : teachers;
+
       let classScheduled = false;
 
-      for (const day of days) {
+      for (const teacher of candidateTeachers) {
         if (classScheduled) break;
-        for (const slot of timeSlots) {
+        const instructorId = teacher.id;
+
+        for (const day of days) {
           if (classScheduled) break;
+          for (const slot of timeSlots) {
+            if (classScheduled) break;
 
-          for (const roomToTry of suitableRooms) {
-            try {
-              await validateSchedulePayload({
-                day,
-                start_time: slot.start,
-                end_time: slot.end,
-                subject_code: sub.code,
-                section_id: sec.id,
-                faculty_id: instructorId,
-                room_number: roomToTry.number,
-                user,
-              });
+            for (const roomToTry of suitableRooms) {
+              try {
+                await validateSchedulePayload({
+                  day,
+                  start_time: slot.start,
+                  end_time: slot.end,
+                  subject_code: sub.code,
+                  section_id: sec.id,
+                  faculty_id: instructorId,
+                  room_number: roomToTry.number,
+                  user,
+                });
 
-              const res = await query(
-                `INSERT INTO schedules (day, start_time, end_time, subject_code, section_id, faculty_id, room_number, color)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                [day, slot.start, slot.end, sub.code, sec.id, instructorId, roomToTry.number, '#0284c7']
-              );
+                const res = await query(
+                  `INSERT INTO schedules (day, start_time, end_time, subject_code, section_id, faculty_id, room_number, color)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                  [day, slot.start, slot.end, sub.code, sec.id, instructorId, roomToTry.number, '#0284c7']
+                );
 
-              const insertObj = Array.isArray(res) ? res[0] : res;
-              const genId = insertObj?.insertId ? String(insertObj.insertId) : String(Date.now());
+                const insertObj = Array.isArray(res) ? res[0] : res;
+                const genId = insertObj?.insertId ? String(insertObj.insertId) : String(Date.now());
 
-              scheduled.push({
-                id: genId,
-                day,
-                time: `${slot.start.slice(0, 5)}-${slot.end.slice(0, 5)}`,
-                subjectCode: sub.code,
-                sectionId: sec.id,
-                section: `${sec.course_code} ${sec.year_level}-${sec.section_label}`,
-                room: roomToTry.number,
-                facultyId: instructorId,
-              });
+                scheduled.push({
+                  id: genId,
+                  day,
+                  time: `${slot.start.slice(0, 5)}-${slot.end.slice(0, 5)}`,
+                  subjectCode: sub.code,
+                  sectionId: sec.id,
+                  section: `${sec.course_code} ${sec.year_level}-${sec.section_label}`,
+                  room: roomToTry.number,
+                  facultyId: instructorId,
+                });
 
-              classScheduled = true;
-              break;
-            } catch (err) {
-              conflictsAvoided += 1;
-              // Continue checking other rooms or slots
+                classScheduled = true;
+                break;
+              } catch (err) {
+                conflictsAvoided += 1;
+                // Continue checking other rooms or slots
+              }
             }
           }
         }

@@ -257,8 +257,20 @@ const mockQueryExecutor = async (sql, params = []) => {
     return tableData.rooms;
   }
 
-  if (s.includes('SELECT id, name, status FROM teachers ORDER BY id ASC')) {
-    return tableData.teachers;
+  if (s.includes('FROM courses WHERE code = ? AND program_code = ?')) {
+    const courseCode = params[0];
+    const progCode = params[1];
+    if (courseCode === 'BSCS' && progCode === 'ITP') return [{ code: 'BSCS' }];
+    if (courseCode === 'BSIT' && progCode === 'ITP') return [{ code: 'BSIT' }];
+    return [];
+  }
+
+  if (s.includes('FROM program_majors WHERE code = ? AND program_code = ?')) {
+    const code = params[0];
+    const progCode = params[1];
+    if (code === 'BSIT' && progCode === 'ITP') return [{ code: 'BSIT' }];
+    if (code === 'BSCS' && progCode === 'ITP') return [{ code: 'BSCS' }];
+    return [];
   }
 
   return [];

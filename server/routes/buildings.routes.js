@@ -1,7 +1,9 @@
 const express = require('express');
+const { authMiddleware } = require('../middleware/authMiddleware');
 const { query } = require('../utils/db');
 
 const router = express.Router();
+router.use(authMiddleware);
 
 router.get('/', async (req, res, next) => {
   try {

@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:4000/api';
+const API_BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) || 'http://localhost:4000/api';
 
 const getHeaders = () => {
   const token = localStorage.getItem('token');
@@ -31,7 +31,7 @@ const handleResponse = async (response: Response) => {
       }
     }
 
-    // Backend sends errors as { error: "message" } or { error: { message: "..." } } or { message: "..." }
+    // Backend sends errors as { error: "message", code: "CODE" } or { error: { message: "..." } } or { message: "..." }
     let errorMsg = response.statusText;
     if (typeof json.error === 'string') {
       errorMsg = json.error;
@@ -42,6 +42,8 @@ const handleResponse = async (response: Response) => {
     }
     const err: any = new Error(errorMsg);
     err.status = response.status;
+    err.code = json.code;
+    err.response = { status: response.status, data: json };
     throw err;
   }
 

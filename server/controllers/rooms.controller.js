@@ -11,6 +11,9 @@ async function listRooms(req, res, next) {
 
 async function createRoom(req, res, next) {
   try {
+    if (!['admin', 'super_admin'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Forbidden. Only Administrators can create rooms.', code: 'UNAUTHORIZED_ROLE' });
+    }
     const payload = req.body || {};
     if (!payload.number) {
       return res.status(400).json({ error: 'room number is required' });
@@ -27,6 +30,9 @@ async function createRoom(req, res, next) {
 
 async function deleteRoom(req, res, next) {
   try {
+    if (!['admin', 'super_admin'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Forbidden. Only Administrators can delete rooms.', code: 'UNAUTHORIZED_ROLE' });
+    }
     const number = req.params.number;
     await roomsService.deleteRoom(number);
     res.status(204).end();
@@ -43,6 +49,9 @@ async function deleteRoom(req, res, next) {
 
 async function updateRoom(req, res, next) {
   try {
+    if (!['admin', 'super_admin'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Forbidden. Only Administrators can update rooms.', code: 'UNAUTHORIZED_ROLE' });
+    }
     const number = req.params.number;
     const payload = req.body || {};
     const row = await roomsService.updateRoom(number, payload);

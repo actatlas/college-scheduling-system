@@ -176,7 +176,7 @@ export function ExamSchedulesPage() {
       .includes(query.toLowerCase());
 
     const matchesTerm = termFilter === "All" || e.term === termFilter;
-    const matchesProg = matchesProgram(e.program || selectedProgram.shortLabel);
+    const matchesProg = role === "teacher" ? true : matchesProgram(e.program || selectedProgram.shortLabel);
 
     return matchesSearch && matchesTerm && matchesProg;
   });
@@ -461,10 +461,10 @@ export function ExamSchedulesPage() {
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
                 gap: 8,
-                background: "#f8fafc",
+                background: "var(--srcb-surface)",
                 padding: 12,
                 borderRadius: 8,
-                border: "1px solid #e2e8f0",
+                border: "1px solid var(--srcb-border)",
               }}
             >
               {sectionsList.map((sec) => {
@@ -477,10 +477,12 @@ export function ExamSchedulesPage() {
                       alignItems: "center",
                       gap: 8,
                       cursor: "pointer",
-                      padding: "4px 8px",
-                      background: checked ? "#e0f2fe" : "#ffffff",
+                      padding: "6px 10px",
+                      background: checked ? "rgba(56, 189, 248, 0.12)" : "transparent",
                       borderRadius: 6,
-                      border: `1px solid ${checked ? "#0284c7" : "#cbd5e1"}`,
+                      fontSize: "0.85rem",
+                      fontWeight: checked ? 700 : 500,
+                      color: checked ? "#0284c7" : "var(--srcb-text)",
                     }}
                   >
                     <input
@@ -488,9 +490,7 @@ export function ExamSchedulesPage() {
                       checked={checked}
                       onChange={() => handleToggleSection(sec.section)}
                     />
-                    <span style={{ fontSize: "0.85rem", fontWeight: 500 }}>
-                      {sec.section} ({sec.students} sts)
-                    </span>
+                    <span>{sec.section} ({sec.students} sts)</span>
                   </label>
                 );
               })}

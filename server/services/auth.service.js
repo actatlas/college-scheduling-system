@@ -7,6 +7,12 @@ const DEFAULT_ADMIN_PASSWORD = '@admin123';
 const DEFAULT_ADMIN_NAME = 'System Administrator';
 
 async function ensureCatalogSeed() {
+  try {
+    await query("ALTER TABLE users MODIFY COLUMN role ENUM('super_admin', 'admin', 'teacher', 'program_head') NOT NULL DEFAULT 'admin'");
+  } catch (err) {
+    // ignore if already aligned or unsupported in mock
+  }
+
   const [program] = await query('SELECT code FROM programs WHERE code = ? LIMIT 1', ['ITP']);
   if (!program) {
     await query('INSERT INTO programs (code, name, focus) VALUES (?, ?, ?)', ['ITP', 'Information Technology Program', 'ITP']);

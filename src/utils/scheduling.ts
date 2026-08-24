@@ -16,24 +16,51 @@ export interface AiRecommendation {
   severity: 'High' | 'Medium' | 'Low'
 }
 
+function to12Hour(t: string): string {
+  if (!t) return ''
+  const [hStr, mStr = '00'] = t.split(':')
+  let h = Number(hStr) || 0
+  const m = mStr.slice(0, 2)
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  h = h % 12 || 12
+  return `${h}:${m} ${ampm}`
+}
+
+export function formatAvailabilitySlotRange(slot: string): string {
+  if (!slot) return ''
+  if (slot.includes('-')) {
+    const [start, end] = slot.split('-').map((s) => s.trim())
+    return `${to12Hour(start)} - ${to12Hour(end)}`
+  }
+  return to12Hour(slot)
+}
+
 export function parseTeacherAvailability(raw?: string | null): TeacherAvailabilityEntry[] {
   if (!raw) return []
 
-  return raw
-    .split('|')
-    .map((entry) => entry.trim())
-    .filter(Boolean)
-    .map((entry) => {
-      const [day, ...slots] = entry.split(':')
-      return {
-        day: day.trim(),
-        slots: slots
-          .join(':')
-          .split(',')
-          .map((slot) => slot.trim())
-          .filter(Boolean),
-      }
-    })
+  const map = new Map<string, string[]>()
+  const entries = raw.split('|').map((entry) => entry.trim()).filter(Boolean)
+
+  for (const entry of entries) {
+    const [day, ...slots] = entry.split(':')
+    const d = day.trim()
+    const sList = slots.join(':').split(',').map((s) => s.trim()).filter(Boolean)
+    const existing = map.get(d) || []
+    map.set(d, [...existing, ...sList])
+  }
+
+  return Array.from(map.entries()).map(([day, slots]) => ({
+    day,
+    slots: Array.from(new Set(slots)),
+  }))
+}
+
+export function formatGroupedAvailability(raw?: string | null): Array<{ day: string; formattedRange: string }> {
+  const parsed = parseTeacherAvailability(raw)
+  return parsed.map(({ day, slots }) => ({
+    day,
+    formattedRange: slots.map(formatAvailabilitySlotRange).join(', ') || 'All Day',
+  }))
 }
 
 export interface SlotValidationResult {
@@ -114,14 +141,22 @@ export function validateScheduleSlot(
     const parsedAvail = parseTeacherAvailability(teacher.availability)
     const dayEntry = parsedAvail.find((d) => d.day.toLowerCase() === candidate.day.toLowerCase())
     if (!dayEntry) {
-      warnings.push(
-        `Part-time availability warning: ${teacher.name} is not marked as available on ${candidate.day}. (Availability: ${teacher.availability})`
+      errors.push(
+        `Instructor unavailable: ${teacher.name} has not registered availability for ${candidate.day}.`
       )
     } else if (dayEntry.slots.length > 0) {
-      const isSlotListed = dayEntry.slots.some((slot) => candidate.time.includes(slot) || slot.includes(candidate.time.split('-')[0]))
+      const [candStart] = candidate.time.split('-').map((t) => t.trim())
+      const isSlotListed = dayEntry.slots.some((slot) => {
+        const [sStart] = slot.split('-').map((t) => t.trim())
+        return (
+          slot.includes(candidate.time) ||
+          candidate.time.includes(slot) ||
+          (sStart && candStart && sStart.slice(0, 2) === candStart.slice(0, 2))
+        )
+      })
       if (!isSlotListed) {
-        warnings.push(
-          `Part-time time slot advisory: ${teacher.name} preferred times on ${candidate.day} are [${dayEntry.slots.join(', ')}].`
+        errors.push(
+          `Instructor availability mismatch: ${teacher.name} is available on ${candidate.day} at [${dayEntry.slots.map(formatAvailabilitySlotRange).join(', ')}], but this slot is ${candidate.time}.`
         )
       }
     }

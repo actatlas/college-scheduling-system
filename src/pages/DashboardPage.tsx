@@ -12,6 +12,7 @@ import {
   Filter,
   LayoutGrid,
   Clock,
+  Eye,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { StatCard } from "../components/common/StatCard";
@@ -20,6 +21,7 @@ import { useEffect, useState } from "react";
 import { useToast } from "../components/common/Toast";
 import { useNavigate } from "react-router-dom";
 import { useProgramContext } from "../contexts/ProgramContext";
+import { ScheduleDetailsModal } from "../components/schedule/ScheduleDetailsModal";
 import type { UserRole, ClassScheduleItem } from "../types";
 
 const AVAILABILITY_DAYS = [
@@ -60,6 +62,8 @@ export function DashboardPage() {
   const [facultyList, setFacultyList] = useState<any[]>([]);
   const [availabilityMessage, setAvailabilityMessage] = useState("");
   const [selectedSlots, setSelectedSlots] = useState<Record<string, string[]>>({});
+  const [viewingSchedule, setViewingSchedule] = useState<ClassScheduleItem | null>(null);
+  const [subjectsList, setSubjectsList] = useState<any[]>([]);
 
   const [metrics, setMetrics] = useState({
     faculty: "0",
@@ -81,7 +85,9 @@ export function DashboardPage() {
         api.get("/sections").catch(() => ({ data: { data: [] } })),
         api.get("/schedules").catch(() => ({ data: { data: [] } })),
         api.get("/conflicts").catch(() => ({ data: { data: [] } })),
-        api.get("/users").catch(() => ({ data: { data: [] } })),
+        role === "super_admin"
+          ? api.get("/users").catch(() => ({ data: { data: [] } }))
+          : Promise.resolve({ data: { data: [] } }),
         api.get("/exams").catch(() => ({ data: { data: [] } })),
       ]);
 
@@ -95,6 +101,7 @@ export function DashboardPage() {
       const exms = exmRes.data?.data || [];
 
       setFacultyList(facs);
+      setSubjectsList(subs);
 
       setMetrics({
         faculty: String(facs.length),
@@ -148,29 +155,26 @@ export function DashboardPage() {
     return () => window.removeEventListener("scheduling_storage_update", handleUpdate);
   }, [role, selectedProgram.key, userName]);
 
-  // Parse availability message into slot map
   useEffect(() => {
     if (!availabilityMessage) return;
     const parsed = availabilityMessage
       .split("|")
       .map((entry) => entry.trim())
-      .filter(Boolean)
-      .map((entry) => {
-        const [day, ...slots] = entry.split(":");
-        return {
-          day: day.trim(),
-          slots: slots
-            .join(":")
-            .split(",")
-            .map((slot) => slot.trim())
-            .filter(Boolean),
-        };
-      });
-    const slotsMap: Record<string, string[]> = {};
-    for (const entry of parsed) {
-      slotsMap[entry.day] = entry.slots;
+      .filter(Boolean);
+
+    const initialMap: Record<string, string[]> = {};
+    for (const item of parsed) {
+      const [day, slotsPart] = item.split(":");
+      if (day && slotsPart) {
+        const dayKey = day.trim();
+        const slots = slotsPart
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        initialMap[dayKey] = slots;
+      }
     }
-    setSelectedSlots(slotsMap);
+    setSelectedSlots(initialMap);
   }, [availabilityMessage]);
 
   const handleCheckboxChange = (day: string, slot: string, checked: boolean) => {
@@ -179,7 +183,7 @@ export function DashboardPage() {
     setSelectedSlots((prev) => {
       const daySlots = prev[day] || [];
       const nextSlots = checked
-        ? [...daySlots, slot]
+        ? (daySlots.includes(slot) ? daySlots : [...daySlots, slot])
         : daySlots.filter((s) => s !== slot);
       return {
         ...prev,
@@ -188,9 +192,11 @@ export function DashboardPage() {
     });
   };
 
-  const handleSaveAvailability = async () => {
-    if (role === "teacher" && teacherStatus === "Full-Time") return;
+  const handleMouseUpSlots = () => {
+    setIsDraggingAvail(false);
+  };
 
+  const handleSaveAvailability = async () => {
     setIsSavingAvailability(true);
     const nextValue = Object.entries(selectedSlots)
       .filter(([_, slots]) => slots.length > 0)
@@ -227,13 +233,23 @@ export function DashboardPage() {
     return (selectedSlots[day] || []).includes(slot);
   };
 
-  // Calculated metrics for EduSched reference card layout
-  const totalSubjectsCount = Math.max(Number(metrics.subjects) || 120, Number(metrics.schedules) || 84);
-  const scheduledCount = Number(metrics.schedules) || schedules.length || 84;
-  const unscheduledCount = Math.max(0, totalSubjectsCount - scheduledCount);
-  const completionRate = Math.min(100, Math.round((scheduledCount / Math.max(1, totalSubjectsCount)) * 100));
+  const targetSubjects = role === "program_head"
+    ? subjectsList.filter((s: any) => !s.program || s.program === selectedProgram.key || s.department === selectedProgram.label)
+    : subjectsList;
 
-  // Dynamic Immediate Attention Items
+  const totalSubjectsCount = Math.max(targetSubjects.length, 1);
+  const scheduledSubjectCodes = new Set(
+    schedules.map((s: any) => (s.subjectCode || "").toUpperCase()).filter(Boolean)
+  );
+  const unscheduledSubjects = targetSubjects.filter(
+    (s: any) =>
+      !scheduledSubjectCodes.has((s.code || "").toUpperCase()) &&
+      !schedules.some((sc: any) => (sc.subject || "").toLowerCase() === (s.name || "").toLowerCase())
+  );
+  const unscheduledCount = unscheduledSubjects.length;
+  const scheduledCount = Math.max(0, targetSubjects.length - unscheduledCount);
+  const completionRate = targetSubjects.length > 0 ? Math.min(100, Math.round((scheduledCount / targetSubjects.length) * 100)) : 100;
+
   const attentionItems = [
     {
       code: "CS301 - Dr. Alan Turing",
@@ -246,13 +262,12 @@ export function DashboardPage() {
       path: "/faculty",
     },
     {
-      code: "CS101 - Introductory",
-      reason: "Unassigned Faculty",
-      path: "/schedules",
+      code: `${unscheduledCount} Unscheduled Subject${unscheduledCount === 1 ? "" : "s"}`,
+      reason: "Action Required: Allocate Timetable Blocks",
+      path: "/schedules?view=unscheduled",
     },
   ];
 
-  // Dynamic faculty load items for reference layout
   const displayFaculty = facultyList.length > 0 ? facultyList.slice(0, 4) : [
     { id: "1", name: "Dr. A. Turing", title: "Professor", units: 12, maxUnits: 15, isOverload: false },
     { id: "2", name: "Prof. A. Lovelace", title: "Assoc. Professor", units: 18, maxUnits: 15, isOverload: true },
@@ -390,8 +405,28 @@ export function DashboardPage() {
                       <span className="progress-metric-total">/{totalSubjectsCount}</span>
                     </div>
                   </div>
-                  <div className="progress-metric-box unscheduled">
-                    <span className="progress-metric-label">Unscheduled</span>
+                  <div
+                    className="progress-metric-box unscheduled"
+                    onClick={() => navigate("/schedules?view=unscheduled")}
+                    role="button"
+                    tabIndex={0}
+                    title="Click to view and schedule remaining subjects"
+                    style={{
+                      cursor: "pointer",
+                      transition: "transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease",
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        navigate("/schedules?view=unscheduled");
+                      }
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span className="progress-metric-label">Unscheduled</span>
+                      <span style={{ fontSize: "0.7rem", color: "#d97706", fontWeight: 700, display: "flex", alignItems: "center", gap: 2 }}>
+                        View <ChevronRight size={12} />
+                      </span>
+                    </div>
                     <div className="progress-metric-number">
                       {unscheduledCount} <span style={{ fontSize: "0.82rem", fontWeight: 600 }}>Remaining</span>
                     </div>
@@ -739,8 +774,8 @@ export function DashboardPage() {
                 <div
                   className="timesheet-drag-container"
                   style={{ marginTop: 14 }}
-                  onMouseLeave={() => setIsDraggingAvail(false)}
-                  onMouseUp={() => setIsDraggingAvail(false)}
+                  onMouseLeave={handleMouseUpSlots}
+                  onMouseUp={handleMouseUpSlots}
                 >
                   <div className="table-wrap">
                     <table className="data-table" style={{ textAlign: "center", userSelect: "none" }}>
@@ -844,6 +879,7 @@ export function DashboardPage() {
                         <th>Building</th>
                         <th>Section</th>
                         <th>Modality</th>
+                        <th style={{ width: 90, textAlign: "center" }}>Details</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -855,7 +891,12 @@ export function DashboardPage() {
                           return true;
                         })
                         .map((slot) => (
-                          <tr key={slot.id}>
+                          <tr
+                            key={slot.id}
+                            onClick={() => setViewingSchedule(slot)}
+                            style={{ cursor: "pointer" }}
+                            title="Click to view assigned class schedule details"
+                          >
                             <td>
                               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                 <div
@@ -900,11 +941,25 @@ export function DashboardPage() {
                                   href={slot.onlineLink}
                                   target="_blank"
                                   rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
                                   style={{ display: "inline-block", marginLeft: 6, fontSize: "0.75rem", color: "#2563eb" }}
                                 >
                                   Join Link
                                 </a>
                               )}
+                            </td>
+                            <td style={{ textAlign: "center" }}>
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setViewingSchedule(slot);
+                                }}
+                                style={{ padding: "4px 8px", fontSize: "0.74rem", display: "inline-flex", alignItems: "center", gap: 4 }}
+                              >
+                                <Eye size={12} /> View
+                              </button>
                             </td>
                           </tr>
                         ))}
@@ -916,6 +971,13 @@ export function DashboardPage() {
           </div>
         </>
       )}
+
+      {/* Read-Only Assigned Schedule Details Modal */}
+      <ScheduleDetailsModal
+        isOpen={Boolean(viewingSchedule)}
+        onClose={() => setViewingSchedule(null)}
+        schedule={viewingSchedule}
+      />
     </motion.div>
   );
 }

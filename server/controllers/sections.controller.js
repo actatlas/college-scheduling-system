@@ -11,8 +11,8 @@ async function listSections(req, res, next) {
 
 async function createSection(req, res, next) {
   try {
-    if (req.user?.role !== 'admin') {
-      return res.status(403).json({ error: 'Forbidden' });
+    if (!['admin', 'super_admin'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Forbidden. Only Administrators can create sections.', code: 'UNAUTHORIZED_ROLE' });
     }
     const payload = req.body || {};
     const row = await sectionsService.createSection(payload);
@@ -27,8 +27,8 @@ async function createSection(req, res, next) {
 
 async function updateSection(req, res, next) {
   try {
-    if (req.user?.role !== 'admin') {
-      return res.status(403).json({ error: 'Forbidden' });
+    if (!['admin', 'super_admin'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Forbidden. Only Administrators can update sections.', code: 'UNAUTHORIZED_ROLE' });
     }
     const { id } = req.params;
     const payload = req.body || {};
@@ -41,8 +41,8 @@ async function updateSection(req, res, next) {
 
 async function deleteSection(req, res, next) {
   try {
-    if (req.user?.role !== 'admin') {
-      return res.status(403).json({ error: 'Forbidden' });
+    if (!['admin', 'super_admin'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Forbidden. Only Administrators can delete sections.', code: 'UNAUTHORIZED_ROLE' });
     }
     const { id } = req.params;
     await sectionsService.deleteSection(id);

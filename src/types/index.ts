@@ -70,6 +70,8 @@ export interface ClassScheduleItem {
   id: string
   day: string
   time: string // e.g. "08:00-09:30"
+  startTime?: string
+  endTime?: string
   subjectCode: string
   subject: string
   section: string
@@ -77,7 +79,13 @@ export interface ClassScheduleItem {
   faculty: string
   facultyId?: string
   room: string
+  roomType?: string
   building: BuildingType | string
+  classMode?: string // e.g. "Lecture" | "Laboratory"
+  yearLevel?: string
+  course?: string
+  semester?: string
+  academicYear?: string
   modality: ClassModality
   onlineLink?: string
   isMajor?: boolean

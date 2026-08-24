@@ -136,8 +136,15 @@ function setupMockDb() {
       return rm ? [rm] : [];
     }
 
-    if (s.includes('FROM program_majors') && s.includes('program_head_id = ?')) {
-      return testState.program_majors.filter((m) => m.program_head_id === params[0]);
+    if (s.includes('FROM program_majors')) {
+      if (s.includes('program_head_id = ?')) {
+        return testState.program_majors.filter((m) => m.program_head_id === params[0]);
+      }
+      return testState.program_majors;
+    }
+
+    if (s.includes('FROM courses')) {
+      return [{ code: 'BSIT', program_code: 'ITP' }];
     }
 
     if (s.includes('FROM schedules WHERE id != ?')) {

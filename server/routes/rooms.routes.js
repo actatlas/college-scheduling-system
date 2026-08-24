@@ -1,11 +1,14 @@
 const express = require('express');
-const { listRooms, createRoom } = require('../controllers/rooms.controller');
+const { authMiddleware } = require('../middleware/authMiddleware');
+const { listRooms, createRoom, updateRoom, deleteRoom } = require('../controllers/rooms.controller');
 
 const router = express.Router();
+router.use(authMiddleware);
+
 router.get('/', listRooms);
 router.post('/', createRoom);
-router.delete('/:number', require('../controllers/rooms.controller').deleteRoom);
-router.put('/:number', require('../controllers/rooms.controller').updateRoom);
+router.delete('/:number', deleteRoom);
+router.put('/:number', updateRoom);
 
 module.exports = router;
 

@@ -4,20 +4,24 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../data/apiClient";
 import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
+import { useSearchParams } from "react-router-dom";
 import {
   Plus,
   Search,
   CalendarDays,
   ListFilter,
+  CalendarRange,
   Edit2,
   Trash2,
   AlertTriangle,
   CheckCircle2,
   Clock,
   ExternalLink,
+  Eye,
 } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
-import { validateScheduleSlot } from "../utils/scheduling";
+import { validateScheduleSlot, formatGroupedAvailability } from "../utils/scheduling";
+import { ScheduleDetailsModal } from "../components/schedule/ScheduleDetailsModal";
 import type { ClassScheduleItem, ClassModality, BuildingType } from "../types";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -90,12 +94,30 @@ export function SchedulesPage() {
   const [scheduleItems, setScheduleItems] = useState<ClassScheduleItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialView = (searchParams.get("view") || searchParams.get("filter") || "grid") as "grid" | "list" | "unscheduled";
+  const [viewMode, setViewMode] = useState<"grid" | "list" | "unscheduled">(
+    initialView === "unscheduled" ? "unscheduled" : initialView === "list" ? "list" : "grid"
+  );
+
+  useEffect(() => {
+    const v = searchParams.get("view") || searchParams.get("filter");
+    if (v === "unscheduled") {
+      setViewMode("unscheduled");
+    } else if (v === "list") {
+      setViewMode("list");
+    } else if (v === "grid") {
+      setViewMode("grid");
+    }
+  }, [searchParams]);
+
   const [selectedDayFilter, setSelectedDayFilter] = useState<string>("All");
   const [selectedFacultyFilter, setSelectedFacultyFilter] = useState<string>("All");
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<ClassScheduleItem | null>(null);
+  const [viewingSchedule, setViewingSchedule] = useState<ClassScheduleItem | null>(null);
   const [isDraggingGrid, setIsDraggingGrid] = useState(false);
   const [dragStart, setDragStart] = useState<{ day: string; slotIdx: number } | null>(null);
   const [dragCurrent, setDragCurrent] = useState<{ day: string; slotIdx: number } | null>(null);
@@ -242,7 +264,7 @@ export function SchedulesPage() {
         setIsOpen(true);
       }
     } catch (err: any) {
-      toast.push(err?.response?.data?.error || "Failed to update schedule location", "error");
+      toast.push(err?.message || err?.response?.data?.error || "Failed to update schedule location", "error");
       fetchSchedules();
     }
   };
@@ -276,6 +298,62 @@ export function SchedulesPage() {
     }
     return subjectsList;
   }, [role, subjectsList, selectedProgram.key, matchesProgram]);
+
+  const scheduledSubjectCodes = useMemo(() => {
+    return new Set(
+      scheduleItems.map((s) => (s.subjectCode || "").toUpperCase()).filter(Boolean)
+    );
+  }, [scheduleItems]);
+
+  const unscheduledSubjects = useMemo(() => {
+    return availableSubjects.filter((sub) => {
+      const codeMatches = scheduledSubjectCodes.has((sub.code || "").toUpperCase());
+      const nameMatches = scheduleItems.some(
+        (sc) => (sc.subject || "").toLowerCase() === (sub.name || "").toLowerCase()
+      );
+      return !codeMatches && !nameMatches;
+    });
+  }, [availableSubjects, scheduledSubjectCodes, scheduleItems]);
+
+  const filteredUnscheduled = useMemo(() => {
+    if (!query.trim()) return unscheduledSubjects;
+    const q = query.toLowerCase();
+    return unscheduledSubjects.filter(
+      (sub) =>
+        (sub.code && sub.code.toLowerCase().includes(q)) ||
+        (sub.name && sub.name.toLowerCase().includes(q)) ||
+        (sub.department && sub.department.toLowerCase().includes(q)) ||
+        (sub.program && sub.program.toLowerCase().includes(q))
+    );
+  }, [unscheduledSubjects, query]);
+
+  const handleScheduleUnscheduledSubject = (sub: any) => {
+    if (!canCreate) return;
+    setEditingSchedule(null);
+    const defFac = facultyList.find((f) => f.id === sub.instructorId || f.name === sub.instructor) || facultyList[0];
+    const defSec = sectionsList.find((s) => s.program === sub.program || s.course === sub.program) || sectionsList[0];
+    const defSecVal = defSec ? (defSec.course && defSec.section ? `${defSec.course} ${defSec.yearLevel || ''}-${defSec.section}`.trim() : defSec.section) : "BSIT 1-A";
+    const isLab = Number(sub.labHours || 0) > 0;
+    const defRoom = roomsList.find((r) => isLab ? (/lab/i.test(r.type || '') || /lab/i.test(r.building || '')) : true)?.number || roomsList[0]?.number || "COL-101";
+    const defBuilding = roomsList[0]?.building || "College Building";
+
+    setForm({
+      day: "Monday",
+      time: "08:00-09:30",
+      subjectCode: sub.code || "",
+      subject: sub.name || "",
+      section: defSecVal,
+      facultyId: defFac?.id || "",
+      faculty: defFac?.name || "",
+      room: defRoom,
+      building: defBuilding as BuildingType,
+      modality: "Face-to-Face",
+      onlineLink: "",
+      isMajor: Boolean(sub.isMajor),
+      program: sub.program || selectedProgram.key || "BSIT",
+    });
+    setIsOpen(true);
+  };
 
   const handleSubjectChange = (code: string) => {
     const sub = subjectsList.find((s) => s.code === code);
@@ -318,7 +396,10 @@ export function SchedulesPage() {
   }, [form.day, form.time, form.room, form.building, form.faculty, form.facultyId, form.section, form.modality, isOpen, editingSchedule, scheduleItems, facultyList]);
 
   const handleEdit = (item: ClassScheduleItem) => {
-    if (!canCreate) return;
+    if (!canCreate) {
+      setViewingSchedule(item);
+      return;
+    }
     setEditingSchedule(item);
     setForm({
       day: item.day,
@@ -348,7 +429,7 @@ export function SchedulesPage() {
       toast.push("Class schedule removed", "success");
       fetchSchedules();
     } catch (err: any) {
-      toast.push(err?.response?.data?.error || "Failed to delete schedule", "error");
+      toast.push(err?.message || err?.response?.data?.error || "Failed to delete schedule", "error");
     } finally {
       setDeletingId(null);
     }
@@ -526,7 +607,11 @@ export function SchedulesPage() {
         <div className="card__header" style={{ flexWrap: "wrap", gap: 12 }}>
           <div>
             <p className="eyebrow">Class Timetable</p>
-            <h3>Scheduled Classes ({visibleSchedules.length})</h3>
+            <h3>
+              {viewMode === "unscheduled"
+                ? `Unscheduled Curriculum Subjects (${filteredUnscheduled.length})`
+                : `Scheduled Classes (${visibleSchedules.length})`}
+            </h3>
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -534,7 +619,10 @@ export function SchedulesPage() {
             <div style={{ display: "flex", background: "#e2e8f0", borderRadius: 8, padding: 2 }}>
               <button
                 type="button"
-                onClick={() => setViewMode("grid")}
+                onClick={() => {
+                  setViewMode("grid");
+                  setSearchParams({});
+                }}
                 style={{
                   padding: "6px 12px",
                   borderRadius: 6,
@@ -552,7 +640,10 @@ export function SchedulesPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setViewMode("list")}
+                onClick={() => {
+                  setViewMode("list");
+                  setSearchParams({});
+                }}
                 style={{
                   padding: "6px 12px",
                   borderRadius: 6,
@@ -567,6 +658,42 @@ export function SchedulesPage() {
               >
                 <ListFilter size={14} style={{ display: "inline", marginRight: 4 }} />
                 List View
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode("unscheduled");
+                  setSearchParams({ view: "unscheduled" });
+                }}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 6,
+                  border: "none",
+                  background: viewMode === "unscheduled" ? "#ffffff" : "transparent",
+                  fontWeight: 600,
+                  fontSize: "0.85rem",
+                  cursor: "pointer",
+                  color: viewMode === "unscheduled" ? "#d97706" : "#64748b",
+                  boxShadow: viewMode === "unscheduled" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <CalendarRange size={14} />
+                <span>Unscheduled</span>
+                <span
+                  style={{
+                    padding: "1px 6px",
+                    borderRadius: 10,
+                    fontSize: "0.72rem",
+                    fontWeight: 700,
+                    background: viewMode === "unscheduled" ? "#fef3c7" : "rgba(148, 163, 184, 0.3)",
+                    color: viewMode === "unscheduled" ? "#92400e" : "#475569",
+                  }}
+                >
+                  {unscheduledSubjects.length}
+                </span>
               </button>
             </div>
 
@@ -773,7 +900,12 @@ export function SchedulesPage() {
                                     JSON.stringify({ type: "move_schedule", item })
                                   );
                                 }}
-                                title={canCreate ? "Drag to reschedule to another slot" : ""}
+                                onClick={() => {
+                                  if (!canCreate) {
+                                    setViewingSchedule(item);
+                                  }
+                                }}
+                                title={canCreate ? "Drag to reschedule to another slot" : "Click to view official assigned schedule details"}
                                 style={{
                                   background: item.modality === "Online" ? "#f0fdf4" : "#eff6ff",
                                   borderLeft: `5px solid ${item.color || (item.modality === "Online" ? "#10b981" : "#2563eb")}`,
@@ -790,6 +922,7 @@ export function SchedulesPage() {
                                   justifyContent: "space-between",
                                   textAlign: "left",
                                   boxShadow: "0 2px 5px rgba(15, 23, 42, 0.06)",
+                                  cursor: canCreate ? "grab" : "pointer",
                                 }}
                               >
                                 <div>
@@ -967,7 +1100,7 @@ export function SchedulesPage() {
                     </div>
 
                     {/* Card Actions */}
-                    {canCreate && (
+                    {canCreate ? (
                       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12, paddingTop: 8, borderTop: "1px solid #f1f5f9" }}>
                         <button
                           type="button"
@@ -985,6 +1118,110 @@ export function SchedulesPage() {
                           style={{ padding: "5px 10px", fontSize: "0.78rem", color: "#dc2626", borderColor: "#fca5a5", display: "inline-flex", alignItems: "center", gap: 4 }}
                         >
                           <Trash2 size={13} /> Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12, paddingTop: 8, borderTop: "1px solid #f1f5f9" }}>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={() => setViewingSchedule(item)}
+                          style={{ padding: "5px 12px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: 5 }}
+                        >
+                          <Eye size={13} /> View Details
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Unscheduled Subjects View */}
+        {viewMode === "unscheduled" && (
+          <div style={{ marginTop: 20 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <div>
+                <h4 style={{ margin: 0, fontSize: "1rem", color: "var(--srcb-text)" }}>
+                  Curriculum Subjects Awaiting Class Schedule ({filteredUnscheduled.length})
+                </h4>
+                <p className="muted" style={{ margin: "2px 0 0", fontSize: "0.84rem" }}>
+                  These subjects are active in the institutional catalog but do not currently have an assigned timetable block.
+                </p>
+              </div>
+              <span className="pill pill--amber">
+                {filteredUnscheduled.length} Unscheduled
+              </span>
+            </div>
+
+            {filteredUnscheduled.length === 0 ? (
+              <div className="card" style={{ textAlign: "center", padding: "40px 20px" }}>
+                <CheckCircle2 size={40} color="#10b981" style={{ margin: "0 auto 12px" }} />
+                <h3 style={{ margin: 0, color: "var(--srcb-text)" }}>All Academic Subjects Scheduled</h3>
+                <p className="muted" style={{ margin: "6px 0 0", fontSize: "0.88rem" }}>
+                  Every active curriculum subject in the institutional database has been allocated a timetable schedule.
+                </p>
+              </div>
+            ) : (
+              <div className="grid-3" style={{ gap: 16 }}>
+                {filteredUnscheduled.map((sub) => (
+                  <div
+                    key={sub.code || sub.id}
+                    className="card"
+                    style={{
+                      borderLeft: "4px solid #f59e0b",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                      padding: 16,
+                    }}
+                  >
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                        <span style={{ fontWeight: 800, fontSize: "0.95rem", color: "var(--srcb-navy)" }}>
+                          {sub.code}
+                        </span>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <span className={`pill ${sub.isMajor ? "pill--royal" : "pill--slate"}`} style={{ fontSize: "0.7rem" }}>
+                            {sub.isMajor ? "Major" : "Gen Ed"}
+                          </span>
+                          <span className="pill pill--amber" style={{ fontSize: "0.7rem" }}>
+                            Unscheduled
+                          </span>
+                        </div>
+                      </div>
+
+                      <h4 style={{ fontSize: "0.92rem", color: "var(--srcb-text)", margin: "0 0 8px 0", fontWeight: 600, lineHeight: 1.3 }}>
+                        {sub.name}
+                      </h4>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 10px", fontSize: "0.8rem", color: "var(--srcb-text-muted)", background: "var(--srcb-surface-alt, rgba(148, 163, 184, 0.08))", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--srcb-border)" }}>
+                        <div>
+                          <strong>Department:</strong> {sub.program || sub.department || "Academic"}
+                        </div>
+                        <div>
+                          <strong>Units:</strong> {sub.units || 3} Units
+                        </div>
+                        <div>
+                          <strong>Lec Hours:</strong> {sub.lecHours || sub.lectureHours || 3} hrs
+                        </div>
+                        <div>
+                          <strong>Lab Hours:</strong> {sub.labHours || 0} hrs
+                        </div>
+                      </div>
+                    </div>
+
+                    {canCreate && (
+                      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14, paddingTop: 10, borderTop: "1px solid var(--srcb-border)" }}>
+                        <button
+                          type="button"
+                          className="action-button"
+                          onClick={() => handleScheduleUnscheduledSubject(sub)}
+                          style={{ padding: "6px 14px", fontSize: "0.82rem", display: "inline-flex", alignItems: "center", gap: 6 }}
+                        >
+                          <CalendarRange size={14} /> Schedule Now
                         </button>
                       </div>
                     )}
@@ -1006,237 +1243,351 @@ export function SchedulesPage() {
           setEditingSchedule(null);
         }}
       >
-        <div className="form-grid">
-          {/* Day & Time */}
-          <div className="field-group">
-            <label htmlFor="schedDay">Teaching Day</label>
-            <select
-              id="schedDay"
-              value={form.day}
-              onChange={(e) => setForm({ ...form, day: e.target.value })}
-            >
-              {DAYS.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="field-group">
-            <label htmlFor="schedTime">Time Slot</label>
-            <select
-              id="schedTime"
-              value={form.time}
-              onChange={(e) => setForm({ ...form, time: e.target.value })}
-            >
-              {!TIME_SLOTS.includes(form.time) && form.time && (
-                <option value={form.time}>
-                  {form.time} (Selected Range)
-                </option>
-              )}
-              {TIME_SLOTS.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Subject */}
-          <div className="field-group" style={{ gridColumn: "1 / -1" }}>
-            <label htmlFor="schedSubject">Academic Subject</label>
-            <select
-              id="schedSubject"
-              value={form.subjectCode}
-              onChange={(e) => handleSubjectChange(e.target.value)}
-            >
-              <option value="">Select subject</option>
-              {availableSubjects.map((sub) => (
-                <option key={sub.code} value={sub.code}>
-                  {sub.code} - {sub.name} ({sub.isMajor ? "Major" : "Gen Ed"} · {sub.program || sub.department})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Section */}
-          <div className="field-group">
-            <label htmlFor="schedSection">Student Section</label>
-            <select
-              id="schedSection"
-              value={form.section}
-              onChange={(e) => setForm({ ...form, section: e.target.value })}
-            >
-              <option value="">Select section</option>
-              {sectionsList.map((sec, idx) => {
-                const secLabel = sec.section ? (sec.course ? `${sec.course} ${sec.yearLevel || ''}-${sec.section}`.trim() : sec.section) : `Section ${idx + 1}`;
-                const secValue = sec.section ? (sec.course ? `${sec.course} ${sec.yearLevel || ''}-${sec.section}`.trim() : sec.section) : secLabel;
-                return (
-                  <option key={sec.id || idx} value={secValue}>
-                    {secLabel} ({sec.students || 30} students)
-                  </option>
-                );
-              })}
-            </select>
-          </div>
-
-          {/* Faculty / Instructor */}
-          <div className="field-group">
-            <label htmlFor="schedFaculty">Instructor</label>
-            <select
-              id="schedFaculty"
-              value={form.facultyId}
-              onChange={(e) => {
-                const fac = facultyList.find((f) => f.id === e.target.value);
-                setForm({
-                  ...form,
-                  facultyId: e.target.value,
-                  faculty: fac ? fac.name : "",
-                });
-              }}
-            >
-              <option value="">Select instructor</option>
-              {facultyList.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name} ({f.status} · {f.department})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Modality: Face-to-Face vs Online */}
-          <div className="field-group">
-            <label htmlFor="schedModality">Teaching Modality</label>
-            <select
-              id="schedModality"
-              value={form.modality}
-              onChange={(e) => setForm({ ...form, modality: e.target.value as ClassModality })}
-            >
-              <option value="Face-to-Face">🏫 Face-to-Face (On-Campus Room)</option>
-              <option value="Online">🌐 Online (Virtual Room / Meet Link)</option>
-            </select>
-          </div>
-
-          {/* Campus Building & Room (College / SHS / JHS) */}
-          <div className="field-group">
-            <label htmlFor="schedBuilding">Campus Building</label>
-            <select
-              id="schedBuilding"
-              value={form.building}
-              onChange={(e) => setForm({ ...form, building: e.target.value as BuildingType })}
-            >
-              {buildingOptions.map((b) => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {form.modality === "Face-to-Face" ? (
-            <div className="field-group" style={{ gridColumn: "1 / -1" }}>
-              <label htmlFor="schedRoom">Assigned Classroom / Lab</label>
-              <select
-                id="schedRoom"
-                value={form.room}
-                onChange={(e) => setForm({ ...form, room: e.target.value })}
-              >
-                {(() => {
-                  const filtered = roomsList.filter((r) =>
-                    r.building && form.building && r.building.toLowerCase().includes(form.building.split(" ")[0].toLowerCase())
-                  );
-                  const roomsToDisplay = filtered.length > 0 ? filtered : roomsList;
-                  return roomsToDisplay.map((r) => (
-                    <option key={r.number} value={r.number}>
-                      {r.number} - {r.building || "Campus"} ({r.type || "Room"} · Capacity: {r.capacity})
+        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          {/* Section 1: Timetable & Day Allocation */}
+          <div
+            style={{
+              padding: 14,
+              background: "var(--srcb-surface)",
+              border: "1px solid var(--srcb-border)",
+              borderRadius: 8,
+            }}
+          >
+            <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--srcb-navy)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>
+              1. Day & Time Allocation
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+              <div className="field-group">
+                <label htmlFor="schedDay">Teaching Day</label>
+                <select
+                  id="schedDay"
+                  value={form.day}
+                  onChange={(e) => setForm({ ...form, day: e.target.value })}
+                >
+                  {DAYS.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
                     </option>
-                  ));
+                  ))}
+                </select>
+              </div>
+
+              <div className="field-group">
+                <label htmlFor="schedTime">Time Slot</label>
+                <select
+                  id="schedTime"
+                  value={form.time}
+                  onChange={(e) => setForm({ ...form, time: e.target.value })}
+                >
+                  {!TIME_SLOTS.includes(form.time) && form.time && (
+                    <option value={form.time}>
+                      {form.time} (Selected Range)
+                    </option>
+                  )}
+                  {TIME_SLOTS.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: Subject & Section Assignment */}
+          <div
+            style={{
+              padding: 14,
+              background: "var(--srcb-surface)",
+              border: "1px solid var(--srcb-border)",
+              borderRadius: 8,
+            }}
+          >
+            <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--srcb-navy)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>
+              2. Curriculum & Section Assignment
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+              <div className="field-group" style={{ gridColumn: "1 / -1" }}>
+                <label htmlFor="schedSubject">Academic Subject</label>
+                <select
+                  id="schedSubject"
+                  value={form.subjectCode}
+                  onChange={(e) => handleSubjectChange(e.target.value)}
+                >
+                  <option value="">Select subject</option>
+                  {availableSubjects.map((sub) => (
+                    <option key={sub.code} value={sub.code}>
+                      {sub.code} - {sub.name} ({sub.isMajor ? "Major" : "Gen Ed"} · {sub.program || sub.department})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="field-group">
+                <label htmlFor="schedSection">Student Section</label>
+                <select
+                  id="schedSection"
+                  value={form.section}
+                  onChange={(e) => setForm({ ...form, section: e.target.value })}
+                >
+                  <option value="">Select section</option>
+                  {sectionsList.map((sec, idx) => {
+                    const secLabel = sec.section ? (sec.course ? `${sec.course} ${sec.yearLevel || ''}-${sec.section}`.trim() : sec.section) : `Section ${idx + 1}`;
+                    const secValue = sec.section ? (sec.course ? `${sec.course} ${sec.yearLevel || ''}-${sec.section}`.trim() : sec.section) : secLabel;
+                    return (
+                      <option key={sec.id || idx} value={secValue}>
+                        {secLabel} ({sec.students || 30} students)
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              <div className="field-group">
+                <label htmlFor="schedFaculty">Instructor</label>
+                <select
+                  id="schedFaculty"
+                  value={form.facultyId}
+                  onChange={(e) => {
+                    const fac = facultyList.find((f) => f.id === e.target.value);
+                    setForm({
+                      ...form,
+                      facultyId: e.target.value,
+                      faculty: fac ? fac.name : "",
+                    });
+                  }}
+                >
+                  <option value="">Select instructor</option>
+                  {facultyList.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name} ({f.status} · {f.department})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 3: Modality & Facility Location */}
+          <div
+            style={{
+              padding: 14,
+              background: "var(--srcb-surface)",
+              border: "1px solid var(--srcb-border)",
+              borderRadius: 8,
+            }}
+          >
+            <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--srcb-navy)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>
+              3. Modality & Classroom Allocation
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+              <div className="field-group">
+                <label htmlFor="schedModality">Teaching Modality</label>
+                <select
+                  id="schedModality"
+                  value={form.modality}
+                  onChange={(e) => setForm({ ...form, modality: e.target.value as ClassModality })}
+                >
+                  <option value="Face-to-Face">🏫 Face-to-Face (On-Campus)</option>
+                  <option value="Online">🌐 Online (Virtual Meet)</option>
+                </select>
+              </div>
+
+              <div className="field-group">
+                <label htmlFor="schedBuilding">Campus Building</label>
+                <select
+                  id="schedBuilding"
+                  value={form.building}
+                  onChange={(e) => setForm({ ...form, building: e.target.value as BuildingType })}
+                >
+                  {buildingOptions.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {form.modality === "Face-to-Face" ? (
+                <div className="field-group" style={{ gridColumn: "1 / -1" }}>
+                  <label htmlFor="schedRoom">Assigned Classroom / Lab</label>
+                  <select
+                    id="schedRoom"
+                    value={form.room}
+                    onChange={(e) => setForm({ ...form, room: e.target.value })}
+                  >
+                    {(() => {
+                      const filtered = roomsList.filter((r) =>
+                        r.building && form.building && r.building.toLowerCase().includes(form.building.split(" ")[0].toLowerCase())
+                      );
+                      const roomsToDisplay = filtered.length > 0 ? filtered : roomsList;
+                      return roomsToDisplay.map((r) => (
+                        <option key={r.number} value={r.number}>
+                          {r.number} - {r.building || "Campus"} ({r.type || "Room"} · Cap: {r.capacity})
+                        </option>
+                      ));
+                    })()}
+                  </select>
+                </div>
+              ) : (
+                <div className="field-group" style={{ gridColumn: "1 / -1" }}>
+                  <label htmlFor="schedOnlineLink">Virtual Meeting Link / Meeting Room Info</label>
+                  <input
+                    id="schedOnlineLink"
+                    placeholder="https://meet.google.com/xxx-xxxx-xxx or Zoom Link"
+                    value={form.onlineLink}
+                    onChange={(e) => setForm({ ...form, onlineLink: e.target.value })}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Section 4: Organized Diagnostics & Real-time Feedback Container */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {/* Part-Time Instructor Availability Window */}
+            {selectedFacultyMember && selectedFacultyMember.status === "Part-Time" && (
+              <div
+                style={{
+                  padding: "12px 14px",
+                  background: "var(--srcb-surface)",
+                  borderRadius: 8,
+                  border: "1px solid var(--srcb-border)",
+                  borderLeft: "4px solid #f59e0b",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, color: "#d97706", fontSize: "0.84rem" }}>
+                    <Clock size={15} />
+                    <span>Part-Time Instructor Confirmed Teaching Hours:</span>
+                  </div>
+                  <span className="pill pill--online" style={{ fontSize: "0.72rem" }}>Part-Time</span>
+                </div>
+
+                {(() => {
+                  const grouped = formatGroupedAvailability(selectedFacultyMember.availability);
+                  if (grouped.length === 0) {
+                    return (
+                      <p style={{ margin: 0, color: "var(--srcb-text-muted)", fontSize: "0.8rem" }}>
+                        Standard Mon-Fri working hours.
+                      </p>
+                    );
+                  }
+                  return (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 6 }}>
+                      {grouped.map(({ day, formattedRange }) => {
+                        const isMatchingDay = day.toLowerCase() === form.day.toLowerCase();
+                        return (
+                          <div
+                            key={day}
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              padding: "5px 10px",
+                              background: isMatchingDay ? "rgba(245, 158, 11, 0.15)" : "rgba(148, 163, 184, 0.08)",
+                              border: `1px solid ${isMatchingDay ? "rgba(245, 158, 11, 0.4)" : "var(--srcb-border)"}`,
+                              borderRadius: 6,
+                              fontSize: "0.78rem",
+                            }}
+                          >
+                            <strong style={{ color: isMatchingDay ? "#d97706" : "var(--srcb-text)" }}>{day}:</strong>
+                            <span style={{ color: isMatchingDay ? "var(--srcb-text)" : "var(--srcb-text-muted)", fontSize: "0.75rem", fontWeight: isMatchingDay ? 600 : 400 }}>
+                              {formattedRange}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
                 })()}
-              </select>
-            </div>
-          ) : (
-            <div className="field-group" style={{ gridColumn: "1 / -1" }}>
-              <label htmlFor="schedOnlineLink">Virtual Meeting Link / Room Info</label>
-              <input
-                id="schedOnlineLink"
-                placeholder="https://meet.google.com/xxx-xxxx-xxx or Zoom Link"
-                value={form.onlineLink}
-                onChange={(e) => setForm({ ...form, onlineLink: e.target.value })}
-              />
-            </div>
-          )}
-
-          {/* Part-Time Instructor Availability Feedback */}
-          {selectedFacultyMember && selectedFacultyMember.status === "Part-Time" && (
-            <div
-              style={{
-                gridColumn: "1 / -1",
-                padding: 12,
-                background: "#fef3c7",
-                borderRadius: 8,
-                border: "1px solid #fde68a",
-                fontSize: "0.85rem",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, color: "#92400e" }}>
-                <Clock size={16} />
-                <span>Part-Time Instructor Availability Registered:</span>
               </div>
-              <p style={{ marginTop: 4, color: "#78350f" }}>
-                {selectedFacultyMember.availability || "No specific hours set."}
-              </p>
-            </div>
-          )}
+            )}
 
-          {/* Real-time Conflict Diagnostics */}
-          {validationFeedback.errors.length > 0 && (
-            <div
-              style={{
-                gridColumn: "1 / -1",
-                padding: 12,
-                background: "#fee2e2",
-                borderRadius: 8,
-                border: "1px solid #fecaca",
-                fontSize: "0.85rem",
-                color: "#991b1b",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700 }}>
-                <AlertTriangle size={16} />
-                <span>Schedule Conflict Detected:</span>
+            {/* Real-time Conflict Errors Box */}
+            {validationFeedback.errors.length > 0 ? (
+              <div
+                style={{
+                  padding: 14,
+                  background: "rgba(239, 68, 68, 0.08)",
+                  borderRadius: 8,
+                  border: "1px solid rgba(239, 68, 68, 0.3)",
+                  borderLeft: "4px solid #dc2626",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, color: "#dc2626", fontSize: "0.88rem" }}>
+                  <AlertTriangle size={17} />
+                  <span>Scheduling Conflicts Detected ({validationFeedback.errors.length})</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+                  {validationFeedback.errors.map((err, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 6,
+                        fontSize: "0.8rem",
+                        color: "var(--srcb-text)",
+                        background: "rgba(239, 68, 68, 0.06)",
+                        padding: "6px 10px",
+                        borderRadius: 6,
+                      }}
+                    >
+                      <span style={{ color: "#dc2626", fontWeight: 700 }}>•</span>
+                      <span>{err}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <ul style={{ margin: "6px 0 0 16px" }}>
-                {validationFeedback.errors.map((err, i) => (
-                  <li key={i}>{err}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+            ) : null}
 
-          {validationFeedback.warnings.length > 0 && (
-            <div
-              style={{
-                gridColumn: "1 / -1",
-                padding: 12,
-                background: "#fffbeb",
-                borderRadius: 8,
-                border: "1px solid #fde68a",
-                fontSize: "0.85rem",
-                color: "#b45309",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700 }}>
-                <AlertTriangle size={16} />
-                <span>Advisory Notice:</span>
+            {/* Advisory Warnings Box */}
+            {validationFeedback.warnings.length > 0 ? (
+              <div
+                style={{
+                  padding: 12,
+                  background: "rgba(245, 158, 11, 0.08)",
+                  borderRadius: 8,
+                  border: "1px solid rgba(245, 158, 11, 0.3)",
+                  borderLeft: "4px solid #f59e0b",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, color: "#d97706", fontSize: "0.85rem" }}>
+                  <AlertTriangle size={15} />
+                  <span>Advisory Notices ({validationFeedback.warnings.length})</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
+                  {validationFeedback.warnings.map((w, i) => (
+                    <div key={i} style={{ fontSize: "0.78rem", color: "var(--srcb-text-muted)", paddingLeft: 6 }}>
+                      • {w}
+                    </div>
+                  ))}
+                </div>
               </div>
-              <ul style={{ margin: "6px 0 0 16px" }}>
-                {validationFeedback.warnings.map((w, i) => (
-                  <li key={i}>{w}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+            ) : null}
+
+            {/* Clean Conflict-Free Verification Notice */}
+            {validationFeedback.valid && validationFeedback.errors.length === 0 && validationFeedback.warnings.length === 0 && form.subjectCode && form.section && form.faculty && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "10px 14px",
+                  background: "rgba(52, 211, 153, 0.1)",
+                  borderRadius: 8,
+                  border: "1px solid rgba(52, 211, 153, 0.3)",
+                  fontSize: "0.82rem",
+                  color: "#059669",
+                  fontWeight: 600,
+                }}
+              >
+                <CheckCircle2 size={16} />
+                <span>Selected timetable slot, room, section, and instructor are conflict-free.</span>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="table-actions" style={{ marginTop: 20 }}>
@@ -1261,6 +1612,13 @@ export function SchedulesPage() {
           </button>
         </div>
       </Modal>
+
+      {/* Read-Only Assigned Schedule Details Modal */}
+      <ScheduleDetailsModal
+        isOpen={Boolean(viewingSchedule)}
+        onClose={() => setViewingSchedule(null)}
+        schedule={viewingSchedule}
+      />
     </motion.div>
   );
 }

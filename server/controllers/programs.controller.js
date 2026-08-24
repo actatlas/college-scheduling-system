@@ -11,6 +11,9 @@ async function listPrograms(req, res, next) {
 
 async function createProgram(req, res, next) {
   try {
+    if (!['admin', 'super_admin'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Forbidden. Only Administrators can create programs.', code: 'UNAUTHORIZED_ROLE' });
+    }
     const payload = req.body || {};
     const row = await programsService.createProgram(payload);
     res.status(201).json({ data: row });
@@ -24,6 +27,9 @@ async function createProgram(req, res, next) {
 
 async function updateProgram(req, res, next) {
   try {
+    if (!['admin', 'super_admin'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Forbidden. Only Administrators can update programs.', code: 'UNAUTHORIZED_ROLE' });
+    }
     const code = req.params.code;
     const payload = req.body || {};
     const row = await programsService.updateProgram(code, payload);
@@ -35,6 +41,9 @@ async function updateProgram(req, res, next) {
 
 async function deleteProgram(req, res, next) {
   try {
+    if (!['admin', 'super_admin'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Forbidden. Only Administrators can delete programs.', code: 'UNAUTHORIZED_ROLE' });
+    }
     const code = req.params.code;
     await programsService.deleteProgram(code);
     res.status(204).end();

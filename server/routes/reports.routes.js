@@ -12,11 +12,12 @@ function toMinutes(value) {
 
 router.get('/', async (req, res, next) => {
   try {
-    const { academicYearId, semesterId, program } = req.query;
+    const { academicYearId, semesterId, program, facultyId, department } = req.query;
+    const role = String(req.user?.role || '').toLowerCase();
 
-    const [facultyRows, roomRows, scheduleRows, examRows] = await Promise.all([
+    let [facultyRows, roomRows, scheduleRows, examRows] = await Promise.all([
       query(
-        `SELECT t.id, t.name, t.status, pm.name AS department, pm.code AS department_code
+        `SELECT t.id, t.name, t.status, pm.name AS department, pm.code AS department_code, t.email
          FROM teachers t
          LEFT JOIN program_majors pm ON pm.id = t.program_major_id
          ORDER BY t.name ASC`
@@ -28,7 +29,7 @@ router.get('/', async (req, res, next) => {
       ),
       query(
         `SELECT sc.id, sc.day, sc.start_time, sc.end_time, sc.subject_code, sc.faculty_id, sc.room_number, sc.section_id,
-                sub.program_code, sec.course_code
+                sc.academic_year_id, sc.semester_id, sub.program_code, sec.course_code
          FROM schedules sc
          LEFT JOIN subjects sub ON sub.code = sc.subject_code
          LEFT JOIN sections sec ON sec.id = sc.section_id`
@@ -38,6 +39,64 @@ router.get('/', async (req, res, next) => {
          FROM exam_schedules es`
       ),
     ]);
+
+    // Apply role-based filtering
+    if (role === 'teacher') {
+      let teacherId = req.user.teacherId;
+      if (!teacherId && req.user.email) {
+        const matchingT = facultyRows.find((f) => f.email && f.email.toLowerCase() === req.user.email.toLowerCase());
+        if (matchingT) teacherId = matchingT.id;
+      }
+      if (teacherId) {
+        facultyRows = facultyRows.filter((f) => String(f.id) === String(teacherId));
+        scheduleRows = scheduleRows.filter((s) => String(s.faculty_id) === String(teacherId));
+        examRows = examRows.filter((e) => String(e.proctor_id) === String(teacherId));
+      }
+    } else if (role === 'program_head') {
+      let allowedPrograms = [];
+      if (req.user.sub) {
+        const majors = await query('SELECT program_code, code FROM program_majors WHERE program_head_id = ?', [req.user.sub]);
+        for (const m of majors) {
+          if (m.program_code) allowedPrograms.push(m.program_code);
+          if (m.code) allowedPrograms.push(m.code);
+        }
+      }
+      if (req.user.program) allowedPrograms.push(req.user.program);
+      if (req.user.programCode) allowedPrograms.push(req.user.programCode);
+      allowedPrograms = [...new Set(allowedPrograms.map((p) => String(p).toUpperCase()))];
+
+      if (allowedPrograms.length > 0) {
+        facultyRows = facultyRows.filter((f) => {
+          const dept = String(f.department_code || f.department || '').toUpperCase();
+          return allowedPrograms.includes(dept) || allowedPrograms.some((p) => dept.includes(p));
+        });
+        scheduleRows = scheduleRows.filter((s) => {
+          const subP = String(s.program_code || '').toUpperCase();
+          const secC = String(s.course_code || '').toUpperCase();
+          return allowedPrograms.includes(subP) || allowedPrograms.includes(secC) || allowedPrograms.some((p) => subP.includes(p) || secC.includes(p));
+        });
+        examRows = examRows.filter((e) => {
+          const ep = String(e.program_code || '').toUpperCase();
+          return allowedPrograms.includes(ep) || allowedPrograms.some((p) => ep.includes(p));
+        });
+      }
+    }
+
+    if (academicYearId) {
+      scheduleRows = scheduleRows.filter((s) => String(s.academic_year_id) === String(academicYearId));
+    }
+    if (semesterId) {
+      scheduleRows = scheduleRows.filter((s) => String(s.semester_id) === String(semesterId));
+    }
+    if (program || department) {
+      const pFilter = String(program || department).toUpperCase();
+      facultyRows = facultyRows.filter((f) => String(f.department_code || f.department || '').toUpperCase().includes(pFilter));
+      scheduleRows = scheduleRows.filter((s) => String(s.program_code || s.course_code || '').toUpperCase().includes(pFilter));
+    }
+    if (facultyId) {
+      facultyRows = facultyRows.filter((f) => String(f.id) === String(facultyId));
+      scheduleRows = scheduleRows.filter((s) => String(s.faculty_id) === String(facultyId));
+    }
 
     // Calculate actual faculty workload directly from assigned class schedules
     const facultyWorkload = facultyRows.map((f) => {
