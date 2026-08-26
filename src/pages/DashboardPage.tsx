@@ -13,16 +13,22 @@ import {
   LayoutGrid,
   Clock,
   Eye,
+  CalendarCheck,
+  GraduationCap,
+  UserX,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { StatCard } from "../components/common/StatCard";
+import { StatCardSkeleton } from "../components/common/Skeleton";
 import { api } from "../data/apiClient";
 import { useEffect, useState } from "react";
 import { useToast } from "../components/common/Toast";
 import { useNavigate } from "react-router-dom";
 import { useProgramContext } from "../contexts/ProgramContext";
 import { ScheduleDetailsModal } from "../components/schedule/ScheduleDetailsModal";
-import type { UserRole, ClassScheduleItem } from "../types";
+import { Modal } from "../components/common/Modal";
+import { getProgramLogo } from "../utils/programLogos";
+import type { UserRole, ClassScheduleItem, ExamScheduleItem } from "../types";
 
 const AVAILABILITY_DAYS = [
   "Monday",
@@ -31,6 +37,7 @@ const AVAILABILITY_DAYS = [
   "Thursday",
   "Friday",
   "Saturday",
+  "Sunday",
 ];
 const AVAILABILITY_SLOTS = [
   "08:00-09:00",
@@ -48,9 +55,11 @@ export function DashboardPage() {
   const [assignmentQuery, setAssignmentQuery] = useState("");
   const [isDraggingAvail, setIsDraggingAvail] = useState(false);
   const [dragMode, setDragMode] = useState<"select" | "deselect">("select");
+  const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const toast = useToast();
   const navigate = useNavigate();
-  const { selectedProgram } = useProgramContext();
+  const { selectedProgram, matchesProgram } = useProgramContext();
 
   const role = (
     window.localStorage.getItem("userRole") || "admin"
@@ -59,7 +68,10 @@ export function DashboardPage() {
 
   const [teacherStatus, setTeacherStatus] = useState<string>("Full-Time");
   const [schedules, setSchedules] = useState<ClassScheduleItem[]>([]);
+  const [teacherExams, setTeacherExams] = useState<ExamScheduleItem[]>([]);
   const [facultyList, setFacultyList] = useState<any[]>([]);
+  const [headTeachingSchedules, setHeadTeachingSchedules] = useState<ClassScheduleItem[]>([]);
+  const [suspendedUsersList, setSuspendedUsersList] = useState<any[]>([]);
   const [availabilityMessage, setAvailabilityMessage] = useState("");
   const [selectedSlots, setSelectedSlots] = useState<Record<string, string[]>>({});
   const [viewingSchedule, setViewingSchedule] = useState<ClassScheduleItem | null>(null);
@@ -77,6 +89,7 @@ export function DashboardPage() {
   });
 
   const loadDashboardData = async () => {
+    setIsLoading(true);
     try {
       const [facRes, subRes, rmRes, secRes, schedRes, confRes, usrRes, exmRes]: any[] = await Promise.all([
         api.get("/faculty").catch(() => ({ data: { data: [] } })),
@@ -102,6 +115,11 @@ export function DashboardPage() {
 
       setFacultyList(facs);
       setSubjectsList(subs);
+
+      const suspended = usrs.filter(
+        (u: any) => String(u.status || "").trim().toLowerCase() === "suspended"
+      );
+      setSuspendedUsersList(suspended);
 
       setMetrics({
         faculty: String(facs.length),
@@ -129,22 +147,72 @@ export function DashboardPage() {
           }
         }
         const activeTeacherId = currentTeacher?.id || storedTeacherId;
+        const normalizedUserName = userName.trim().toLowerCase();
+        const normalizedTeacherName = (currentTeacher?.name || "").trim().toLowerCase();
+
         const myScheds = scheds.filter(
           (s: any) =>
             (activeTeacherId && String(s.facultyId) === String(activeTeacherId)) ||
-            (s.faculty && s.faculty.toLowerCase().includes(userName.toLowerCase()))
+            (s.faculty && s.faculty.toLowerCase().includes(normalizedUserName)) ||
+            (normalizedTeacherName && s.faculty && s.faculty.toLowerCase().includes(normalizedTeacherName))
         );
         setSchedules(myScheds);
-      } else if (role === "program_head") {
+
+        const myExams = exms.filter((e: any) => {
+          const pId = String(e.proctorId || "").trim().toLowerCase();
+          const pName = String(e.proctor || e.proctorName || "").trim().toLowerCase();
+          const activeId = String(activeTeacherId || "").trim().toLowerCase();
+
+          const matchId = Boolean(activeId && (pId === activeId || String(e.proctorId) === activeId));
+          const matchName = Boolean(
+            (normalizedUserName && (pName.includes(normalizedUserName) || normalizedUserName.includes(pName))) ||
+            (normalizedTeacherName && (pName.includes(normalizedTeacherName) || normalizedTeacherName.includes(pName)))
+          );
+
+          const examSub = subs.find((s: any) => s.code === e.subjectCode);
+          const matchSubjectInstructor = Boolean(
+            examSub && (
+              (activeId && String(examSub.instructorId) === activeId) ||
+              (normalizedUserName && examSub.instructor && examSub.instructor.toLowerCase().includes(normalizedUserName)) ||
+              (normalizedTeacherName && examSub.instructor && examSub.instructor.toLowerCase().includes(normalizedTeacherName))
+            )
+          );
+
+          return matchId || matchName || matchSubjectInstructor;
+        });
+        setTeacherExams(myExams);
+      } else {
         const progScheds = scheds.filter(
-          (s: any) => !s.program || s.program === selectedProgram.key || s.program === selectedProgram.shortLabel
+          (s: any) => matchesProgram(s.program || s.department)
         );
         setSchedules(progScheds);
-      } else {
-        setSchedules(scheds);
+
+        if (role === "program_head") {
+          const storedTeacherId = window.localStorage.getItem("teacherId");
+          const currentHeadFaculty = facs.find(
+            (f: any) =>
+              (storedTeacherId && String(f.id) === String(storedTeacherId)) ||
+              (f.name && f.name.toLowerCase().includes(userName.toLowerCase())) ||
+              (f.email && f.email.toLowerCase().includes("programhead@"))
+          );
+          const headFacultyId = currentHeadFaculty?.id || storedTeacherId || "FAC-003";
+          const normalizedUserName = userName.trim().toLowerCase();
+          const normalizedHeadName = (currentHeadFaculty?.name || "").trim().toLowerCase();
+
+          const myHeadClasses = scheds.filter(
+            (s: any) =>
+              (headFacultyId && String(s.facultyId) === String(headFacultyId)) ||
+              (s.faculty && s.faculty.toLowerCase().includes(normalizedUserName)) ||
+              (normalizedHeadName && s.faculty && s.faculty.toLowerCase().includes(normalizedHeadName)) ||
+              (s.faculty && (s.faculty.toLowerCase().includes("alan turing") || s.faculty.toLowerCase().includes("dr. reyes") || s.faculty.toLowerCase().includes("program head")))
+          );
+          setHeadTeachingSchedules(myHeadClasses);
+        }
       }
     } catch {
       // fallback gracefully
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -233,9 +301,7 @@ export function DashboardPage() {
     return (selectedSlots[day] || []).includes(slot);
   };
 
-  const targetSubjects = role === "program_head"
-    ? subjectsList.filter((s: any) => !s.program || s.program === selectedProgram.key || s.department === selectedProgram.label)
-    : subjectsList;
+  const targetSubjects = subjectsList.filter((s: any) => matchesProgram(s.program || s.department));
 
   const totalSubjectsCount = Math.max(targetSubjects.length, 1);
   const scheduledSubjectCodes = new Set(
@@ -268,7 +334,9 @@ export function DashboardPage() {
     },
   ];
 
-  const displayFaculty = facultyList.length > 0 ? facultyList.slice(0, 4) : [
+  const scopedFaculty = facultyList.filter((f: any) => matchesProgram(f.programs || f.department));
+
+  const displayFaculty = scopedFaculty.length > 0 ? scopedFaculty.slice(0, 4) : [
     { id: "1", name: "Dr. A. Turing", title: "Professor", units: 12, maxUnits: 15, isOverload: false },
     { id: "2", name: "Prof. A. Lovelace", title: "Assoc. Professor", units: 18, maxUnits: 15, isOverload: true },
     { id: "3", name: "Dr. G. Hopper", title: "Lecturer", units: 9, maxUnits: 12, isOverload: false },
@@ -311,13 +379,6 @@ export function DashboardPage() {
             <div className="edusched-header-actions">
               <button
                 type="button"
-                className="secondary-button"
-                onClick={() => navigate("/settings")}
-              >
-                System Settings
-              </button>
-              <button
-                type="button"
                 className="action-button"
                 onClick={() => navigate("/users")}
               >
@@ -326,32 +387,105 @@ export function DashboardPage() {
             </div>
           </div>
 
-          <section className="stats-grid" style={{ marginBottom: 20 }}>
-            <StatCard
-              label="Registered Users"
-              value={metrics.users}
-              detail="Super Admins, Admins, Heads, Teachers"
-              icon="👥"
-              tone="royal"
-              onClick={() => navigate("/users")}
-            />
-            <StatCard
-              label="Active Programs"
-              value="4"
-              detail="IT, CS, Business, Education"
-              icon="🏛️"
-              tone="navy"
-              onClick={() => navigate("/programs")}
-            />
-            <StatCard
-              label="System Logs"
-              value="24"
-              detail="All audit events healthy"
-              icon="🛡️"
-              tone="emerald"
-              onClick={() => navigate("/reports")}
-            />
-          </section>
+          {/* ICT Governance Notice / Sign for Suspended Accounts */}
+          {suspendedUsersList.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              style={{
+                marginBottom: 20,
+                padding: "16px 20px",
+                borderRadius: 12,
+                background: "linear-gradient(135deg, rgba(254, 242, 242, 0.95) 0%, rgba(255, 251, 235, 0.95) 100%)",
+                border: "1px solid rgba(220, 38, 38, 0.35)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: 14,
+                boxShadow: "0 2px 10px rgba(220, 38, 38, 0.08)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <div
+                  style={{
+                    padding: "10px",
+                    borderRadius: "10px",
+                    background: "rgba(220, 38, 38, 0.15)",
+                    color: "#dc2626",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <UserX size={24} />
+                </div>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <strong style={{ fontSize: "1rem", color: "#991b1b" }}>
+                      ⚠️ ICT Governance Sign: {suspendedUsersList.length} Account{suspendedUsersList.length === 1 ? "" : "s"} Suspended
+                    </strong>
+                    <span className="pill pill--amber" style={{ fontSize: "0.72rem", fontWeight: 700 }}>
+                      Access Blocked
+                    </span>
+                  </div>
+                  <p style={{ margin: "3px 0 0", fontSize: "0.84rem", color: "#7f1d1d" }}>
+                    Suspended users:{" "}
+                    <strong>
+                      {suspendedUsersList.map((u: any) => u.name || u.email).slice(0, 4).join(", ")}
+                      {suspendedUsersList.length > 4 ? ` and ${suspendedUsersList.length - 4} more` : ""}
+                    </strong>
+                    . Sign-in is restricted; all assigned teaching loads and records remain intact.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="action-button"
+                style={{
+                  background: "#dc2626",
+                  borderColor: "#b91c1c",
+                  fontSize: "0.82rem",
+                  padding: "8px 16px",
+                }}
+                onClick={() => navigate("/users?status=Suspended")}
+              >
+                <span>Review & Unsuspend Accounts</span>
+                <ChevronRight size={14} />
+              </button>
+            </motion.div>
+          )}
+
+          {isLoading ? (
+            <StatCardSkeleton count={3} />
+          ) : (
+            <section className="stats-grid" style={{ marginBottom: 20, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
+              <StatCard
+                label="Registered Users"
+                value={metrics.users}
+                detail="Super Admins, Admins, Heads, Teachers"
+                icon="👥"
+                tone="royal"
+                onClick={() => navigate("/users")}
+              />
+              <StatCard
+                label="Active Accounts"
+                value={String(Math.max(0, Number(metrics.users) - suspendedUsersList.length))}
+                detail="Permitted to sign in and access SCSMS"
+                icon="✅"
+                tone="emerald"
+                onClick={() => navigate("/users?status=Active")}
+              />
+              <StatCard
+                label="Suspended Accounts"
+                value={String(suspendedUsersList.length)}
+                detail={suspendedUsersList.length === 0 ? "No accounts currently suspended" : "Sign-in restricted / Locked"}
+                icon="🔒"
+                tone="amber"
+                onClick={() => navigate("/users?status=Suspended")}
+              />
+            </section>
+          )}
         </>
       )}
 
@@ -360,9 +494,56 @@ export function DashboardPage() {
         <>
           {/* Header Title & Actions */}
           <div className="edusched-header">
-            <div className="edusched-title-box">
-              <h1>{role === "program_head" ? selectedProgram.label : "Computer Science"}</h1>
-              <p>Departmental Overview & Scheduling Status</p>
+            <div className="edusched-title-box" style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+              <button
+                type="button"
+                title="Click to view enlarged logo"
+                onClick={() => setIsLogoModalOpen(true)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  borderRadius: "16px",
+                }}
+              >
+                <img
+                  src={getProgramLogo(selectedProgram.key || selectedProgram.label)}
+                  alt="Program Logo"
+                  style={{
+                    width: "68px",
+                    height: "68px",
+                    borderRadius: "16px",
+                    objectFit: "contain",
+                    background: "#ffffff",
+                    padding: "4px",
+                    border: "1px solid var(--srcb-border)",
+                    boxShadow: "0 6px 16px rgba(15, 23, 42, 0.08)",
+                    transition: "transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = "scale(1.08)";
+                    e.currentTarget.style.boxShadow = "0 10px 24px rgba(15, 23, 42, 0.16)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = "scale(1)";
+                    e.currentTarget.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.08)";
+                  }}
+                />
+              </button>
+              <div>
+                <h1>
+                  {role === "program_head"
+                    ? `Program Head Portal • ${selectedProgram.label}`
+                    : "College Academic Scheduling Dashboard"}
+                </h1>
+                <p>
+                  {role === "program_head"
+                    ? `Assigned Program: ${selectedProgram.label} (${selectedProgram.key || "ITP"}) • Departmental Management`
+                    : `Active Program Focus: ${selectedProgram.label} (${selectedProgram.shortLabel || "Collegiate Scope"})`}
+                </p>
+              </div>
             </div>
             <div className="edusched-header-actions">
               <button
@@ -599,6 +780,103 @@ export function DashboardPage() {
               </div>
             </article>
           </div>
+
+          {/* Program Head: My Teaching Load & Class Timetable (e.g. 3rd Year Classes) */}
+          {role === "program_head" && (
+            <div style={{ marginTop: 24 }}>
+              <article className="card" style={{ padding: "20px 24px", border: "1px solid rgba(13, 84, 153, 0.2)", background: "linear-gradient(180deg, rgba(13, 84, 153, 0.02) 0%, rgba(255,255,255,1) 100%)" }}>
+                <div className="card__header" style={{ marginBottom: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ padding: 8, borderRadius: 8, background: "rgba(13, 84, 153, 0.1)", color: "var(--srcb-navy)" }}>
+                      <GraduationCap size={20} />
+                    </div>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: "1.05rem", color: "var(--srcb-navy)" }}>
+                        My Teaching Load & Assigned Classes
+                      </h3>
+                      <p style={{ margin: "2px 0 0", fontSize: "0.8rem", color: "var(--srcb-text-muted)" }}>
+                        Direct instructor assignments for major subjects (including 3rd Year and collegiate sections)
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    style={{ fontSize: "0.8rem", padding: "6px 12px" }}
+                    onClick={() => navigate(`/schedules`)}
+                  >
+                    <span>View All Schedules</span>
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+
+                {headTeachingSchedules.length === 0 ? (
+                  <div style={{ padding: "24px 16px", textAlign: "center", background: "var(--srcb-surface-alt)", borderRadius: 8 }}>
+                    <p style={{ margin: 0, fontWeight: 600, color: "var(--srcb-navy)" }}>
+                      No direct teaching classes assigned yet for {userName}.
+                    </p>
+                    <p style={{ margin: "4px 0 0", fontSize: "0.82rem", color: "var(--srcb-text-muted)" }}>
+                      When you or the Registrar schedule major subjects (such as 3rd Year IT301 / Capstone), your classes will appear here.
+                    </p>
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
+                    {headTeachingSchedules.map((item, idx) => (
+                      <div
+                        key={item.id || idx}
+                        style={{
+                          padding: "14px 16px",
+                          borderRadius: 10,
+                          border: "1px solid var(--srcb-border)",
+                          background: "#ffffff",
+                          boxShadow: "0 2px 6px rgba(15, 23, 42, 0.04)",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                          <div>
+                            <span className="pill pill--royal" style={{ fontSize: "0.72rem", fontWeight: 700 }}>
+                              {item.subjectCode || "IT301"}
+                            </span>
+                            <h4 style={{ margin: "6px 0 0", fontSize: "0.95rem", color: "var(--srcb-navy)" }}>
+                              {item.subject || "Web Systems & Technologies"}
+                            </h4>
+                          </div>
+                          <span
+                            className={`pill ${
+                              String(item.modality || "").toLowerCase().includes("online")
+                                ? "pill--online"
+                                : "pill--f2f"
+                            }`}
+                            style={{ fontSize: "0.7rem" }}
+                          >
+                            {item.modality || "Face-to-Face"}
+                          </span>
+                        </div>
+
+                        <div style={{ fontSize: "0.82rem", color: "var(--srcb-text)", display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ color: "var(--srcb-text-muted)" }}>Section:</span>
+                            <strong>{item.section || "BSIT 3-A"}</strong>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ color: "var(--srcb-text-muted)" }}>Schedule:</span>
+                            <span>{item.day} · {item.time}</span>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ color: "var(--srcb-text-muted)" }}>Facility:</span>
+                            <span>{item.room || "COMLAB-2"} ({item.building || "College Building"})</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </article>
+            </div>
+          )}
         </>
       )}
 
@@ -624,8 +902,10 @@ export function DashboardPage() {
             </div>
           </div>
 
-          {/* Full-Time Teacher Overview Cards */}
-          {teacherStatus === "Full-Time" && (
+          {/* Teacher Overview Metrics Row */}
+          {isLoading ? (
+            <StatCardSkeleton count={4} />
+          ) : (
             <div
               style={{
                 display: "grid",
@@ -646,6 +926,33 @@ export function DashboardPage() {
                     </p>
                   </div>
                   <CalendarRange size={28} color="var(--srcb-navy)" style={{ opacity: 0.8 }} />
+                </div>
+              </div>
+
+              <div
+                className="card"
+                style={{ padding: "16px 20px", cursor: "pointer" }}
+                onClick={() => {
+                  const examSection = document.getElementById("teacher-assigned-exams-card");
+                  if (examSection) {
+                    examSection.scrollIntoView({ behavior: "smooth" });
+                  } else {
+                    navigate("/exams");
+                  }
+                }}
+                title="Click to jump to your assigned examination schedules"
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <p className="eyebrow">Exam Proctoring Duties</p>
+                    <h3 style={{ margin: "4px 0 0", fontSize: "1.6rem", color: "#8b5cf6" }}>
+                      {teacherExams.length}
+                    </h3>
+                    <p style={{ fontSize: "0.78rem", color: "var(--srcb-text-muted)", margin: "2px 0 0" }}>
+                      {teacherExams.length === 1 ? "1 Assigned Exam Session" : `${teacherExams.length} Assigned Exam Sessions`}
+                    </p>
+                  </div>
+                  <CalendarCheck size={28} color="#8b5cf6" style={{ opacity: 0.8 }} />
                 </div>
               </div>
 
@@ -676,23 +983,6 @@ export function DashboardPage() {
                     </p>
                   </div>
                   <LayoutGrid size={28} color="#059669" style={{ opacity: 0.8 }} />
-                </div>
-              </div>
-
-              <div className="card" style={{ padding: "16px 20px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <p className="eyebrow">Modality Breakdown</p>
-                    <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                      <span className="pill pill--f2f" style={{ fontSize: "0.75rem" }}>
-                        F2F: {schedules.filter((s) => s.modality !== "Online").length}
-                      </span>
-                      <span className="pill pill--online" style={{ fontSize: "0.75rem" }}>
-                        Online: {schedules.filter((s) => s.modality === "Online").length}
-                      </span>
-                    </div>
-                  </div>
-                  <BadgeCheck size={28} color="#7c3aed" style={{ opacity: 0.8 }} />
                 </div>
               </div>
             </div>
@@ -790,7 +1080,7 @@ export function DashboardPage() {
                       <tbody>
                         {AVAILABILITY_SLOTS.map((slot) => (
                           <tr key={slot}>
-                            <td style={{ fontWeight: 700, fontSize: "0.8rem", color: "var(--srcb-navy)", background: "#f8fafc" }}>
+                            <td style={{ fontWeight: 700, fontSize: "0.8rem", color: "var(--srcb-navy)", background: "var(--srcb-surface-alt, #f8fafc)" }}>
                               {slot}
                             </td>
                             {AVAILABILITY_DAYS.map((day) => {
@@ -968,6 +1258,113 @@ export function DashboardPage() {
                 )}
               </div>
             </article>
+
+            {/* Teacher Assigned Exam Schedules Card */}
+            <article id="teacher-assigned-exams-card" className="card" style={{ gridColumn: "1 / -1", marginTop: 12 }}>
+              <div className="card__header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <h3>My Assigned Examination Schedules & Proctoring</h3>
+                    <span className="pill pill--royal" style={{ fontSize: "0.75rem" }}>
+                      {teacherExams.length} {teacherExams.length === 1 ? "Session" : "Sessions"}
+                    </span>
+                  </div>
+                  <p className="muted" style={{ margin: "2px 0 0", fontSize: "0.82rem" }}>
+                    Official institutional examination duties assigned to you as proctor or subject instructor.
+                  </p>
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => navigate("/exams")}
+                    style={{ fontSize: "0.78rem", padding: "5px 10px", display: "inline-flex", alignItems: "center", gap: 4 }}
+                  >
+                    View All Exams <ChevronRight size={13} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="table-wrap" style={{ marginTop: 8 }}>
+                {teacherExams.length === 0 ? (
+                  <div className="empty-state" style={{ padding: "36px 16px", textAlign: "center" }}>
+                    <CalendarCheck size={38} style={{ color: "var(--srcb-text-muted)", marginBottom: 8, opacity: 0.6 }} />
+                    <p style={{ margin: 0, fontWeight: 600 }}>No examination schedules assigned yet.</p>
+                    <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "var(--srcb-text-muted)" }}>
+                      When administrators schedule synchronized exams and assign you as proctor, your assigned sessions will appear here.
+                    </p>
+                  </div>
+                ) : (
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Subject</th>
+                        <th>Term</th>
+                        <th>Exam Date & Time</th>
+                        <th>Venue & Building</th>
+                        <th>Synchronized Sections</th>
+                        <th>Role / Assignment</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {teacherExams.map((exam) => (
+                        <tr key={exam.id || `${exam.subjectCode}-${exam.examDate}-${exam.time}`}>
+                          <td>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <div
+                                style={{
+                                  width: 10,
+                                  height: 10,
+                                  borderRadius: "50%",
+                                  backgroundColor: exam.color || "#8b5cf6",
+                                }}
+                              />
+                              <div>
+                                <strong style={{ color: "var(--srcb-navy)" }}>{exam.subjectCode || exam.subject}</strong>
+                                {exam.subject && exam.subjectCode && exam.subject !== exam.subjectCode && (
+                                  <span style={{ display: "block", fontSize: "0.78rem", color: "var(--srcb-text-muted)" }}>
+                                    {exam.subject}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <span className="pill pill--royal" style={{ fontSize: "0.75rem" }}>
+                              {exam.term || "Midterm"}
+                            </span>
+                          </td>
+                          <td>
+                            <div style={{ fontWeight: 600 }}>{exam.examDate}</div>
+                            <div style={{ fontSize: "0.8rem", color: "var(--srcb-text-muted)" }}>{exam.time}</div>
+                          </td>
+                          <td>
+                            <strong>{exam.room}</strong>
+                            <div style={{ fontSize: "0.78rem", color: "var(--srcb-text-muted)" }}>
+                              {exam.building || "College Building"}
+                            </div>
+                          </td>
+                          <td>
+                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                              {(exam.synchronizedSections || []).map((sec: string) => (
+                                <span key={sec} className="pill pill--navy" style={{ fontSize: "0.72rem" }}>
+                                  {sec}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td>
+                            <span className="pill pill--emerald" style={{ fontSize: "0.74rem" }}>
+                              Assigned Proctor
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </article>
           </div>
         </>
       )}
@@ -978,6 +1375,83 @@ export function DashboardPage() {
         onClose={() => setViewingSchedule(null)}
         schedule={viewingSchedule}
       />
+
+      {/* Enlarged Program Logo Modal */}
+      <Modal
+        isOpen={isLogoModalOpen}
+        title={selectedProgram.label || "Academic Program"}
+        description="Official Academic Program Seal · St. Rita's College of Balingasag"
+        onClose={() => setIsLogoModalOpen(false)}
+      >
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px 10px 10px",
+            textAlign: "center",
+          }}
+        >
+          <div
+            style={{
+              padding: "16px",
+              background: "linear-gradient(135deg, #f8fafc 0%, #ffffff 100%)",
+              borderRadius: "24px",
+              border: "1px solid var(--srcb-border)",
+              boxShadow: "0 16px 36px rgba(15, 23, 42, 0.12)",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: "20px",
+            }}
+          >
+            <img
+              src={getProgramLogo(selectedProgram.key || selectedProgram.label)}
+              alt="Enlarged Logo"
+              style={{
+                width: "240px",
+                height: "240px",
+                objectFit: "contain",
+                filter: "drop-shadow(0 8px 16px rgba(0, 0, 0, 0.08))",
+              }}
+            />
+          </div>
+
+          <h3
+            style={{
+              fontSize: "1.3rem",
+              fontWeight: 800,
+              color: "var(--srcb-navy)",
+              margin: "0 0 6px",
+            }}
+          >
+            {selectedProgram.label}
+          </h3>
+
+          <p
+            style={{
+              fontSize: "0.9rem",
+              fontWeight: 600,
+              color: "#0284c7",
+              margin: "0 0 20px",
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+            }}
+          >
+            {selectedProgram.shortLabel || selectedProgram.key} Academic Scope
+          </p>
+
+          <button
+            type="button"
+            className="action-button"
+            onClick={() => setIsLogoModalOpen(false)}
+            style={{ minWidth: "140px" }}
+          >
+            Close Preview
+          </button>
+        </div>
+      </Modal>
     </motion.div>
   );
 }

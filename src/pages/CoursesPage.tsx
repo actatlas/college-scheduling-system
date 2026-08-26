@@ -13,6 +13,7 @@ import {
   Trash2,
   Edit2,
 } from "lucide-react";
+import { Skeleton } from "../components/common/Skeleton";
 import ConfirmModal from "../components/common/ConfirmModal";
 import { useProgramContext, type ProgramKey } from "../contexts/ProgramContext";
 
@@ -97,7 +98,7 @@ export function CoursesPage() {
   const visibleSubjects = useMemo(() => {
     const source = subjects.length > 0 ? subjects : [];
 
-    if (!selectedProgramKey || selectedProgram.shortLabel === "N/A") {
+    if (!selectedProgramKey || selectedProgramKey === "ALL" || selectedProgram.shortLabel === "All Programs" || selectedProgram.shortLabel === "N/A") {
       return source;
     }
 
@@ -126,7 +127,7 @@ export function CoursesPage() {
   const visibleRooms = useMemo(() => {
     const source = rooms.length > 0 ? rooms : [];
 
-    if (!selectedProgramKey || selectedProgram.shortLabel === "N/A") {
+    if (!selectedProgramKey || selectedProgramKey === "ALL" || selectedProgram.shortLabel === "All Programs" || selectedProgram.shortLabel === "N/A") {
       return source;
     }
 
@@ -150,7 +151,7 @@ export function CoursesPage() {
   const visibleSchedules = useMemo(() => {
     const source = schedules.length > 0 ? schedules : [];
 
-    if (!selectedProgramKey || selectedProgram.shortLabel === "N/A") {
+    if (!selectedProgramKey || selectedProgramKey === "ALL" || selectedProgram.shortLabel === "All Programs" || selectedProgram.shortLabel === "N/A") {
       return source;
     }
 
@@ -169,7 +170,7 @@ export function CoursesPage() {
         haystack.includes(selectedProgram.shortLabel.toLowerCase())
       );
     });
-  }, [selectedProgramKey, selectedProgram.shortLabel, schedules]);
+  }, [selectedProgramKey, selectedProgram.shortLabel, schedules, selectedProgram]);
 
   const handleAddSubject = async () => {
     if (!subjectForm.code || !subjectForm.name) {
@@ -623,7 +624,13 @@ export function CoursesPage() {
               </div>
             </div>
             <div className="schedule-list">
-              {visibleSubjects.length === 0 ? (
+              {loadingSubjects || loadingInitial ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 12 }}>
+                  <Skeleton height={42} borderRadius={8} />
+                  <Skeleton height={42} borderRadius={8} />
+                  <Skeleton height={42} borderRadius={8} />
+                </div>
+              ) : visibleSubjects.length === 0 ? (
                 <div className="empty-state">
                   No subjects available for this program yet.
                 </div>
@@ -734,7 +741,13 @@ export function CoursesPage() {
               </div>
             </div>
             <div className="schedule-list">
-              {visibleRooms.length === 0 ? (
+              {loadingRooms || loadingInitial ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 12 }}>
+                  <Skeleton height={42} borderRadius={8} />
+                  <Skeleton height={42} borderRadius={8} />
+                  <Skeleton height={42} borderRadius={8} />
+                </div>
+              ) : visibleRooms.length === 0 ? (
                 <div className="empty-state">
                   No rooms linked to this program yet.
                 </div>
@@ -845,7 +858,13 @@ export function CoursesPage() {
               </div>
             </div>
             <div className="schedule-list">
-              {visibleSchedules.length === 0 ? (
+              {loadingSchedules || loadingInitial ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 12 }}>
+                  <Skeleton height={42} borderRadius={8} />
+                  <Skeleton height={42} borderRadius={8} />
+                  <Skeleton height={42} borderRadius={8} />
+                </div>
+              ) : visibleSchedules.length === 0 ? (
                 <div className="empty-state">
                   No schedules available for this program yet.
                 </div>

@@ -4,49 +4,69 @@ import { useEffect, useState } from "react";
 import { api } from "../data/apiClient";
 import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
+import { ConfirmModal } from "../components/common/ConfirmModal";
+import { TableSkeleton } from "../components/common/Skeleton";
 import { Plus, Search, Edit2, Trash2, Users } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
-import type { SectionItem, FacultyMember } from "../types";
+import { getProgramLogo } from "../utils/programLogos";
+import type { SectionItem, ProgramItem, CourseItem } from "../types";
 
 export function SectionsPage() {
   const [sections, setSections] = useState<SectionItem[]>([]);
+  const [coursesList, setCoursesList] = useState<CourseItem[]>([]);
+  const [programsList, setProgramsList] = useState<ProgramItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [fetching, setFetching] = useState(true);
+  const [sectionToDelete, setSectionToDelete] = useState<SectionItem | null>(null);
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [editingSection, setEditingSection] = useState<SectionItem | null>(null);
 
   const { selectedProgram, matchesProgram } = useProgramContext();
   const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
-  const canEdit = role === "super_admin" || role === "admin" || role === "program_head";
-
-  const [facultyList, setFacultyList] = useState<FacultyMember[]>([]);
-  const [programsList, setProgramsList] = useState<any[]>([]);
+  const isAdmin = role === "super_admin" || role === "admin";
+  const canEdit = isAdmin;
 
   const [form, setForm] = useState({
-    course: "BSIT",
+    course: selectedProgram.key || "BSIT",
     program: selectedProgram.key || "BSIT",
     yearLevel: "1",
-    section: "BSIT 1-A",
-    adviserId: "",
-    adviser: "",
+    section: `${selectedProgram.key || "BSIT"} 1-A`,
     students: "35",
-    semester: "1st Semester",
+    semester: "First Semester",
     schoolYear: "2026-2027",
   });
+
   const toast = useToast();
 
-  const fetchSections = () => {
-    api
-      .get("/sections")
-      .then((res: any) => setSections(res.data?.data || []))
-      .catch(() => setSections([]));
+  const fetchSections = async () => {
+    setFetching(true);
+    try {
+      const res = await api.get("/sections");
+      setSections(res.data?.data || []);
+    } catch {
+      setSections([]);
+    } finally {
+      setFetching(false);
+    }
+  };
+
+  const fetchDependencies = async () => {
+    try {
+      const [cRes, pRes] = await Promise.all([
+        api.get("/courses").catch(() => ({ data: { data: [] } })),
+        api.get("/programs").catch(() => ({ data: { data: [] } })),
+      ]);
+      setCoursesList(cRes.data?.data || []);
+      setProgramsList(pRes.data?.data || []);
+    } catch {
+      // ignore
+    }
   };
 
   useEffect(() => {
     fetchSections();
-    api.get("/faculty").then((res: any) => setFacultyList(res.data?.data || [])).catch(() => setFacultyList([]));
-    api.get("/programs").then((res: any) => setProgramsList(res.data?.data || [])).catch(() => setProgramsList([]));
+    fetchDependencies();
   }, []);
 
   const handleEdit = (section: SectionItem) => {
@@ -57,8 +77,6 @@ export function SectionsPage() {
       program: section.program || section.course || selectedProgram.key || "BSIT",
       yearLevel: section.yearLevel,
       section: section.section,
-      adviserId: section.adviserId || "",
-      adviser: section.adviser,
       students: String(section.students),
       semester: section.semester,
       schoolYear: section.schoolYear,
@@ -66,19 +84,18 @@ export function SectionsPage() {
     setIsOpen(true);
   };
 
-  const handleDelete = async (id?: string) => {
-    if (!canEdit || !id) return;
-    if (!window.confirm("Remove this section and its current roster?")) return;
-
-    setDeletingId(id);
+  const executeDelete = async () => {
+    if (!sectionToDelete || !sectionToDelete.id) return;
+    setLoading(true);
     try {
-      await api.delete(`/sections/${encodeURIComponent(id)}`);
+      await api.delete(`/sections/${encodeURIComponent(sectionToDelete.id)}`);
       toast.push("Section deleted successfully", "success");
       fetchSections();
     } catch (err: any) {
       toast.push(err?.response?.data?.error || "Failed to delete section", "error");
     } finally {
-      setDeletingId(null);
+      setLoading(false);
+      setSectionToDelete(null);
     }
   };
 
@@ -89,14 +106,13 @@ export function SectionsPage() {
     }
     setLoading(true);
     try {
-      const selectedAdviser = facultyList.find((f) => f.id === form.adviserId);
-      const payload: SectionItem = {
+      const payload = {
         course: form.course,
+        courseCode: form.course,
         program: form.program,
         yearLevel: form.yearLevel,
         section: form.section,
-        adviserId: form.adviserId || undefined,
-        adviser: selectedAdviser ? selectedAdviser.name : form.adviser || "Unassigned",
+        sectionLabel: form.section,
         students: Number(form.students) || 30,
         semester: form.semester,
         schoolYear: form.schoolYear,
@@ -124,16 +140,13 @@ export function SectionsPage() {
       section.course,
       section.yearLevel,
       section.section,
-      section.adviser,
       section.program || "",
     ]
       .join(" ")
       .toLowerCase()
       .includes(query.toLowerCase());
 
-    const matchesProg = role === "program_head"
-      ? matchesProgram(section.program || section.course)
-      : true;
+    const matchesProg = matchesProgram(section.program || section.course);
 
     return matchesQuery && matchesProg;
   });
@@ -146,7 +159,7 @@ export function SectionsPage() {
     >
       <PageHeader
         title="Class Sections & Cohorts"
-        description="Organize student cohorts by academic program, year level, faculty adviser, and student enrollment count."
+        description="Organize collegiate student cohorts by academic program, year level, and student enrollment count."
         breadcrumbs={
           <>
             <span>Home</span> <span>/</span> <strong>Sections</strong>
@@ -165,8 +178,6 @@ export function SectionsPage() {
                   program: selectedProgram.key || "BSIT",
                   yearLevel: "1",
                   section: `${selectedProgram.shortLabel || "BSIT"} 1-A`,
-                  adviserId: facultyList[0]?.id || "",
-                  adviser: facultyList[0]?.name || "",
                   students: "35",
                   semester: "1st Semester",
                   schoolYear: "2026-2027",
@@ -192,89 +203,124 @@ export function SectionsPage() {
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search by section, adviser, course..."
+              placeholder="Search by section, program, course..."
             />
           </label>
         </div>
 
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Program / Course</th>
-                <th>Year Level</th>
-                <th>Section Cohort</th>
-                <th>Faculty Adviser</th>
-                <th>Enrolled Students</th>
-                <th>Term & SY</th>
-                {canEdit && <th style={{ textAlign: "right" }}>Actions</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredSections.length === 0 ? (
+        {fetching ? (
+          <TableSkeleton rows={5} columns={canEdit ? 6 : 5} />
+        ) : (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
                 <tr>
-                  <td colSpan={canEdit ? 7 : 6}>
-                    <div className="empty-state">No sections matched your search criteria.</div>
-                  </td>
+                  <th>Program / Course</th>
+                  <th>Year Level</th>
+                  <th>Section Cohort</th>
+                  <th>Enrolled Students</th>
+                  <th>Term & SY</th>
+                  {canEdit && <th style={{ textAlign: "right" }}>Actions</th>}
                 </tr>
-              ) : (
-                filteredSections.map((section) => (
-                  <tr key={section.id || `${section.course}-${section.section}`}>
-                    <td>
-                      <span className="pill pill--royal">{section.program || section.course}</span>
-                    </td>
-                    <td>Year {section.yearLevel}</td>
-                    <td>
-                      <strong>{section.section}</strong>
-                    </td>
-                    <td>{section.adviser}</td>
-                    <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <Users size={14} color="#0d5499" />
-                        <span>{section.students} Students</span>
+              </thead>
+              <tbody>
+                {filteredSections.length === 0 ? (
+                  <tr>
+                    <td colSpan={canEdit ? 6 : 5}>
+                      <div className="empty-state" style={{ padding: "36px 16px", textAlign: "center" }}>
+                        <p style={{ margin: 0, fontWeight: 600, fontSize: "0.95rem" }}>No sections matched your search criteria.</p>
+                        <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "var(--srcb-text-muted)" }}>
+                          Try searching with different cohort names or academic course codes.
+                        </p>
+                        {query && (
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => setQuery("")}
+                            style={{ marginTop: 12, fontSize: "0.8rem" }}
+                          >
+                            Clear Search
+                          </button>
+                        )}
                       </div>
                     </td>
-                    <td>
-                      {section.semester} ({section.schoolYear})
-                    </td>
-                    {canEdit && (
-                      <td style={{ textAlign: "right" }}>
-                        <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
-                          <button
-                            type="button"
-                            className="icon-button"
-                            title="Edit Section"
-                            onClick={() => handleEdit(section)}
-                            style={{ background: "none", border: "none", cursor: "pointer", color: "#4b5563" }}
-                          >
-                            <Edit2 size={16} />
-                          </button>
-                          <button
-                            type="button"
-                            className="icon-button"
-                            title="Delete Section"
-                            onClick={() => handleDelete(section.id)}
-                            disabled={deletingId === section.id}
-                            style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626" }}
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                  </tr>
+                ) : (
+                  filteredSections.map((section) => (
+                    <tr key={section.id || `${section.course}-${section.section}`}>
+                      <td>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <img
+                            src={getProgramLogo(section.program || section.course)}
+                            alt="Program Logo"
+                            style={{
+                              width: "24px",
+                              height: "24px",
+                              borderRadius: "6px",
+                              objectFit: "contain",
+                              background: "#ffffff",
+                              padding: "1px",
+                              border: "1px solid var(--srcb-border)",
+                              boxShadow: "0 2px 4px rgba(15, 23, 42, 0.06)",
+                              flexShrink: 0,
+                            }}
+                          />
+                          <span className="pill pill--royal">{section.program || section.course}</span>
                         </div>
                       </td>
-                    )}
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                      <td>Year {section.yearLevel}</td>
+                      <td>
+                        <strong>{section.section}</strong>
+                      </td>
+                      <td>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <Users size={14} color="#0d5499" />
+                          <span>{section.students} Students</span>
+                        </div>
+                      </td>
+                      <td>
+                        {section.semester} ({section.schoolYear})
+                      </td>
+                      {canEdit && (
+                        <td style={{ textAlign: "right" }}>
+                          <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+                            <button
+                              type="button"
+                              className="icon-button"
+                              title="Edit Section"
+                              aria-label={`Edit ${section.section}`}
+                              onClick={() => handleEdit(section)}
+                              style={{ background: "none", border: "none", cursor: "pointer", color: "#4b5563" }}
+                            >
+                              <Edit2 size={16} />
+                            </button>
+                            <button
+                              type="button"
+                              className="icon-button"
+                              title="Delete Section"
+                              aria-label={`Delete ${section.section}`}
+                              onClick={() => setSectionToDelete(section)}
+                              style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626" }}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       {/* Add / Edit Section Modal */}
       <Modal
         isOpen={isOpen && canEdit}
         title={editingSection ? "Edit Section Details" : "Register Class Section"}
-        description="Configure student cohort, academic program, year level, and adviser."
+        description="Configure student cohort, academic program, year level, and enrollment details."
         onClose={() => {
           setIsOpen(false);
           setEditingSection(null);
@@ -282,21 +328,23 @@ export function SectionsPage() {
       >
         <div className="form-grid">
           <div className="field-group">
-            <label htmlFor="sectionProgram">Academic Program</label>
+            <label htmlFor="sectionProgram">
+              Degree Course / Program <span style={{ color: "#dc2626" }}>*</span>
+            </label>
             <select
               id="sectionProgram"
-              value={form.program}
+              value={form.course}
               onChange={(e) => {
-                const prog = e.target.value;
+                const code = e.target.value;
                 setForm({
                   ...form,
-                  program: prog,
-                  course: prog,
-                  section: !editingSection ? `${prog} ${form.yearLevel}-A` : form.section,
+                  program: code,
+                  course: code,
+                  section: !editingSection ? `${code} ${form.yearLevel}-A` : form.section,
                 });
               }}
             >
-              {programsList.map((p) => (
+              {(coursesList.length > 0 ? coursesList : programsList).map((p) => (
                 <option key={p.code} value={p.code}>
                   {p.code} - {p.name}
                 </option>
@@ -319,13 +367,16 @@ export function SectionsPage() {
           </div>
 
           <div className="field-group">
-            <label htmlFor="sectionLabel">Section Name / Label</label>
+            <label htmlFor="sectionLabel">
+              Section Name / Label <span style={{ color: "#dc2626" }}>*</span>
+            </label>
             <input
               id="sectionLabel"
               value={form.section}
               onChange={(e) => setForm({ ...form, section: e.target.value })}
               placeholder="e.g. BSIT 1-A, BSBA 2-B"
               required
+              aria-required="true"
             />
           </div>
 
@@ -337,22 +388,6 @@ export function SectionsPage() {
               value={form.students}
               onChange={(e) => setForm({ ...form, students: e.target.value })}
             />
-          </div>
-
-          <div className="field-group" style={{ gridColumn: "1 / -1" }}>
-            <label htmlFor="sectionAdviser">Section Adviser</label>
-            <select
-              id="sectionAdviser"
-              value={form.adviserId}
-              onChange={(e) => setForm({ ...form, adviserId: e.target.value })}
-            >
-              <option value="">Select adviser</option>
-              {facultyList.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name} ({f.department} · {f.status})
-                </option>
-              ))}
-            </select>
           </div>
 
           <div className="field-group">
@@ -390,6 +425,27 @@ export function SectionsPage() {
           </button>
         </div>
       </Modal>
+
+      {/* Delete Section Confirmation Modal (Heuristic 3 & 5) */}
+      <ConfirmModal
+        isOpen={Boolean(sectionToDelete)}
+        title="Remove Section"
+        variant="danger"
+        confirmLabel="Delete Section"
+        loading={loading}
+        onCancel={() => setSectionToDelete(null)}
+        onConfirm={executeDelete}
+        message={
+          <span>
+            Are you sure you want to delete section <strong>{sectionToDelete?.section}</strong> ({sectionToDelete?.course} - Year {sectionToDelete?.yearLevel})?
+            <br />
+            <br />
+            <span style={{ fontSize: "0.82rem", color: "#dc2626" }}>
+              ⚠️ This will remove the student cohort roster and its schedule associations.
+            </span>
+          </span>
+        }
+      />
     </motion.div>
   );
 }

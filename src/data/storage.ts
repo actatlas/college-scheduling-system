@@ -159,6 +159,18 @@ const defaultFaculty: FacultyMember[] = [
     subjects: ['GE101', 'GE102'],
     programs: ['BSIT', 'BSBA', 'BSED'],
   },
+  {
+    id: 'FAC-007',
+    name: 'Mr. Baltazar',
+    department: 'Religious Studies / Gen Ed',
+    email: 'baltazar@srcb.edu.ph',
+    phone: '09179998877',
+    status: 'Full-Time',
+    availability: 'Monday-Friday: 08:00-17:00',
+    maxLoadHours: 24,
+    subjects: ['RS1'],
+    programs: ['BSIT', 'BSBA', 'BSED', 'BEED', 'BSCrim', 'BSHM'],
+  },
 ]
 
 const defaultRooms: RoomItem[] = [
@@ -194,6 +206,7 @@ const defaultSubjects: SubjectItem[] = [
   { code: 'GE101', name: 'Understanding the Self', units: 3, lectureHours: 3, labHours: 0, semester: '1st Semester', department: 'General Education', program: 'BSIT', isMajor: false, instructor: 'Mrs. Elena Ramos', instructorId: 'FAC-006' },
   { code: 'GE102', name: 'Purposive Communication', units: 3, lectureHours: 3, labHours: 0, semester: '1st Semester', department: 'General Education', program: 'BSIT', isMajor: false, instructor: 'Mrs. Elena Ramos', instructorId: 'FAC-006' },
   { code: 'GE103', name: 'Mathematics in the Modern World', units: 3, lectureHours: 3, labHours: 0, semester: '1st Semester', department: 'General Education', program: 'BSIT', isMajor: false, instructor: 'Dr. Alan Turing', instructorId: 'FAC-003' },
+  { code: 'RS1', name: 'Religious Studies 1 (Peace & Christian Ethics)', units: 3, lectureHours: 3, labHours: 0, semester: '1st Semester', department: 'General Education', program: 'BSIT', isMajor: false, instructor: 'Mr. Baltazar', instructorId: 'FAC-007' },
 ]
 
 const defaultSections: SectionItem[] = [
@@ -324,6 +337,40 @@ const defaultClassSchedules: ClassScheduleItem[] = [
     isMajor: true,
     program: 'BSBA',
     color: '#8b5cf6',
+    status: 'Confirmed',
+  },
+  {
+    id: 'SCHED-008',
+    day: 'Tuesday',
+    time: '08:00-09:30',
+    subjectCode: 'IT301',
+    subject: 'Web Systems and Technologies',
+    section: 'BSIT 3-A',
+    faculty: 'Dr. Alan Turing',
+    facultyId: 'FAC-003',
+    room: 'COMLAB-2',
+    building: 'College Building',
+    modality: 'Face-to-Face',
+    isMajor: true,
+    program: 'BSIT',
+    color: '#6366f1',
+    status: 'Confirmed',
+  },
+  {
+    id: 'SCHED-009',
+    day: 'Thursday',
+    time: '08:00-09:30',
+    subjectCode: 'IT301',
+    subject: 'Web Systems and Technologies (Lab)',
+    section: 'BSIT 3-A',
+    faculty: 'Dr. Alan Turing',
+    facultyId: 'FAC-003',
+    room: 'COMLAB-2',
+    building: 'College Building',
+    modality: 'Face-to-Face',
+    isMajor: true,
+    program: 'BSIT',
+    color: '#6366f1',
     status: 'Confirmed',
   },
 ]

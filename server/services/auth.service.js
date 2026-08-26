@@ -13,6 +13,16 @@ async function ensureCatalogSeed() {
     // ignore if already aligned or unsupported in mock
   }
 
+  try {
+    await query("ALTER TABLE users ADD COLUMN status ENUM('Active', 'Suspended') NOT NULL DEFAULT 'Active'");
+  } catch (err) {
+    try {
+      await query("ALTER TABLE users MODIFY COLUMN status ENUM('Active', 'Suspended') NOT NULL DEFAULT 'Active'");
+    } catch (e) {
+      // ignore if already aligned or unsupported in mock
+    }
+  }
+
   const [program] = await query('SELECT code FROM programs WHERE code = ? LIMIT 1', ['ITP']);
   if (!program) {
     await query('INSERT INTO programs (code, name, focus) VALUES (?, ?, ?)', ['ITP', 'Information Technology Program', 'ITP']);
@@ -72,6 +82,22 @@ async function ensureDefaultUsers() {
       const [major] = await query('SELECT id FROM program_majors WHERE code = ? LIMIT 1', ['BSIT']);
       if (major) {
         await query('UPDATE program_majors SET program_head_id = ? WHERE id = ?', [userId, major.id]);
+      }
+
+      // Program Heads in SRCB also teach major subjects (e.g. 3rd year classes)
+      const headFacultyId = 'FAC-003';
+      const [teacher] = await query('SELECT id FROM teachers WHERE id = ? OR LOWER(email) = LOWER(?) LIMIT 1', [headFacultyId, user.email]);
+      if (!teacher) {
+        await query('INSERT INTO teachers (id, name, email, phone, status, program_major_id) VALUES (?, ?, ?, ?, ?, ?)', [
+          headFacultyId,
+          user.name,
+          user.email,
+          '09191112233',
+          'Full-Time',
+          major?.id || null,
+        ]);
+      } else {
+        await query('UPDATE teachers SET name = ?, status = ?, email = COALESCE(email, ?) WHERE id = ?', [user.name, 'Full-Time', user.email, teacher.id]);
       }
     }
 
@@ -144,7 +170,7 @@ async function login({ email, password }) {
   }
 
   const rows = await query(
-    'SELECT id, name, email, password_hash, role FROM users WHERE LOWER(TRIM(email)) = ? LIMIT 1',
+    'SELECT id, name, email, password_hash, role, status FROM users WHERE LOWER(TRIM(email)) = ? LIMIT 1',
     [normalizedEmail]
   );
 
@@ -155,12 +181,22 @@ async function login({ email, password }) {
       name: DEFAULT_ADMIN_NAME,
       email: DEFAULT_ADMIN_EMAIL,
       role: 'admin',
+      status: 'Active',
     };
   } else if (!user || !user.password_hash) {
     const err = new Error('Invalid email or password');
     err.statusCode = 401;
     throw err;
   } else {
+    // Check if account is suspended BEFORE password comparison or authentication approval
+    const isSuspended = String(user.status || '').trim().toLowerCase() === 'suspended';
+    if (isSuspended) {
+      const err = new Error('Your account has been suspended. Please contact the ICT Office or system administrator.');
+      err.statusCode = 403;
+      err.code = 'ACCOUNT_SUSPENDED';
+      throw err;
+    }
+
     const ok = await bcrypt.compare(normalizedPassword, user.password_hash);
     if (!ok) {
       const err = new Error('Invalid email or password');
@@ -169,14 +205,23 @@ async function login({ email, password }) {
     }
   }
 
+  const isSuspended = String(user.status || '').trim().toLowerCase() === 'suspended';
+  if (isSuspended) {
+    const err = new Error('Your account has been suspended. Please contact the ICT Office or system administrator.');
+    err.statusCode = 403;
+    err.code = 'ACCOUNT_SUSPENDED';
+    throw err;
+  }
+
   const payload = {
     id: user.id,
     name: user.name,
     email: user.email,
     role: user.role,
+    status: user.status || 'Active',
   };
 
-  if (user.role === 'teacher') {
+  if (user.role === 'teacher' || user.role === 'program_head') {
     let [teacher] = await query(
       'SELECT id, name, email, phone, status FROM teachers WHERE LOWER(email) = LOWER(?) LIMIT 1',
       [user.email]
@@ -197,7 +242,9 @@ async function login({ email, password }) {
       };
       payload.teacherId = String(teacher.id);
     }
-  } else if (user.role === 'program_head') {
+  }
+
+  if (user.role === 'program_head') {
     const majors = await query(
       'SELECT pm.id, pm.code, pm.name, pm.program_code FROM program_majors pm WHERE pm.program_head_id = ?',
       [user.id]
@@ -217,9 +264,11 @@ async function login({ email, password }) {
   const token = jwt.sign(
     {
       sub: user.id,
+      id: user.id,
       role: user.role,
       email: user.email,
-      teacherId: payload.teacherId || null,
+      status: user.status || 'Active',
+      teacherId: payload.teacherId || (user.role === 'program_head' ? 'FAC-003' : null),
       program: payload.program || null,
       programCode: payload.programCode || null,
     },
@@ -233,10 +282,11 @@ async function login({ email, password }) {
   };
 }
 
-async function getCurrentUser({ sub }) {
+async function getCurrentUser({ sub, id }) {
+  const targetId = sub || id;
   const rows = await query(
-    'SELECT id, name, email, role FROM users WHERE id = ? LIMIT 1',
-    [sub]
+    'SELECT id, name, email, role, status FROM users WHERE id = ? LIMIT 1',
+    [targetId]
   );
 
   const user = rows[0];
@@ -246,14 +296,23 @@ async function getCurrentUser({ sub }) {
     throw err;
   }
 
+  const isSuspended = String(user.status || '').trim().toLowerCase() === 'suspended';
+  if (isSuspended) {
+    const err = new Error('Your account has been suspended. Please contact the ICT Office or system administrator.');
+    err.statusCode = 403;
+    err.code = 'ACCOUNT_SUSPENDED';
+    throw err;
+  }
+
   const payload = {
     id: user.id,
     name: user.name,
     email: user.email,
     role: user.role,
+    status: user.status || 'Active',
   };
 
-  if (user.role === 'teacher') {
+  if (user.role === 'teacher' || user.role === 'program_head') {
     let [teacher] = await query(
       'SELECT id, name, email, phone, status FROM teachers WHERE LOWER(email) = LOWER(?) LIMIT 1',
       [user.email]
@@ -274,7 +333,9 @@ async function getCurrentUser({ sub }) {
       };
       payload.teacherId = String(teacher.id);
     }
-  } else if (user.role === 'program_head') {
+  }
+
+  if (user.role === 'program_head') {
     const majors = await query(
       'SELECT pm.id, pm.code, pm.name, pm.program_code FROM program_majors pm WHERE pm.program_head_id = ?',
       [user.id]
@@ -333,6 +394,44 @@ async function resetPassword(token, newPassword) {
   return { message: 'Password reset' };
 }
 
+async function changePassword(userId, currentPassword, newPassword) {
+  const [user] = await query('SELECT id, password_hash FROM users WHERE id = ? LIMIT 1', [userId]);
+  if (!user) {
+    const err = new Error('User account not found');
+    err.statusCode = 404;
+    throw err;
+  }
+  const isMatch = await bcrypt.compare(currentPassword, user.password_hash);
+  if (!isMatch) {
+    const err = new Error('Incorrect current password');
+    err.statusCode = 400;
+    throw err;
+  }
+  const newHash = await bcrypt.hash(newPassword, 10);
+  await query('UPDATE users SET password_hash = ? WHERE id = ?', [newHash, userId]);
+  return { success: true, message: 'Password changed successfully' };
+}
+
+async function updateProfile(userId, { name, phone }) {
+  const [user] = await query('SELECT id, name, email, role FROM users WHERE id = ? LIMIT 1', [userId]);
+  if (!user) {
+    const err = new Error('User account not found');
+    err.statusCode = 404;
+    throw err;
+  }
+  if (name && name.trim()) {
+    await query('UPDATE users SET name = ? WHERE id = ?', [name.trim(), userId]);
+    await query('UPDATE teachers SET name = ? WHERE LOWER(email) = LOWER(?)', [name.trim(), user.email]);
+  }
+  if (phone !== undefined) {
+    await query('UPDATE teachers SET phone = ? WHERE LOWER(email) = LOWER(?)', [phone ? phone.trim() : null, user.email]);
+  }
+  return { success: true, message: 'Profile updated successfully', name: name ? name.trim() : user.name };
+}
+
 authService.createResetToken = createResetToken;
 authService.resetPassword = resetPassword;
+authService.changePassword = changePassword;
+authService.updateProfile = updateProfile;
+
 

@@ -1,122 +1,286 @@
-import { ArrowRight, GraduationCap, ShieldCheck, Sparkles, Calendar, Users, BookOpen } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
+import {
+  ArrowRight,
+  Sparkles,
+  Calendar,
+  Users,
+  BookOpen,
+  Clock,
+  GraduationCap,
+} from "lucide-react";
 import Logo from "../assets/images/Logo.png";
-import FrontDeskBg from "../assets/images/SRCB FRONT DES.png";
+import {
+  itLogo,
+  baLogo,
+  crimLogo,
+  hmLogo,
+  teLogo,
+} from "../utils/programLogos";
 
 export function LandingPage() {
   const navigate = useNavigate();
 
+  const handleScrollToSection = (id: string) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
   return (
-    <div
-      className="landing-wrapper"
-      style={{
-        backgroundImage: `url("${FrontDeskBg}")`,
-      }}
-    >
-      {/* Background Dimmer Overlay — same as login */}
-      <div className="landing-bg-overlay" />
+    <div className="landing-container">
+      {/* Tech Background Grid & Glowing Orbs */}
+      <div className="landing-grid-backdrop" />
 
-      {/* Subtle Logo Watermark — same as login */}
-      <div
-        className="landing-bg-watermark"
-        style={{
-          backgroundImage: `url("${Logo}")`,
-        }}
-      />
-
-      {/* Top Breadcrumb Tag — same as login */}
-      <div className="landing-page-tag">
-        <GraduationCap size={16} />
-        <span>St. Rita's College of Balingasag</span>
-      </div>
-
-      <div className="glass-landing-shell">
-        {/* Left Hero Section */}
-        <section className="glass-landing-hero">
-          <div className="glass-brand-badge">
-            <img src={Logo} alt="St. Rita's College Logo" className="glass-logo" />
+      {/* ===================================================
+          TOP NAVIGATION
+          =================================================== */}
+      <header className="landing-navbar">
+        <div className="landing-nav-inner">
+          <Link to="/" className="landing-nav-brand" title="SRCB SCSMS">
+            <img src={Logo} alt="St. Rita's College Logo" className="landing-nav-logo" />
             <div>
-              <div className="glass-brand-title">St. Rita's College</div>
-              <div className="glass-brand-sub">Balingasag, Misamis Oriental</div>
+              <div className="landing-nav-title">
+                <span>SRCB</span>
+                <span style={{ color: "#38bdf8" }}>SCSMS</span>
+              </div>
+              <div className="landing-nav-sub">St. Rita's College of Balingasag</div>
+            </div>
+          </Link>
+
+          <nav>
+            <ul className="landing-nav-links">
+              <li>
+                <button
+                  type="button"
+                  className="landing-nav-link"
+                  onClick={() => handleScrollToSection("hero")}
+                  style={{ background: "none", border: "none", padding: 0 }}
+                >
+                  Home
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  className="landing-nav-link"
+                  onClick={() => handleScrollToSection("features")}
+                  style={{ background: "none", border: "none", padding: 0 }}
+                >
+                  Features
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  className="landing-nav-link"
+                  onClick={() => handleScrollToSection("programs")}
+                  style={{ background: "none", border: "none", padding: 0 }}
+                >
+                  Programs
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  className="landing-nav-link"
+                  onClick={() => handleScrollToSection("governance")}
+                  style={{ background: "none", border: "none", padding: 0 }}
+                >
+                  About
+                </button>
+              </li>
+            </ul>
+          </nav>
+
+          <div className="landing-nav-actions">
+            <button
+              type="button"
+              className="landing-btn-secondary"
+              onClick={() => navigate("/login")}
+            >
+              <span>Log In</span>
+            </button>
+            <button
+              type="button"
+              className="landing-btn-primary"
+              onClick={() => navigate("/login")}
+            >
+              <span>Get Started</span>
+              <ArrowRight size={15} />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* ===================================================
+          HERO SECTION
+          =================================================== */}
+      <main className="landing-hero-section" id="hero">
+        <div className="landing-hero-grid">
+          <div className="landing-hero-content">
+            <div className="landing-hero-pill">
+              <span className="landing-hero-pill-dot" />
+              <span>Academic Year 2026–2027 • 1st Semester Active</span>
+            </div>
+
+            <h1 className="landing-hero-title">
+              SRCB Class Scheduling Management System
+              <span className="landing-hero-title-gradient">
+                Professional class scheduling for every academic department.
+              </span>
+            </h1>
+
+            <p className="landing-hero-desc">
+              An intelligent institutional platform engineered for Super Admins, College Registrars,
+              Program Heads, and Faculty members to seamlessly coordinate programs, faculty workloads,
+              lecture &amp; lab rooms, curricula, and automated conflict-free class &amp; examination timetables.
+            </p>
+
+            <div className="landing-hero-cta-group">
+              <button
+                type="button"
+                className="landing-hero-cta-primary"
+                onClick={() => navigate("/login")}
+              >
+                <span>Launch Portal</span>
+                <ArrowRight size={18} />
+              </button>
+
+              <button
+                type="button"
+                className="landing-hero-cta-secondary"
+                onClick={() => handleScrollToSection("features")}
+              >
+                <Sparkles size={16} />
+                <span>Explore Features</span>
+              </button>
             </div>
           </div>
+        </div>
+      </main>
 
-          <h1>Professional class scheduling for every academic department.</h1>
-          <p className="hero-desc">
-            Coordinate faculty, rooms, subjects, and sections from a single,
-            modern platform designed for a smarter school calendar.
+      {/* ===================================================
+          FEATURES SECTION
+          =================================================== */}
+      <section className="landing-features-section" id="features">
+        <div className="landing-section-header">
+          <div className="landing-section-tag">
+            <Sparkles size={14} />
+            <span>Institutional Capabilities</span>
+          </div>
+          <h2 className="landing-section-title">Built for Precision Academic Operations</h2>
+          <p className="landing-section-desc">
+            SCSMS integrates all aspects of college scheduling into one collaborative, automated environment.
           </p>
+        </div>
 
-          <div className="glass-landing-features">
-            <div className="glass-landing-features-title">
-              <Sparkles size={14} />
-              <span>Platform Highlights</span>
+        <div className="landing-features-grid">
+          <div className="landing-feature-box">
+            <div className="landing-feature-icon-box">
+              <Calendar size={22} />
             </div>
-            <div className="glass-feature-grid">
-              <div className="glass-feature-item">
-                <Calendar size={18} />
-                <div>
-                  <strong>Smart Scheduling</strong>
-                  <span>Automated conflict detection &amp; resolution</span>
-                </div>
-              </div>
-              <div className="glass-feature-item">
-                <Users size={18} />
-                <div>
-                  <strong>Faculty Management</strong>
-                  <span>Track loads, availability &amp; assignments</span>
-                </div>
-              </div>
-              <div className="glass-feature-item">
-                <BookOpen size={18} />
-                <div>
-                  <strong>Academic Programs</strong>
-                  <span>Manage curricula, sections &amp; subjects</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Right Frosted Glass Card — mirrors the login card style */}
-        <section className="glass-landing-card">
-          <div className="glass-landing-card-header">
-            <h2>College Class Scheduling System</h2>
+            <h3>Intelligent Timetable Generation</h3>
             <p>
-              Built for administrators, program heads, and teachers with a
-              consistent experience across every scheduling workflow.
+              Automatically maps lecture and laboratory hours across days and time slots while honoring capacity constraints.
             </p>
           </div>
 
-          <div className="glass-landing-pills">
-            <span className="glass-pill">
-              <ShieldCheck size={14} /> Secure access
-            </span>
-
-            <span className="glass-pill">
-              <Calendar size={14} /> Class &amp; Exams
-            </span>
+          <div className="landing-feature-box">
+            <div className="landing-feature-icon-box">
+              <Users size={22} />
+            </div>
+            <h3>Faculty Load &amp; Availability</h3>
+            <p>
+              Prevents faculty overloads and double-bookings by verifying instructor schedules and availability windows.
+            </p>
           </div>
 
-          <p className="glass-landing-card-desc">
-            Keep academic operations organized, responsive, and easy to manage
-            — all from one centralized scheduling portal.
-          </p>
-
-          <button
-            className="glass-submit-btn"
-            type="button"
-            onClick={() => navigate("/login")}
-          >
-            <span>Get Started</span>
-            <ArrowRight size={17} />
-          </button>
-
-          <div className="glass-card-footer">
-            College Department • St. Rita's College of Balingasag
+          <div className="landing-feature-box">
+            <div className="landing-feature-icon-box">
+              <Clock size={22} />
+            </div>
+            <h3>Midterm &amp; Final Exam Matrix</h3>
+            <p>
+              Generates conflict-free examination timetables with designated proctor assignments and building allocations.
+            </p>
           </div>
-        </section>
-      </div>
+
+          <div className="landing-feature-box">
+            <div className="landing-feature-icon-box">
+              <GraduationCap size={22} />
+            </div>
+            <h3>Multi-Department Governance</h3>
+            <p>
+              Enables Program Heads to manage departmental curricula, sections, and subjects with real-time sync.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ===================================================
+          PROGRAMS SHOWCASE
+          =================================================== */}
+      <section className="landing-programs-section" id="programs">
+        <div className="landing-section-header">
+          <div className="landing-section-tag">
+            <BookOpen size={14} />
+            <span>Academic Programs</span>
+          </div>
+          <h2 className="landing-section-title">Serving All College Departments</h2>
+        </div>
+
+        <div className="landing-programs-grid">
+          <div className="landing-program-card">
+            <img src={itLogo} alt="Information Technology Program" className="landing-program-img" />
+            <div className="landing-program-badge">ITP</div>
+            <div className="landing-program-name">Information Technology Program</div>
+          </div>
+          <div className="landing-program-card">
+            <img src={baLogo} alt="Business Administration Program" className="landing-program-img" />
+            <div className="landing-program-badge">BSA</div>
+            <div className="landing-program-name">Business Administration Program</div>
+          </div>
+          <div className="landing-program-card">
+            <img src={crimLogo} alt="Criminal Justice Education Program" className="landing-program-img" />
+            <div className="landing-program-badge">CJEP</div>
+            <div className="landing-program-name">Criminal Justice Education Program</div>
+          </div>
+          <div className="landing-program-card">
+            <img src={hmLogo} alt="Hospitality Management Program" className="landing-program-img" />
+            <div className="landing-program-badge">HMP</div>
+            <div className="landing-program-name">Hospitality Management Program</div>
+          </div>
+          <div className="landing-program-card">
+            <img src={teLogo} alt="Teacher Education Program" className="landing-program-img" />
+            <div className="landing-program-badge">TEP</div>
+            <div className="landing-program-name">Teacher Education Program</div>
+          </div>
+        </div>
+      </section>
+
+      {/* ===================================================
+          FOOTER
+          =================================================== */}
+      <footer className="landing-footer" id="governance">
+        <div className="landing-footer-inner">
+          <div className="landing-footer-brand">
+            <img src={Logo} alt="St. Rita's College Logo" style={{ width: 32, height: 32, objectFit: "contain" }} />
+            <div>
+              <div style={{ fontWeight: 800, fontSize: "0.95rem", color: "#ffffff" }}>
+                St. Rita's College of Balingasag
+              </div>
+              <div style={{ fontSize: "0.74rem", color: "#94a3b8" }}>
+                College Department • Balingasag, Misamis Oriental
+              </div>
+            </div>
+          </div>
+
+          <div className="landing-footer-text">
+            © {new Date().getFullYear()} <strong>SRCB Class Scheduling Management System (SCSMS)</strong>. All rights reserved.
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

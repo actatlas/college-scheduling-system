@@ -5,21 +5,31 @@ import { api } from "../data/apiClient";
 import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
 import { Plus } from "lucide-react";
+import { getProgramLogo } from "../utils/programLogos";
+import { CardGridSkeleton } from "../components/common/Skeleton";
 
 type ProgramRow = { id?: number; name: string; focus: string };
 
 export function ProgramsPage() {
   const [programs, setPrograms] = useState<ProgramRow[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [selectedPreviewProgram, setSelectedPreviewProgram] = useState<{
+    name: string;
+    focus: string;
+    logo: string;
+  } | null>(null);
   const [form, setForm] = useState({ code: "", name: "", focus: "" });
   const [loading, setLoading] = useState(false);
+  const [isFetching, setIsFetching] = useState(true);
   const toast = useToast();
 
   const fetchPrograms = () => {
+    setIsFetching(true);
     api
       .get("/programs")
       .then((res: any) => setPrograms(res.data?.data || []))
-      .catch(() => setPrograms([]));
+      .catch(() => setPrograms([]))
+      .finally(() => setIsFetching(false));
   };
 
   useEffect(() => {
@@ -49,21 +59,221 @@ export function ProgramsPage() {
         }
       />
 
-      <section className="grid-3">
-        {visiblePrograms.length === 0 ? (
-          <div className="empty-state">No programs have been recorded yet.</div>
-        ) : (
-          visiblePrograms.map((program) => (
-            <article className="card" key={program.name}>
-              <p className="eyebrow">Academic program</p>
-              <h3>{program.name}</h3>
-              <p className="muted">{program.focus}</p>
-              <p className="pill">Official college offering</p>
-            </article>
-          ))
+      {isFetching ? (
+        <CardGridSkeleton count={5} />
+      ) : (
+        <section className="grid-3">
+          {visiblePrograms.length === 0 ? (
+            <div className="empty-state">No programs have been recorded yet.</div>
+          ) : (
+          visiblePrograms.map((program) => {
+            const logoSrc = getProgramLogo(program.name || program.focus || "");
+            const rawFocus = (program.focus || "").trim();
+            const cleanFocus = rawFocus
+              ? rawFocus.toLowerCase().endsWith("focus")
+                ? rawFocus
+                : `${rawFocus} Focus`
+              : "Collegiate Focus";
+
+            return (
+              <article
+                className="card"
+                key={program.name}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  padding: "22px",
+                  borderRadius: "16px",
+                  border: "1px solid var(--srcb-border)",
+                  boxShadow: "0 4px 16px rgba(15, 23, 42, 0.04)",
+                  transition: "transform 0.2s ease, box-shadow 0.2s ease",
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      justifyContent: "space-between",
+                      gap: "14px",
+                      marginBottom: "16px",
+                    }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <p className="eyebrow" style={{ marginBottom: "6px" }}>
+                        Academic program
+                      </p>
+                      <h3
+                        style={{
+                          margin: 0,
+                          fontSize: "1.18rem",
+                          fontWeight: 800,
+                          color: "var(--srcb-navy)",
+                          lineHeight: 1.3,
+                          letterSpacing: "-0.01em",
+                        }}
+                      >
+                        {program.name}
+                      </h3>
+                    </div>
+
+                    <button
+                      type="button"
+                      title="Click to view enlarged logo"
+                      onClick={() =>
+                        setSelectedPreviewProgram({
+                          name: program.name,
+                          focus: cleanFocus,
+                          logo: logoSrc,
+                        })
+                      }
+                      style={{
+                        background: "none",
+                        border: "none",
+                        padding: 0,
+                        cursor: "pointer",
+                        position: "relative",
+                        flexShrink: 0,
+                        borderRadius: "14px",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                      className="program-logo-btn"
+                    >
+                      <img
+                        src={logoSrc}
+                        alt={`${program.name} Logo`}
+                        style={{
+                          width: "68px",
+                          height: "68px",
+                          borderRadius: "14px",
+                          objectFit: "contain",
+                          background: "#ffffff",
+                          padding: "4px",
+                          border: "1px solid var(--srcb-border)",
+                          boxShadow: "0 6px 16px rgba(15, 23, 42, 0.08)",
+                          transition: "transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = "scale(1.08)";
+                          e.currentTarget.style.boxShadow = "0 10px 24px rgba(15, 23, 42, 0.16)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = "scale(1)";
+                          e.currentTarget.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.08)";
+                        }}
+                      />
+                    </button>
+                  </div>
+
+                  <p
+                    className="muted"
+                    style={{
+                      margin: "0 0 14px",
+                      fontSize: "0.88rem",
+                      fontWeight: 600,
+                      color: "var(--srcb-text-muted)",
+                    }}
+                  >
+                    {cleanFocus}
+                  </p>
+                </div>
+
+                <div>
+                  <span
+                    className="pill pill--royal"
+                    style={{ fontSize: "0.76rem", fontWeight: 700 }}
+                  >
+                    Official college offering
+                  </span>
+                </div>
+              </article>
+            );
+          })
         )}
       </section>
+      )}
 
+      {/* Enlarged Program Logo Modal */}
+      <Modal
+        isOpen={Boolean(selectedPreviewProgram)}
+        title={selectedPreviewProgram?.name || "Program Logo"}
+        description="Official Academic Program Seal · St. Rita's College of Balingasag"
+        onClose={() => setSelectedPreviewProgram(null)}
+      >
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px 10px 10px",
+            textAlign: "center",
+          }}
+        >
+          <div
+            style={{
+              padding: "16px",
+              background: "linear-gradient(135deg, #f8fafc 0%, #ffffff 100%)",
+              borderRadius: "24px",
+              border: "1px solid var(--srcb-border)",
+              boxShadow: "0 16px 36px rgba(15, 23, 42, 0.12)",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: "20px",
+            }}
+          >
+            <img
+              src={selectedPreviewProgram?.logo}
+              alt={`${selectedPreviewProgram?.name} Enlarged Logo`}
+              style={{
+                width: "240px",
+                height: "240px",
+                objectFit: "contain",
+                filter: "drop-shadow(0 8px 16px rgba(0, 0, 0, 0.08))",
+              }}
+            />
+          </div>
+
+          <h3
+            style={{
+              fontSize: "1.3rem",
+              fontWeight: 800,
+              color: "var(--srcb-navy)",
+              margin: "0 0 6px",
+            }}
+          >
+            {selectedPreviewProgram?.name}
+          </h3>
+
+          <p
+            style={{
+              fontSize: "0.9rem",
+              fontWeight: 600,
+              color: "#0284c7",
+              margin: "0 0 20px",
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+            }}
+          >
+            {selectedPreviewProgram?.focus}
+          </p>
+
+          <button
+            type="button"
+            className="action-button"
+            onClick={() => setSelectedPreviewProgram(null)}
+            style={{ minWidth: "140px" }}
+          >
+            Close Preview
+          </button>
+        </div>
+      </Modal>
+
+      {/* Add Program Modal */}
       <Modal
         isOpen={isOpen}
         title="Add program"
@@ -72,20 +282,30 @@ export function ProgramsPage() {
       >
         <div className="form-grid">
           <div className="field-group">
-            <label htmlFor="programCode">Program Code</label>
+            <label htmlFor="programCode">
+              Program Code <span style={{ color: "#dc2626" }}>*</span>
+            </label>
             <input
               id="programCode"
               value={form.code}
+              required
+              aria-required="true"
+              placeholder="e.g. BSIT, BSBA"
               onChange={(event) =>
                 setForm({ ...form, code: event.target.value })
               }
             />
           </div>
           <div className="field-group">
-            <label htmlFor="programName">Program Name</label>
+            <label htmlFor="programName">
+              Program Name <span style={{ color: "#dc2626" }}>*</span>
+            </label>
             <input
               id="programName"
               value={form.name}
+              required
+              aria-required="true"
+              placeholder="e.g. Bachelor of Science in Information Technology"
               onChange={(event) =>
                 setForm({ ...form, name: event.target.value })
               }

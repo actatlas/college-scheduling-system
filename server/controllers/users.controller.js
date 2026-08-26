@@ -38,6 +38,12 @@ async function updateUser(req, res, next) {
     }
     const { id } = req.params;
     const payload = req.body || {};
+
+    // Block self-suspension
+    if (payload.status === 'Suspended' && (String(req.user?.sub) === String(id) || String(req.user?.id) === String(id) || (payload.email && req.user?.email?.toLowerCase() === payload.email.toLowerCase()))) {
+      return res.status(400).json({ error: 'You cannot suspend your own account.', code: 'SELF_SUSPENSION_FORBIDDEN' });
+    }
+
     const row = await usersService.updateUser(id, payload);
     res.json({ data: row });
   } catch (err) {
@@ -51,6 +57,12 @@ async function deleteUser(req, res, next) {
       return res.status(403).json({ error: 'Forbidden. Only Super Administrator (ICT Office) can delete user accounts.', code: 'UNAUTHORIZED_ROLE' });
     }
     const { id } = req.params;
+
+    // Block self-deletion
+    if (String(req.user?.sub) === String(id) || String(req.user?.id) === String(id)) {
+      return res.status(400).json({ error: 'You cannot delete your own account.', code: 'SELF_DELETION_FORBIDDEN' });
+    }
+
     await usersService.deleteUser(id);
     res.json({ message: 'User deleted successfully' });
   } catch (err) {

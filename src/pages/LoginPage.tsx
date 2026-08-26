@@ -1,59 +1,146 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Lock, Mail, ArrowRight, Eye, EyeOff, GraduationCap } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
+import {
+  Lock,
+  Mail,
+  ArrowRight,
+  Eye,
+  EyeOff,
+  Sparkles,
+  ArrowLeft,
+  ShieldAlert,
+} from "lucide-react";
+import { motion } from "framer-motion";
 import { api } from "../data/apiClient";
 import { useToast } from "../components/common/Toast";
 import Logo from "../assets/images/Logo.png";
-import FrontDeskBg from "../assets/images/SRCB FRONT DES.png";
+
+interface RolePreset {
+  role: string;
+  name: string;
+  email: string;
+  pass: string;
+  badge: string;
+}
+
+const PRESETS: RolePreset[] = [
+  {
+    role: "Super Admin",
+    name: "ICT Super Admin",
+    email: "superadmin@srcb.edu.ph",
+    pass: "@superadmin123",
+    badge: "Super Admin",
+  },
+  {
+    role: "Admin",
+    name: "System Administrator",
+    email: "admin@srcb.edu.ph",
+    pass: "@admin123",
+    badge: "Admin",
+  },
+  {
+    role: "Program Head",
+    name: "Dr. Reyes (IT)",
+    email: "programhead@srcb.edu.ph",
+    pass: "@program123",
+    badge: "Program Head",
+  },
+  {
+    role: "Teacher",
+    name: "Maria Santos",
+    email: "teacher@srcb.edu.ph",
+    pass: "@teacher123",
+    badge: "Faculty",
+  },
+];
 
 export function LoginPage() {
+  const [searchParams] = useSearchParams();
+  // Requirement 2: Email and Password MUST start completely empty
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
-  const [loginError, setLoginError] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [suspensionNotice, setSuspensionNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Ensure clean state on login page unless we just were redirected
+    if (searchParams.get("suspended") === "1") {
+      const stored = sessionStorage.getItem("suspensionNotice");
+      setSuspensionNotice(
+        stored || "Your account has been suspended. Please contact the ICT Office or system administrator."
+      );
+      sessionStorage.removeItem("suspensionNotice");
+    }
+  }, [searchParams]);
 
   const navigate = useNavigate();
   const toast = useToast();
 
-
-  const handleLoginWithEmail = async (targetEmail: string, targetPass = "password123") => {
+  const handleLoginWithCredentials = async (targetEmail: string, targetPass: string) => {
     setIsSubmitting(true);
-    setLoginError(null);
+    setAuthError(null);
+    setSuspensionNotice(null);
     try {
       const res: any = await api.post("/auth/login", {
-        email: targetEmail.trim(),
+        email: targetEmail,
         password: targetPass,
       });
 
-      const payload = res.data || {};
-      const user = payload.user || {};
-      const userRole = String(user.role || "admin").toLowerCase();
+      const token = res.data?.token || res.data?.data?.token;
+      const user = res.data?.user || res.data?.data?.user;
 
-      localStorage.setItem("token", payload.token || `token_${Date.now()}`);
-      localStorage.setItem("userRole", userRole);
-      localStorage.setItem("userName", user.name || "User");
-
-      if (userRole === "teacher") {
-        const teacherObj = user.teacher || {};
-        const isPartTime = teacherObj.status === "Part-Time" || targetEmail.includes("parttime") || targetEmail.includes("sabuero");
-        const resolvedId = String(teacherObj.id || user.teacherId || (isPartTime ? "FAC-003" : "T001"));
-        localStorage.setItem("teacherId", resolvedId);
-        localStorage.setItem("teacherStatus", teacherObj.status || (isPartTime ? "Part-Time" : "Full-Time"));
-      } else {
-        localStorage.removeItem("teacherId");
-        localStorage.removeItem("teacherStatus");
+      if (!token) {
+        throw new Error("No authentication token received from server");
       }
 
-      if (user.program) {
-        localStorage.setItem("selectedProgram", user.program);
+      localStorage.setItem("token", token);
+      if (user) {
+        const userRole = (user.role || "admin").toLowerCase();
+        localStorage.setItem("userRole", userRole);
+        localStorage.setItem("userName", user.name || "User");
+        if (user.teacherId) {
+          localStorage.setItem("teacherId", user.teacherId);
+        }
+        if (userRole === "teacher" || userRole === "program_head") {
+          localStorage.setItem("teacherStatus", user.teacherStatus || user.teacher?.status || "Full-Time");
+        } else {
+          localStorage.removeItem("teacherStatus");
+        }
+        if (user.program) {
+          localStorage.setItem("selectedProgram", user.program);
+        }
       }
 
-      toast.push(`Welcome, ${user.name || userRole.toUpperCase()}!`, "success");
+      toast.push("Successfully logged in to SRCB Scheduling System", "success");
       navigate("/dashboard");
     } catch (err: any) {
-      setLoginError(err?.message || "Invalid email or password");
+      const isSuspended =
+        err?.code === "ACCOUNT_SUSPENDED" ||
+        err?.response?.data?.code === "ACCOUNT_SUSPENDED" ||
+        (typeof err?.message === "string" && err?.message.toLowerCase().includes("suspended")) ||
+        (typeof err?.response?.data?.error === "string" &&
+          err?.response?.data?.error.toLowerCase().includes("suspended"));
+
+      if (isSuspended) {
+        const msg =
+          err?.response?.data?.error ||
+          err?.message ||
+          "Your account has been suspended. Please contact the ICT Office or system administrator.";
+        setSuspensionNotice(msg);
+        setAuthError(null);
+        toast.push(msg, "error");
+      } else {
+        const msg =
+          err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          err?.message ||
+          "Invalid email or password. Please check your credentials.";
+        setAuthError(msg);
+        toast.push(msg, "error");
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -62,10 +149,17 @@ export function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password.trim()) {
-      setLoginError("Please enter your email and password.");
+      setAuthError("Please enter your email and password.");
       return;
     }
-    await handleLoginWithEmail(email, password);
+    await handleLoginWithCredentials(email.trim(), password);
+  };
+
+  const handleApplyPreset = (preset: RolePreset) => {
+    setEmail(preset.email);
+    setPassword(preset.pass);
+    setAuthError(null);
+    setSuspensionNotice(null);
   };
 
   const handleForgot = () => {
@@ -75,152 +169,198 @@ export function LoginPage() {
   };
 
   return (
-    <div
-      className="login-wrapper"
-      style={{
-        backgroundImage: `url("${FrontDeskBg}")`,
-      }}
-    >
-      {/* Background Dimmer Overlay */}
-      <div className="login-bg-overlay" />
-
-      {/* Subtle Logo Watermark in the backdrop */}
-      <div
-        className="login-bg-watermark"
-        style={{
-          backgroundImage: `url("${Logo}")`,
-        }}
-      />
-
-      {/* Top Breadcrumb / Title */}
-      <div className="login-page-tag">
-        <GraduationCap size={16} />
-        <span>Academic Scheduling Portal</span>
-      </div>
-
-      <div className="glass-auth-shell">
-        {/* Left Hero & Quick Preset Section */}
-        <section className="glass-auth-hero">
-          <div className="glass-brand-badge">
-            <img src={Logo} alt="St. Rita's College Logo" className="glass-logo" />
+    <div className="auth-page-container">
+      {/* Top Header Navbar in White */}
+      <header className="auth-navbar">
+        <div className="auth-nav-inner">
+          <Link to="/" className="auth-nav-brand" title="SRCB SCSMS">
+            <img src={Logo} alt="St. Rita's College Logo" className="auth-nav-logo" />
             <div>
-              <div className="glass-brand-title">St. Rita's College</div>
-              <div className="glass-brand-sub">Balingasag, Misamis Oriental</div>
+              <div className="auth-nav-title">
+                <span style={{ color: "#0d5499" }}>SRCB</span>
+                <span style={{ color: "#0284c7" }}>SCSMS</span>
+              </div>
+              <div className="auth-nav-sub">St. Rita's College of Balingasag</div>
             </div>
-          </div>
+          </Link>
 
-          <h1>Academic Class & Examination Scheduling</h1>
-          <p className="hero-desc">
-            An institutional platform engineered for Super Admins, College Registrars, Program Heads, and Faculty members.
+          <Link to="/" className="auth-back-link" aria-label="Back to Home">
+            <ArrowLeft size={16} />
+            <span>Back to Home</span>
+          </Link>
+        </div>
+      </header>
+
+      {/* Middle-Left Positioned Authentication Card */}
+      <motion.div
+        className="auth-card-wrapper"
+        initial={{ opacity: 0, scale: 0.97, y: 14 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.3, ease: "easeOut" }}
+      >
+        <div className="auth-card-header">
+          <img src={Logo} alt="St. Rita's College Logo" className="auth-card-logo" />
+          <h1 className="auth-card-title">Welcome back</h1>
+          <p className="auth-card-desc">
+            Sign in to access your scheduling dashboard
           </p>
+        </div>
 
-        </section>
-
-        {/* Right Floating Frosted Glass Login Card */}
-        <section className="glass-login-card">
-          <div className="glass-login-header">
-            <h2>Log In to Account</h2>
-            <p>Welcome back! Please enter your details.</p>
+        {/* LOG IN FORM */}
+        <form className="auth-form" onSubmit={handleLogin} noValidate>
+          <div className="auth-field-group">
+            <label className="auth-field-label" htmlFor="loginEmail">
+              Institutional Email
+            </label>
+            <div className="auth-input-container">
+              <span className="auth-input-icon">
+                <Mail size={18} />
+              </span>
+              <input
+                id="loginEmail"
+                type="email"
+                className="auth-input"
+                placeholder="admin@srcb.edu.ph"
+                value={email}
+                autoComplete="off"
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (authError) setAuthError(null);
+                  if (suspensionNotice) setSuspensionNotice(null);
+                }}
+                required
+              />
+            </div>
           </div>
 
-          <form className="glass-form" onSubmit={handleLogin} noValidate>
-            {/* Email Field */}
-            <div className="glass-field">
-              <label htmlFor="loginEmail">Email Address</label>
-              <div className="glass-input-box">
-                <span className="glass-input-icon">
-                  <Mail size={18} />
-                </span>
-                <input
-                  id="loginEmail"
-                  type="email"
-                  className="glass-input"
-                  placeholder="admin@srcb.edu.ph"
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    if (loginError) setLoginError(null);
-                  }}
-                  required
-                />
-              </div>
-            </div>
-
-            {/* Password Field */}
-            <div className="glass-field">
-              <label htmlFor="loginPass">Password</label>
-              <div className={`glass-input-box ${loginError ? "error" : ""}`}>
-                <span className="glass-input-icon">
-                  <Lock size={18} />
-                </span>
-                <input
-                  id="loginPass"
-                  type={showPassword ? "text" : "password"}
-                  className="glass-input"
-                  placeholder="••••••••••••"
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    if (loginError) setLoginError(null);
-                  }}
-                  required
-                />
-                <button
-                  type="button"
-                  className="glass-pass-toggle"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  title={showPassword ? "Hide password" : "Show password"}
-                  aria-label="Toggle password visibility"
-                >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-            </div>
-
-            {/* Error Message */}
-            {loginError && (
-              <div className="glass-error-msg" role="alert">
-                <span>⚠️ {loginError}</span>
-              </div>
-            )}
-
-            {/* Remember Me & Forgot Password */}
-            <div className="glass-options-row">
-              <label className="glass-checkbox-label">
-                <input
-                  type="checkbox"
-                  className="glass-checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                />
-                <span>Remember me</span>
-              </label>
+          <div className="auth-field-group">
+            <label className="auth-field-label" htmlFor="loginPass">
+              Password
+            </label>
+            <div className={`auth-input-container ${authError || suspensionNotice ? "error" : ""}`}>
+              <span className="auth-input-icon">
+                <Lock size={18} />
+              </span>
+              <input
+                id="loginPass"
+                type={showPassword ? "text" : "password"}
+                className="auth-input"
+                placeholder="••••••••••••"
+                value={password}
+                autoComplete="off"
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (authError) setAuthError(null);
+                  if (suspensionNotice) setSuspensionNotice(null);
+                }}
+                required
+              />
               <button
                 type="button"
-                className="glass-forgot-btn"
-                onClick={handleForgot}
+                className="auth-toggle-pass"
+                onClick={() => setShowPassword((prev) => !prev)}
+                title={showPassword ? "Hide password" : "Show password"}
+                aria-label="Toggle password visibility"
               >
-                Forgot password?
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
-
-            {/* Submit Button */}
-            <button
-              type="submit"
-              className="glass-submit-btn"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? <span className="spinner" /> : null}
-              <span>{isSubmitting ? "Signing in…" : "Sign In"}</span>
-              {!isSubmitting && <ArrowRight size={17} />}
-            </button>
-          </form>
-
-          <div className="glass-card-footer">
-            College Department • St. Rita's College of Balingasag
           </div>
-        </section>
-      </div>
+
+          {suspensionNotice ? (
+            <div
+              style={{
+                padding: "12px 14px",
+                borderRadius: "8px",
+                background: "rgba(220, 38, 38, 0.08)",
+                border: "1px solid rgba(220, 38, 38, 0.3)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "4px",
+                marginBottom: "14px",
+              }}
+              role="alert"
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  color: "#dc2626",
+                  fontWeight: 700,
+                  fontSize: "0.92rem",
+                }}
+              >
+                <ShieldAlert size={18} />
+                <span>Account Suspended</span>
+              </div>
+              <p style={{ margin: 0, fontSize: "0.84rem", color: "#991b1b", lineHeight: 1.4 }}>
+                {suspensionNotice}
+              </p>
+            </div>
+          ) : authError ? (
+            <div className="auth-error-box" role="alert">
+              <span>⚠️ {authError}</span>
+            </div>
+          ) : null}
+
+          <div className="auth-options-row">
+            <label className="auth-checkbox-label">
+              <input
+                type="checkbox"
+                className="auth-checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+              />
+              <span>Remember me</span>
+            </label>
+            <button
+              type="button"
+              className="auth-forgot-btn"
+              onClick={handleForgot}
+            >
+              Forgot password?
+            </button>
+          </div>
+
+          {/* Primary Button text EXACTLY "SIGN IN" */}
+          <button
+            type="submit"
+            className="auth-submit-btn"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? <span className="spinner" /> : null}
+            <span>{isSubmitting ? "Signing in…" : "SIGN IN"}</span>
+            {!isSubmitting && <ArrowRight size={17} />}
+          </button>
+        </form>
+
+        {/* Quick Demo Accounts */}
+        <div className="auth-presets-container">
+          <div className="auth-presets-title">
+            <Sparkles size={13} />
+            <span>Institutional Demo Accounts</span>
+          </div>
+          <div className="auth-presets-grid">
+            {PRESETS.map((p) => (
+              <button
+                key={p.email}
+                type="button"
+                className="auth-preset-chip"
+                onClick={() => handleApplyPreset(p)}
+                title={`Click to fill credentials for ${p.role}`}
+              >
+                <strong>{p.badge}</strong>
+                <span>{p.email}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="auth-card-footer">
+          College Department • St. Rita's College of Balingasag
+        </div>
+      </motion.div>
     </div>
   );
 }

@@ -1,19 +1,36 @@
 import { motion } from "framer-motion";
+import { useState, useEffect, useMemo } from "react";
 import { PageHeader } from "../components/common/PageHeader";
-import { useEffect, useState } from "react";
-import { api } from "../data/apiClient";
-import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
-import { Plus, Search, Calendar, Clock, DoorOpen, Users, Trash2, Edit2, CheckCircle2 } from "lucide-react";
+import { ConfirmModal } from "../components/common/ConfirmModal";
+import { CardGridSkeleton } from "../components/common/Skeleton";
+import { useToast } from "../components/common/Toast";
+import {
+  Calendar,
+  Clock,
+  Plus,
+  Search,
+  Edit2,
+  Trash2,
+  Users,
+  DoorOpen,
+  CheckCircle2,
+} from "lucide-react";
+import { api } from "../data/apiClient";
 import { useProgramContext } from "../contexts/ProgramContext";
-import type { ExamScheduleItem, ExamTerm, BuildingType } from "../types";
+import type { ExamScheduleItem, ExamTerm, BuildingType, SectionItem, RoomItem, FacultyMember, SubjectItem } from "../types";
 
 export function ExamSchedulesPage() {
   const [exams, setExams] = useState<ExamScheduleItem[]>([]);
+  const [sectionsList, setSectionsList] = useState<SectionItem[]>([]);
+  const [roomsList, setRoomsList] = useState<RoomItem[]>([]);
+  const [facultyList, setFacultyList] = useState<FacultyMember[]>([]);
+  const [subjectsList, setSubjectsList] = useState<SubjectItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [fetching, setFetching] = useState(true);
+  const [examToDelete, setExamToDelete] = useState<ExamScheduleItem | null>(null);
   const [query, setQuery] = useState("");
-  const [termFilter, setTermFilter] = useState<string>("All");
+  const [termFilter, setTermFilter] = useState("All");
   const [isOpen, setIsOpen] = useState(false);
   const [editingExam, setEditingExam] = useState<ExamScheduleItem | null>(null);
 
@@ -21,21 +38,16 @@ export function ExamSchedulesPage() {
   const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
   const canManage = role === "super_admin" || role === "admin" || role === "program_head";
 
-  const [facultyList, setFacultyList] = useState<any[]>([]);
-  const [subjectsList, setSubjectsList] = useState<any[]>([]);
-  const [roomsList, setRoomsList] = useState<any[]>([]);
-  const [sectionsList, setSectionsList] = useState<any[]>([]);
-
   const [form, setForm] = useState({
-    term: "Midterm" as ExamTerm,
-    examDate: "2026-10-15",
-    time: "08:00-10:00",
-    subjectCode: "",
     subject: "",
+    subjectCode: "",
+    examDate: "2026-10-15",
+    time: "08:00 AM - 10:00 AM",
     synchronizedSections: [] as string[],
+    term: "Midterm" as ExamTerm,
     room: "",
     building: "College Building" as BuildingType,
-    proctor: "",
+    proctor: "Unassigned",
     proctorId: "",
     program: selectedProgram.key || "BSIT",
   });
@@ -43,27 +55,65 @@ export function ExamSchedulesPage() {
   const toast = useToast();
 
   const fetchExams = async () => {
+    setFetching(true);
     try {
       const res = await api.get("/exams");
       setExams(res.data?.data || []);
     } catch {
       setExams([]);
+    } finally {
+      setFetching(false);
     }
   };
 
+  const fetchDependencies = async () => {
+    try {
+      const [sRes, rRes, fRes, subRes] = await Promise.all([
+        api.get("/sections").catch(() => ({ data: { data: [] } })),
+        api.get("/rooms").catch(() => ({ data: { data: [] } })),
+        api.get("/faculty").catch(() => ({ data: { data: [] } })),
+        api.get("/subjects").catch(() => ({ data: { data: [] } })),
+      ]);
+      setSectionsList(sRes.data?.data || []);
+      setRoomsList(rRes.data?.data || []);
+      setFacultyList(fRes.data?.data || []);
+      setSubjectsList(subRes.data?.data || []);
+    } catch {
+      // ignore
+    }
+  };
+
+  const availableSubjects = useMemo(() => {
+    if (role === "program_head") {
+      return subjectsList.filter((s) => matchesProgram(s.program || s.department));
+    }
+    return subjectsList;
+  }, [role, subjectsList, matchesProgram]);
+
+  const availableSections = useMemo(() => {
+    if (role === "program_head") {
+      return sectionsList.filter((s) => matchesProgram(s.program || s.course));
+    }
+    return sectionsList;
+  }, [role, sectionsList, matchesProgram]);
+
+  const availableFaculty = useMemo(() => {
+    if (role === "program_head") {
+      return facultyList.filter((f) => matchesProgram(f.programs || f.department));
+    }
+    return facultyList;
+  }, [role, facultyList, matchesProgram]);
+
   useEffect(() => {
     fetchExams();
-    api.get("/faculty").then((res: any) => setFacultyList(res.data?.data || [])).catch(() => setFacultyList([]));
-    api.get("/subjects").then((res: any) => setSubjectsList(res.data?.data || [])).catch(() => setSubjectsList([]));
-    api.get("/rooms").then((res: any) => setRoomsList(res.data?.data || [])).catch(() => setRoomsList([]));
-    api.get("/sections").then((res: any) => setSectionsList(res.data?.data || [])).catch(() => setSectionsList([]));
+    fetchDependencies();
   }, []);
 
   const handleSubjectSelect = (code: string) => {
-    const sub = subjectsList.find((s) => s.code === code);
+    const sub = availableSubjects.find((s) => s.code === code) || subjectsList.find((s) => s.code === code);
     if (!sub) return;
     // Auto-discover all sections associated with this subject / program
-    const matchingSections = sectionsList
+    const matchingSections = availableSections
       .filter((sec) => !sub.program || sec.program === sub.program || sec.course === sub.program)
       .map((sec) => sec.section);
 
@@ -105,19 +155,18 @@ export function ExamSchedulesPage() {
     setIsOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!canManage) return;
-    if (!window.confirm("Delete this examination schedule?")) return;
-
-    setDeletingId(id);
+  const executeDelete = async () => {
+    if (!canManage || !examToDelete) return;
+    setLoading(true);
     try {
-      await api.delete(`/exams/${encodeURIComponent(id)}`);
-      toast.push("Examination schedule removed", "success");
+      await api.delete(`/exams/${encodeURIComponent(examToDelete.id)}`);
+      toast.push("Examination schedule removed successfully", "success");
       fetchExams();
     } catch (err: any) {
       toast.push(err?.response?.data?.error || "Failed to remove examination schedule", "error");
     } finally {
-      setDeletingId(null);
+      setLoading(false);
+      setExamToDelete(null);
     }
   };
 
@@ -161,6 +210,10 @@ export function ExamSchedulesPage() {
     }
   };
 
+  const storedTeacherId = window.localStorage.getItem("teacherId") || "";
+  const userName = window.localStorage.getItem("userName") || "";
+  const [assignedFilter, setAssignedFilter] = useState<"All" | "Mine">("All");
+
   const filteredExams = exams.filter((e) => {
     const matchesSearch = [
       e.subject,
@@ -178,7 +231,13 @@ export function ExamSchedulesPage() {
     const matchesTerm = termFilter === "All" || e.term === termFilter;
     const matchesProg = role === "teacher" ? true : matchesProgram(e.program || selectedProgram.shortLabel);
 
-    return matchesSearch && matchesTerm && matchesProg;
+    const isMine =
+      (storedTeacherId && (String(e.proctorId) === storedTeacherId)) ||
+      (userName && e.proctor && e.proctor.toLowerCase().includes(userName.toLowerCase()));
+
+    const matchesAssignment = assignedFilter === "All" || (assignedFilter === "Mine" ? isMine : true);
+
+    return matchesSearch && matchesTerm && matchesProg && matchesAssignment;
   });
 
   return (
@@ -203,17 +262,20 @@ export function ExamSchedulesPage() {
               type="button"
               onClick={() => {
                 setEditingExam(null);
+                const firstSub = availableSubjects[0] || subjectsList[0];
+                const firstSec = availableSections[0] || sectionsList[0];
+                const firstFac = availableFaculty[0] || facultyList[0];
                 setForm({
                   term: "Midterm",
                   examDate: "2026-10-15",
-                  time: "08:00-10:00",
-                  subjectCode: subjectsList[0]?.code || "",
-                  subject: subjectsList[0]?.name || "",
-                  synchronizedSections: [sectionsList[0]?.section || "BSIT 1-A"],
+                  time: "08:00 AM - 10:00 AM",
+                  subjectCode: firstSub?.code || "",
+                  subject: firstSub?.name || "",
+                  synchronizedSections: firstSec?.section ? [firstSec.section] : ["BSIT 1-A"],
                   room: roomsList[0]?.number || "COL-101",
-                  building: (roomsList[0]?.building as BuildingType) || "College Building",
-                  proctor: facultyList[0]?.name || "Mr. Juan Dela Cruz",
-                  proctorId: facultyList[0]?.id || "FAC-001",
+                  building: "College Building",
+                  proctor: firstFac?.name || "Mr. Juan Dela Cruz",
+                  proctorId: firstFac?.id || "FAC-001",
                   program: selectedProgram.key || "BSIT",
                 });
                 setIsOpen(true);
@@ -234,6 +296,19 @@ export function ExamSchedulesPage() {
             <h3>Active Examination Timetable</h3>
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            {role === "teacher" && (
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.85rem", fontWeight: 600 }}>
+                Duties:
+                <select
+                  value={assignedFilter}
+                  onChange={(e) => setAssignedFilter(e.target.value as "All" | "Mine")}
+                  style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #cbd5e1" }}
+                >
+                  <option value="All">All Exam Sessions</option>
+                  <option value="Mine">My Assigned Duties Only</option>
+                </select>
+              </label>
+            )}
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.85rem", fontWeight: 600 }}>
               Term:
               <select
@@ -259,85 +334,116 @@ export function ExamSchedulesPage() {
           </div>
         </div>
 
-        <div className="grid-3" style={{ marginTop: 12 }}>
-          {filteredExams.length === 0 ? (
-            <div className="empty-state" style={{ gridColumn: "1 / -1" }}>
-              No examination schedules recorded matching your filters.
-            </div>
-          ) : (
-            filteredExams.map((exam) => (
-              <article
-                className="card"
-                key={exam.id}
-                style={{
-                  position: "relative",
-                  borderLeft: `4px solid ${exam.color || "#0d5499"}`,
-                }}
-              >
-                {canManage && (
-                  <div style={{ position: "absolute", top: 12, right: 12, display: "flex", gap: 6 }}>
-                    <button
-                      type="button"
-                      title="Edit Exam"
-                      onClick={() => handleEdit(exam)}
-                      style={{ background: "none", border: "none", cursor: "pointer", color: "#4b5563" }}
-                    >
-                      <Edit2 size={16} />
-                    </button>
-                    <button
-                      type="button"
-                      title="Delete Exam"
-                      onClick={() => handleDelete(exam.id)}
-                      disabled={deletingId === exam.id}
-                      style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626" }}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
+        {fetching ? (
+          <CardGridSkeleton count={6} />
+        ) : (
+          <div className="grid-3" style={{ marginTop: 12 }}>
+            {filteredExams.length === 0 ? (
+              <div className="empty-state" style={{ gridColumn: "1 / -1", padding: "36px 16px", textAlign: "center" }}>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: "0.95rem" }}>No examination schedules found matching your filters.</p>
+                <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "var(--srcb-text-muted)" }}>
+                  Try adjusting your search terms or selecting "All Examination Terms".
+                </p>
+                {(query || termFilter !== "All" || assignedFilter !== "All") && (
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => {
+                      setQuery("");
+                      setTermFilter("All");
+                      setAssignedFilter("All");
+                    }}
+                    style={{ marginTop: 12, fontSize: "0.8rem" }}
+                  >
+                    Clear Search & Filters
+                  </button>
                 )}
+              </div>
+            ) : (
+              filteredExams.map((exam) => (
+                <article
+                  className="card"
+                  key={exam.id}
+                  style={{
+                    position: "relative",
+                    borderLeft: `4px solid ${exam.color || "#0d5499"}`,
+                  }}
+                >
+                  {canManage && (
+                    <div style={{ position: "absolute", top: 12, right: 12, display: "flex", gap: 6 }}>
+                      <button
+                        type="button"
+                        className="icon-button"
+                        title="Edit Exam"
+                        aria-label={`Edit examination schedule for ${exam.subjectCode}`}
+                        onClick={() => handleEdit(exam)}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "#4b5563" }}
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-button"
+                        title="Delete Exam"
+                        aria-label={`Delete examination schedule for ${exam.subjectCode}`}
+                        onClick={() => setExamToDelete(exam)}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626" }}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  )}
 
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span className="pill pill--royal">{exam.term} Exam</span>
-                  <span className="pill">{exam.subjectCode}</span>
-                </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span className="pill pill--royal">{exam.term} Exam</span>
+                    <span className="pill">{exam.subjectCode}</span>
+                    {role === "teacher" &&
+                      ((storedTeacherId && String(exam.proctorId) === storedTeacherId) ||
+                        (userName && exam.proctor && exam.proctor.toLowerCase().includes(userName.toLowerCase()))) && (
+                        <span className="pill pill--emerald" style={{ fontSize: "0.72rem" }}>
+                          Assigned to You
+                        </span>
+                      )}
+                  </div>
 
-                <h3 style={{ marginTop: 8, fontSize: "1.1rem" }}>{exam.subject}</h3>
+                  <h3 style={{ marginTop: 8, fontSize: "1.1rem" }}>{exam.subject}</h3>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12, fontSize: "0.85rem" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#334155" }}>
-                    <Calendar size={15} color="#0d5499" />
-                    <strong>Date:</strong> {exam.examDate}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12, fontSize: "0.85rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#334155" }}>
+                      <Calendar size={15} color="#0d5499" />
+                      <strong>Date:</strong> {exam.examDate}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#334155" }}>
+                      <Clock size={15} color="#0d5499" />
+                      <strong>Time:</strong> {exam.time}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#334155" }}>
+                      <DoorOpen size={15} color="#0d5499" />
+                      <strong>Venue:</strong> {exam.room} ({exam.building})
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#334155" }}>
+                      <Users size={15} color="#0d5499" />
+                      <strong>Proctor:</strong> {exam.proctor}
+                    </div>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#334155" }}>
-                    <Clock size={15} color="#0d5499" />
-                    <strong>Time:</strong> {exam.time}
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#334155" }}>
-                    <DoorOpen size={15} color="#0d5499" />
-                    <strong>Venue:</strong> {exam.room} ({exam.building})
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#334155" }}>
-                    <Users size={15} color="#0d5499" />
-                    <strong>Proctor:</strong> {exam.proctor}
-                  </div>
-                </div>
 
-                <div style={{ marginTop: 14 }}>
-                  <p style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", color: "#64748b" }}>
-                    Synchronized Cohorts:
-                  </p>
-                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
-                    {(exam.synchronizedSections || []).map((sec) => (
-                      <span key={sec} className="pill pill--navy" style={{ fontSize: "0.75rem" }}>
-                        {sec}
-                      </span>
-                    ))}
+                  <div style={{ marginTop: 14 }}>
+                    <p style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", color: "#64748b" }}>
+                      Synchronized Cohorts:
+                    </p>
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+                      {(exam.synchronizedSections || []).map((sec) => (
+                        <span key={sec} className="pill pill--navy" style={{ fontSize: "0.75rem" }}>
+                          {sec}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              </article>
-            ))
-          )}
-        </div>
+                </article>
+              ))
+            )}
+          </div>
+        )}
       </section>
 
       {/* Schedule Exam Modal */}
@@ -352,7 +458,27 @@ export function ExamSchedulesPage() {
       >
         <div className="form-grid">
           <div className="field-group">
-            <label htmlFor="examTerm">Exam Term</label>
+            <label htmlFor="examSubject">
+              Subject Code & Title <span style={{ color: "#dc2626" }}>*</span>
+            </label>
+            <select
+              id="examSubject"
+              value={form.subjectCode}
+              onChange={(e) => handleSubjectSelect(e.target.value)}
+              required
+              aria-required="true"
+            >
+              <option value="">Select subject</option>
+              {availableSubjects.map((sub) => (
+                <option key={sub.code} value={sub.code}>
+                  {sub.code} - {sub.name} ({sub.department})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="field-group">
+            <label htmlFor="examTerm">Examination Term</label>
             <select
               id="examTerm"
               value={form.term}
@@ -366,75 +492,52 @@ export function ExamSchedulesPage() {
           </div>
 
           <div className="field-group">
-            <label htmlFor="examSubject">Subject</label>
-            <select
-              id="examSubject"
-              value={form.subjectCode}
-              onChange={(e) => handleSubjectSelect(e.target.value)}
-            >
-              <option value="">Select subject</option>
-              {subjectsList.map((sub) => (
-                <option key={sub.code} value={sub.code}>
-                  {sub.code} - {sub.name} ({sub.department})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="field-group">
-            <label htmlFor="examDate">Exam Date</label>
+            <label htmlFor="examDate">
+              Exam Date <span style={{ color: "#dc2626" }}>*</span>
+            </label>
             <input
               id="examDate"
               type="date"
               value={form.examDate}
               onChange={(e) => setForm({ ...form, examDate: e.target.value })}
+              required
+              aria-required="true"
             />
           </div>
 
           <div className="field-group">
-            <label htmlFor="examTime">Time Slot</label>
-            <select
+            <label htmlFor="examTime">
+              Time Slot <span style={{ color: "#dc2626" }}>*</span>
+            </label>
+            <input
               id="examTime"
               value={form.time}
               onChange={(e) => setForm({ ...form, time: e.target.value })}
-            >
-              <option value="08:00-10:00">08:00 AM - 10:00 AM</option>
-              <option value="10:30-12:30">10:30 AM - 12:30 PM</option>
-              <option value="01:00-03:00">01:00 PM - 03:00 PM</option>
-              <option value="03:30-05:30">03:30 PM - 05:30 PM</option>
-            </select>
+              placeholder="e.g. 08:00 AM - 10:00 AM"
+              required
+              aria-required="true"
+            />
           </div>
 
           <div className="field-group">
-            <label htmlFor="examBuilding">Building</label>
-            <select
-              id="examBuilding"
-              value={form.building}
-              onChange={(e) => setForm({ ...form, building: e.target.value as BuildingType })}
-            >
-              <option value="College Building">College Building</option>
-              <option value="SHS Building">Senior High School (SHS) Building</option>
-              <option value="JHS Building">Junior High School (JHS) Building</option>
-            </select>
-          </div>
-
-          <div className="field-group">
-            <label htmlFor="examRoom">Room / Hall</label>
+            <label htmlFor="examRoom">
+              Assigned Room & Venue <span style={{ color: "#dc2626" }}>*</span>
+            </label>
             <input
               id="examRoom"
-              placeholder="e.g. COMLAB-1 & COMLAB-2, COL-AVR"
+              placeholder="e.g. COMLAB-1, COL-AVR"
               value={form.room}
               onChange={(e) => setForm({ ...form, room: e.target.value })}
             />
           </div>
 
-          <div className="field-group" style={{ gridColumn: "1 / -1" }}>
-            <label htmlFor="examProctor">Faculty Proctor</label>
+          <div className="field-group">
+            <label htmlFor="examProctor">Assigned Proctor / Faculty</label>
             <select
               id="examProctor"
               value={form.proctorId}
               onChange={(e) => {
-                const fac = facultyList.find((f) => f.id === e.target.value);
+                const fac = availableFaculty.find((f) => f.id === e.target.value);
                 setForm({
                   ...form,
                   proctorId: e.target.value,
@@ -443,7 +546,7 @@ export function ExamSchedulesPage() {
               }}
             >
               <option value="">Select proctor</option>
-              {facultyList.map((f) => (
+              {availableFaculty.map((f) => (
                 <option key={f.id} value={f.id}>
                   {f.name} ({f.department} - {f.status})
                 </option>
@@ -467,7 +570,7 @@ export function ExamSchedulesPage() {
                 border: "1px solid var(--srcb-border)",
               }}
             >
-              {sectionsList.map((sec) => {
+              {availableSections.map((sec) => {
                 const checked = form.synchronizedSections.includes(sec.section);
                 return (
                   <label
@@ -520,6 +623,27 @@ export function ExamSchedulesPage() {
           </button>
         </div>
       </Modal>
+
+      {/* Delete Exam Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(examToDelete)}
+        title="Remove Examination Schedule"
+        variant="danger"
+        confirmLabel="Delete Exam Schedule"
+        loading={loading}
+        onCancel={() => setExamToDelete(null)}
+        onConfirm={executeDelete}
+        message={
+          <span>
+            Are you sure you want to remove the <strong>{examToDelete?.term} Examination</strong> schedule for <strong>{examToDelete?.subjectCode} - {examToDelete?.subject}</strong> on {examToDelete?.examDate}?
+            <br />
+            <br />
+            <span style={{ fontSize: "0.82rem", color: "#dc2626" }}>
+              ⚠️ Synchronized sections ({examToDelete?.synchronizedSections?.join(", ")}) and the assigned proctor ({examToDelete?.proctor}) will be released.
+            </span>
+          </span>
+        }
+      />
     </motion.div>
   );
 }

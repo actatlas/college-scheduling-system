@@ -37,6 +37,13 @@ const PRESET_ACCOUNTS: PresetAccount[] = [
     icon: "🏛️",
   },
   {
+    label: "Program Head (IT Head)",
+    email: "programhead@srcb.edu.ph",
+    pass: "@program123",
+    role: "program_head",
+    icon: "🎓",
+  },
+  {
     label: "Full-Time Faculty (Teacher)",
     email: "teacher@srcb.edu.ph",
     pass: "@teacher123",
@@ -108,33 +115,57 @@ export function DevFloatingTools() {
       localStorage.setItem("userRole", targetRole);
       localStorage.setItem("userName", user.name || acc.label);
 
-      if (targetRole === "teacher") {
+      if (targetRole === "teacher" || targetRole === "program_head") {
         const teacher = user.teacher || {};
         const isPartTime = acc.label.includes("Part-Time") || teacher.status === "Part-Time" || acc.email.includes("parttime") || acc.email.includes("sabuero");
-        localStorage.setItem("teacherId", user.teacherId || teacher.id || (isPartTime ? "FAC-003" : "T001"));
+        const defaultHeadId = targetRole === "program_head" ? "FAC-003" : (isPartTime ? "FAC-003" : "T001");
+        localStorage.setItem("teacherId", user.teacherId || teacher.id || defaultHeadId);
         localStorage.setItem("teacherStatus", isPartTime ? "Part-Time" : "Full-Time");
       } else {
         localStorage.removeItem("teacherId");
         localStorage.removeItem("teacherStatus");
       }
 
+      if (user.program) {
+        localStorage.setItem("selectedProgram", user.program);
+      } else if (targetRole === "program_head") {
+        localStorage.setItem("selectedProgram", "ITP");
+      }
+
       toast.push(`Switched account to: ${acc.label}`, "success");
       navigate("/dashboard");
       window.location.reload();
     } catch (err: any) {
-      toast.push(err?.message || "Failed to switch account", "error");
+      const isSuspended =
+        err?.code === "ACCOUNT_SUSPENDED" ||
+        err?.response?.data?.code === "ACCOUNT_SUSPENDED" ||
+        (typeof err?.message === "string" && err?.message.toLowerCase().includes("suspended")) ||
+        (typeof err?.response?.data?.error === "string" &&
+          err?.response?.data?.error.toLowerCase().includes("suspended"));
+
+      if (isSuspended) {
+        toast.push(
+          "Access Denied: This account has been suspended by the Super Administrator.",
+          "error"
+        );
+      } else {
+        toast.push(err?.message || "Failed to switch account", "error");
+      }
     } finally {
       setIsSwitching(false);
     }
   };
 
-  const handleRoleOverride = (role: string, extra?: { status?: string; teacherId?: string }) => {
+  const handleRoleOverride = (role: string, extra?: { status?: string; teacherId?: string; program?: string }) => {
     localStorage.setItem("userRole", role);
     if (extra?.status) {
       localStorage.setItem("teacherStatus", extra.status);
     }
     if (extra?.teacherId) {
       localStorage.setItem("teacherId", extra.teacherId);
+    }
+    if (role === "program_head") {
+      localStorage.setItem("selectedProgram", extra?.program || "ITP");
     }
     toast.push(`Dev Override: Switched view role to ${role.toUpperCase()}`, "info");
     navigate("/dashboard");
@@ -280,31 +311,46 @@ export function DevFloatingTools() {
                     <p style={{ fontSize: "0.72rem", color: "#94a3b8", margin: "8px 0 4px 2px", fontWeight: 600 }}>
                       Live Database Users ({dbUsers.length}):
                     </p>
-                    {dbUsers.slice(0, 4).map((u: any) => (
-                      <button
-                        key={u.id}
-                        type="button"
-                        className="dev-account-btn"
-                        disabled={isSwitching}
-                        onClick={() =>
-                          handleSwitchToPreset({
-                            label: `${u.name} (${u.role})`,
-                            email: u.email,
-                            pass: "@srcb123",
-                            role: u.role,
-                            icon: "👤",
-                          })
-                        }
-                      >
-                        <div className="dev-account-info">
-                          <span className="dev-account-name">{u.name}</span>
-                          <span className="dev-account-email">
-                            {u.email} · {u.role}
-                          </span>
-                        </div>
-                        <ChevronRight size={14} color="#64748b" />
-                      </button>
-                    ))}
+                    {dbUsers.map((u: any) => {
+                      const isUserSuspended = String(u.status || "").toLowerCase() === "suspended";
+                      return (
+                        <button
+                          key={u.id}
+                          type="button"
+                          className="dev-account-btn"
+                          disabled={isSwitching || isUserSuspended}
+                          style={isUserSuspended ? { opacity: 0.6, cursor: "not-allowed", borderLeft: "3px solid #ef4444" } : {}}
+                          onClick={() => {
+                            if (isUserSuspended) {
+                              toast.push(`Account for ${u.email} is SUSPENDED and cannot log in.`, "error");
+                              return;
+                            }
+                            handleSwitchToPreset({
+                              label: `${u.name} (${u.role})`,
+                              email: u.email,
+                              pass: u.role === "teacher" && u.email.includes("teacher@") ? "@teacher123" : "@srcb123",
+                              role: u.role,
+                              icon: "👤",
+                            });
+                          }}
+                        >
+                          <div className="dev-account-info">
+                            <span className="dev-account-name">
+                              {u.name}
+                              {isUserSuspended && (
+                                <span style={{ marginLeft: 6, fontSize: "0.68rem", color: "#dc2626", fontWeight: 800 }}>
+                                  [SUSPENDED]
+                                </span>
+                              )}
+                            </span>
+                            <span className="dev-account-email">
+                              {u.email} · {u.role}
+                            </span>
+                          </div>
+                          <ChevronRight size={14} color="#64748b" />
+                        </button>
+                      );
+                    })}
                   </>
                 )}
               </div>

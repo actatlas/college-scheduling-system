@@ -62,6 +62,11 @@ const ReportsPage = lazy(() =>
     default: module.ReportsPage,
   })),
 );
+const ProfilePage = lazy(() =>
+  import("../pages/ProfilePage").then((module) => ({
+    default: module.ProfilePage,
+  })),
+);
 const SettingsPage = lazy(() =>
   import("../pages/SettingsPage").then((module) => ({
     default: module.SettingsPage,
@@ -109,7 +114,7 @@ export function AppRoutes() {
         <Route path="/login" element={<LoginPage />} />
 
         <Route element={<MainLayout />}>
-          {/* Dashboard accessible by all authenticated roles */}
+          {/* Dashboard and Profile accessible by all authenticated roles */}
           <Route
             element={
               <ProtectedRoute
@@ -121,6 +126,19 @@ export function AppRoutes() {
             <Route path="/admin-dashboard" element={<DashboardPage />} />
             <Route path="/program-head-dashboard" element={<DashboardPage />} />
             <Route path="/teacher-dashboard" element={<DashboardPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/account" element={<ProfilePage />} />
+          </Route>
+
+          {/* Admin only: System Preferences & Configuration (Requirement 2) */}
+          <Route
+            element={
+              <ProtectedRoute
+                allowedRoles={["admin"]}
+              />
+            }
+          >
+            <Route path="/settings" element={<SettingsPage />} />
           </Route>
 
           {/* Super Admin only: User Account Management */}
@@ -134,7 +152,7 @@ export function AppRoutes() {
             <Route path="/users" element={<UserManagementPage />} />
           </Route>
 
-          {/* Scheduling paths accessible by Super Admin, Admin, Program Head, Teacher */}
+          {/* General paths accessible by Super Admin, Admin, Program Head, Teacher */}
           <Route
             element={
               <ProtectedRoute
@@ -147,7 +165,7 @@ export function AppRoutes() {
             <Route path="/rooms" element={<RoomsPage />} />
           </Route>
 
-          {/* Paths for Super Admin, Admin & Program Head */}
+          {/* Catalog, Governance & Diagnostic Paths for Super Admin, Admin & Program Head */}
           <Route
             element={
               <ProtectedRoute
@@ -162,7 +180,6 @@ export function AppRoutes() {
             <Route path="/courses" element={<CoursesPage />} />
             <Route path="/conflicts" element={<ConflictPage />} />
             <Route path="/reports" element={<ReportsPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Route>
 

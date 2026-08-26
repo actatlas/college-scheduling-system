@@ -24,7 +24,7 @@
   padding: 10px 12px;
   border-radius: 8px;
   border: 1px solid var(--srcb-border);
-  background: #ffffff;
+  background: var(--srcb-surface-elevated, #ffffff);
   color: var(--srcb-text);
   transition: all var(--srcb-transition);
   font-size: 0.88rem;

@@ -4,59 +4,97 @@ import { useEffect, useState } from "react";
 import { api } from "../data/apiClient";
 import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
-import { Plus, Search, Edit2, Trash2, GraduationCap } from "lucide-react";
+import { ConfirmModal } from "../components/common/ConfirmModal";
+import { TableSkeleton } from "../components/common/Skeleton";
+import { Plus, Search, Edit2, Trash2 } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
-import type { SubjectItem, FacultyMember } from "../types";
+import { getProgramLogo } from "../utils/programLogos";
+import type { SubjectItem, CourseItem, ProgramItem, FacultyMember } from "../types";
 
 export function SubjectsPage() {
   const [subjects, setSubjects] = useState<SubjectItem[]>([]);
+  const [coursesList, setCoursesList] = useState<CourseItem[]>([]);
+  const [programsList, setProgramsList] = useState<ProgramItem[]>([]);
+  const [facultyList, setFacultyList] = useState<FacultyMember[]>([]);
   const [loading, setLoading] = useState(false);
-  const [deletingCode, setDeletingCode] = useState<string | null>(null);
+  const [fetching, setFetching] = useState(true);
+  const [subjectToDelete, setSubjectToDelete] = useState<SubjectItem | null>(null);
   const [query, setQuery] = useState("");
-  const [majorFilter, setMajorFilter] = useState<string>("All");
+  const [majorFilter, setMajorFilter] = useState("All");
+  const [programFilter, setProgramFilter] = useState<string>("All");
   const [isOpen, setIsOpen] = useState(false);
   const [editingSubject, setEditingSubject] = useState<SubjectItem | null>(null);
 
   const { selectedProgram, matchesProgram } = useProgramContext();
   const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
-  const canEdit = role === "super_admin" || role === "admin" || role === "program_head";
-
-  const [facultyList, setFacultyList] = useState<FacultyMember[]>([]);
-  const [programsList, setProgramsList] = useState<any[]>([]);
-  const [coursesList, setCoursesList] = useState<any[]>([]);
+  const isAdmin = role === "super_admin" || role === "admin";
+  const isProgramHead = role === "program_head";
 
   const [form, setForm] = useState({
     code: "",
     name: "",
     units: "3",
-    lectureHours: "2",
-    labHours: "3",
-    semester: "1st Semester",
+    lectureHours: "3",
+    labHours: "0",
+    semester: "First Semester",
     department: "Information Technology",
     program: selectedProgram.key || "BSIT",
-    courseCode: "BSIT",
+    courseCode: selectedProgram.key || "BSIT",
     isMajor: true,
     instructorId: "",
     instructor: "",
   });
+
   const toast = useToast();
 
-  const fetchSubjects = () => {
-    api
-      .get("/subjects")
-      .then((res: any) => setSubjects(res.data?.data || []))
-      .catch(() => setSubjects([]));
+  const fetchSubjects = async () => {
+    setFetching(true);
+    try {
+      const res = await api.get("/subjects");
+      setSubjects(res.data?.data || []);
+    } catch {
+      setSubjects([]);
+    } finally {
+      setFetching(false);
+    }
+  };
+
+  const fetchDependencies = async () => {
+    try {
+      const [cRes, pRes, fRes] = await Promise.all([
+        api.get("/courses").catch(() => ({ data: { data: [] } })),
+        api.get("/programs").catch(() => ({ data: { data: [] } })),
+        api.get("/faculty").catch(() => ({ data: { data: [] } })),
+      ]);
+      setCoursesList(cRes.data?.data || []);
+      setProgramsList(pRes.data?.data || []);
+      setFacultyList(fRes.data?.data || []);
+    } catch {
+      // ignore
+    }
   };
 
   useEffect(() => {
     fetchSubjects();
-    api.get("/faculty").then((res: any) => setFacultyList(res.data?.data || [])).catch(() => setFacultyList([]));
-    api.get("/programs").then((res: any) => setProgramsList(res.data?.data || [])).catch(() => setProgramsList([]));
-    api.get("/courses").then((res: any) => setCoursesList(res.data?.data || [])).catch(() => setCoursesList([]));
+    fetchDependencies();
   }, []);
 
+  const canEditSubject = (subject: SubjectItem) => {
+    if (isAdmin) return true;
+    if (isProgramHead) {
+      return (
+        Boolean(subject.isMajor) &&
+        matchesProgram(subject.program || subject.courseCode || subject.department)
+      );
+    }
+    return false;
+  };
+
   const handleEdit = (subject: SubjectItem) => {
-    if (!canEdit) return;
+    if (!canEditSubject(subject)) {
+      toast.push("You do not have permission to edit this subject.", "error");
+      return;
+    }
     setEditingSubject(subject);
     setForm({
       code: subject.code,
@@ -75,19 +113,22 @@ export function SubjectsPage() {
     setIsOpen(true);
   };
 
-  const handleDelete = async (code: string) => {
-    if (!canEdit) return;
-    if (!window.confirm("Remove this subject from curriculum catalog?")) return;
-
-    setDeletingCode(code);
+  const executeDelete = async () => {
+    if (!subjectToDelete) return;
+    if (!isAdmin) {
+      toast.push("Only administrators can delete subjects from curriculum catalog.", "error");
+      return;
+    }
+    setLoading(true);
     try {
-      await api.delete(`/subjects/${encodeURIComponent(code)}`);
+      await api.delete(`/subjects/${encodeURIComponent(subjectToDelete.code)}`);
       toast.push("Subject deleted successfully", "success");
       fetchSubjects();
     } catch (err: any) {
       toast.push(err?.response?.data?.error || "Failed to delete subject", "error");
     } finally {
-      setDeletingCode(null);
+      setLoading(false);
+      setSubjectToDelete(null);
     }
   };
 
@@ -118,6 +159,11 @@ export function SubjectsPage() {
         await api.put(`/subjects/${encodeURIComponent(editingSubject.code)}`, payload);
         toast.push("Subject updated successfully", "success");
       } else {
+        if (!isAdmin) {
+          toast.push("Only administrators can create new subjects in the catalog.", "error");
+          setLoading(false);
+          return;
+        }
         await api.post("/subjects", payload);
         toast.push("Subject created successfully", "success");
       }
@@ -135,8 +181,8 @@ export function SubjectsPage() {
     const matchesQuery = [
       subject.code,
       subject.name,
-      subject.department,
       subject.instructor,
+      subject.department,
       subject.program || "",
     ]
       .join(" ")
@@ -147,9 +193,39 @@ export function SubjectsPage() {
       majorFilter === "All" ||
       (majorFilter === "Major" ? subject.isMajor : !subject.isMajor);
 
-    const matchesProg = role === "program_head"
+    const matchesProg = isProgramHead
       ? matchesProgram(subject.program || subject.department)
-      : true;
+      : programFilter === "All"
+        ? true
+        : (() => {
+            const subProg = String(
+              subject.program ||
+              subject.department ||
+              subject.courseCode ||
+              ""
+            ).toUpperCase().trim();
+            const filterKey = programFilter.toUpperCase().trim();
+
+            const IT_KEYS = ["ITP", "BSIT", "BSCS", "IT", "INFORMATION TECHNOLOGY", "COMPUTER"];
+            const CRIM_KEYS = ["CJEP", "BSCRIM", "CRIMINOLOGY", "CRIM", "CRIMINAL JUSTICE"];
+            const BUS_KEYS = ["BSA", "BSBA", "BUSINESS", "ACCOUNTANCY", "ADMINISTRATION"];
+            const HM_KEYS = ["HMP", "BSHM", "HOSPITALITY", "HOTEL", "TOURISM"];
+            const EDUC_KEYS = ["TEP", "BSED", "BEED", "EDUCATION", "TEACHER"];
+
+            const getFam = (k: string) => {
+              if (IT_KEYS.some((x) => k.includes(x))) return "IT";
+              if (CRIM_KEYS.some((x) => k.includes(x))) return "CRIM";
+              if (BUS_KEYS.some((x) => k.includes(x))) return "BUS";
+              if (HM_KEYS.some((x) => k.includes(x))) return "HM";
+              if (EDUC_KEYS.some((x) => k.includes(x))) return "EDUC";
+              return "";
+            };
+
+            if (subProg.includes(filterKey) || filterKey.includes(subProg)) return true;
+            const f1 = getFam(filterKey);
+            const f2 = getFam(subProg);
+            return Boolean(f1 && f2 && f1 === f2);
+          })();
 
     return matchesQuery && matchesMajor && matchesProg;
   });
@@ -161,16 +237,34 @@ export function SubjectsPage() {
       transition={{ duration: 0.25 }}
     >
       <PageHeader
-        title="Subjects & Curriculum Catalog"
-        description="Track academic subjects, major vs general education classification, lecture and laboratory hours, and assigned instructors."
-        breadcrumbs={
-          <>
-            <span>Home</span> <span>/</span> <strong>Subjects</strong>
-          </>
+        title={
+          isProgramHead
+            ? `Program Subjects & Major Curriculum • ${selectedProgram.label}`
+            : "Subjects & Curriculum Catalog"
         }
-        helpText="Program Heads can schedule their assigned program's major subjects directly into the class timetables."
+        description={
+          isProgramHead
+            ? `Manage major subjects, assigned instructors, and curriculum requirements for ${selectedProgram.label} (${selectedProgram.key || "ITP"}).`
+            : "Track academic subjects, major vs general education classification, lecture and laboratory hours, and assigned instructors."
+        }
+        breadcrumbs={
+          isProgramHead ? (
+            <>
+              <span>Home</span> <span>/</span> <span>{selectedProgram.shortLabel || "Program"}</span> <span>/</span> <strong>Subjects</strong>
+            </>
+          ) : (
+            <>
+              <span>Home</span> <span>/</span> <strong>Subjects</strong>
+            </>
+          )
+        }
+        helpText={
+          isProgramHead
+            ? "Program Heads manage Major Subject instructor assignments for their assigned program. General Education and cross-program minor subjects are managed globally by College Administrators."
+            : "Course units determine student load limits and classroom hour calculations. Major subjects require departmental allocation."
+        }
         actions={
-          canEdit ? (
+          isAdmin ? (
             <button
               className="action-button"
               type="button"
@@ -203,20 +297,91 @@ export function SubjectsPage() {
       <section className="card">
         <div className="card__header" style={{ flexWrap: "wrap", gap: 12 }}>
           <div>
-            <p className="eyebrow">Academic Catalog</p>
-            <h3>Registered Subjects ({filteredSubjects.length})</h3>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <p className="eyebrow" style={{ margin: 0 }}>Academic Catalog</p>
+              {isAdmin && programFilter !== "All" && (
+                <span
+                  className="pill pill--royal"
+                  style={{
+                    fontSize: "0.74rem",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    fontWeight: 700,
+                  }}
+                >
+                  <img
+                    src={getProgramLogo(programFilter)}
+                    alt=""
+                    style={{
+                      width: "16px",
+                      height: "16px",
+                      borderRadius: "3px",
+                      objectFit: "contain",
+                      background: "#ffffff",
+                    }}
+                  />
+                  Filtering: {programFilter}
+                </span>
+              )}
+            </div>
+            <h3 style={{ margin: "4px 0 0" }}>Registered Subjects ({filteredSubjects.length})</h3>
           </div>
+
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            {/* Program Classification Filter for College Administrators */}
+            {isAdmin && (
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.85rem", fontWeight: 600 }}>
+                Program:
+                <select
+                  value={programFilter}
+                  onChange={(e) => setProgramFilter(e.target.value)}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 6,
+                    border: "1px solid #cbd5e1",
+                    background: "#ffffff",
+                    fontWeight: 500,
+                    cursor: "pointer",
+                  }}
+                  aria-label="Filter subjects by Academic Program"
+                >
+                  <option value="All">All Academic Programs</option>
+                  {programsList.map((p) => (
+                    <option key={p.code} value={p.code}>
+                      {p.name} ({p.code})
+                    </option>
+                  ))}
+                  {programsList.length === 0 && (
+                    <>
+                      <option value="ITP">Information Technology Program (ITP / BSIT)</option>
+                      <option value="BSA">Business Administration (BSA / BSBA)</option>
+                      <option value="CJEP">Criminal Justice Education Program (CJEP / BSCrim)</option>
+                      <option value="HMP">Hospitality Management Program (HMP / BSHM)</option>
+                      <option value="TEP">Teacher Education Program (TEP / BSED / BEED)</option>
+                    </>
+                  )}
+                </select>
+              </label>
+            )}
+
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.85rem", fontWeight: 600 }}>
               Classification:
               <select
                 value={majorFilter}
                 onChange={(e) => setMajorFilter(e.target.value)}
-                style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #cbd5e1" }}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 6,
+                  border: "1px solid #cbd5e1",
+                  background: "#ffffff",
+                  fontWeight: 500,
+                  cursor: "pointer",
+                }}
               >
-                <option value="All">All Subjects</option>
+                <option value="All">All Classifications</option>
                 <option value="Major">Major Subjects Only</option>
-                <option value="Minor">General / Minor</option>
+                <option value="Minor">Gen Ed / Minor Only</option>
               </select>
             </label>
 
@@ -225,94 +390,138 @@ export function SubjectsPage() {
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search code, subject, instructor..."
+                placeholder="Search by code, subject name, instructor..."
               />
             </label>
           </div>
         </div>
 
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Code</th>
-                <th>Subject Name</th>
-                <th>Units</th>
-                <th>Lec / Lab Hours</th>
-                <th>Classification</th>
-                <th>Program / Dept</th>
-                <th>Assigned Instructor</th>
-                {canEdit && <th style={{ textAlign: "right" }}>Actions</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredSubjects.length === 0 ? (
+        {fetching ? (
+          <TableSkeleton rows={6} columns={7} />
+        ) : (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
                 <tr>
-                  <td colSpan={canEdit ? 8 : 7}>
-                    <div className="empty-state">No subjects matched your search filters.</div>
-                  </td>
+                  <th>Code</th>
+                  <th>Subject Name</th>
+                  <th>Units / Hours</th>
+                  <th>Classification</th>
+                  <th>Assigned Instructor</th>
+                  <th>Program / Dept</th>
+                  <th style={{ textAlign: "right" }}>Actions</th>
                 </tr>
-              ) : (
-                filteredSubjects.map((subject) => (
-                  <tr key={subject.code}>
-                    <td>
-                      <code>{subject.code}</code>
-                    </td>
-                    <td>
-                      <strong>{subject.name}</strong>
-                    </td>
-                    <td>{subject.units} Units</td>
-                    <td>
-                      {subject.lectureHours}h Lec / {subject.labHours}h Lab
-                    </td>
-                    <td>
-                      <span className={`pill ${subject.isMajor ? "pill--royal" : "pill--slate"}`}>
-                        {subject.isMajor ? "Major Subject" : "Gen Ed / Minor"}
-                      </span>
-                    </td>
-                    <td>{subject.program || subject.department}</td>
-                    <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <GraduationCap size={15} color="#0d5499" />
-                        <span>{subject.instructor || "Unassigned"}</span>
+              </thead>
+              <tbody>
+                {filteredSubjects.length === 0 ? (
+                  <tr>
+                    <td colSpan={7}>
+                      <div className="empty-state" style={{ padding: "36px 16px", textAlign: "center" }}>
+                        <p style={{ margin: 0, fontWeight: 600, fontSize: "0.95rem" }}>No subjects matched your search filters.</p>
+                        <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "var(--srcb-text-muted)" }}>
+                          Try adjusting your keywords, academic program, or switching the subject classification filter.
+                        </p>
+                        {(query || majorFilter !== "All" || programFilter !== "All") && (
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => {
+                              setQuery("");
+                              setMajorFilter("All");
+                              setProgramFilter("All");
+                            }}
+                            style={{ marginTop: 12, fontSize: "0.8rem" }}
+                          >
+                            Clear Search & Filters
+                          </button>
+                        )}
                       </div>
                     </td>
-                    {canEdit && (
-                      <td style={{ textAlign: "right" }}>
-                        <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
-                          <button
-                            type="button"
-                            className="icon-button"
-                            title="Edit Subject"
-                            onClick={() => handleEdit(subject)}
-                            style={{ background: "none", border: "none", cursor: "pointer", color: "#4b5563" }}
-                          >
-                            <Edit2 size={16} />
-                          </button>
-                          <button
-                            type="button"
-                            className="icon-button"
-                            title="Delete Subject"
-                            onClick={() => handleDelete(subject.code)}
-                            disabled={deletingCode === subject.code}
-                            style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626" }}
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </td>
-                    )}
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ) : (
+                  filteredSubjects.map((subject) => {
+                    const allowedToEdit = canEditSubject(subject);
+                    return (
+                      <tr key={subject.code}>
+                        <td>
+                          <code>{subject.code}</code>
+                        </td>
+                        <td>
+                          <strong>{subject.name}</strong>
+                        </td>
+                        <td>
+                          {subject.units} units ({subject.lectureHours} lec / {subject.labHours} lab)
+                        </td>
+                        <td>
+                          <span className={`pill ${subject.isMajor ? "pill--royal" : "pill--slate"}`}>
+                            {subject.isMajor ? "Major Subject" : "Gen Ed / Minor"}
+                          </span>
+                        </td>
+                        <td>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <img
+                              src={getProgramLogo(subject.program || subject.department)}
+                              alt="Program Logo"
+                              style={{
+                                width: "22px",
+                                height: "22px",
+                                borderRadius: "5px",
+                                objectFit: "contain",
+                                background: "#ffffff",
+                                padding: "1px",
+                                border: "1px solid var(--srcb-border)",
+                                boxShadow: "0 2px 4px rgba(15, 23, 42, 0.06)",
+                                flexShrink: 0,
+                              }}
+                            />
+                            <span>{subject.program || subject.department}</span>
+                          </div>
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, alignItems: "center" }}>
+                            {allowedToEdit ? (
+                              <button
+                                type="button"
+                                className="icon-button"
+                                title="Edit Subject Assignment"
+                                aria-label={`Edit ${subject.code} ${subject.name}`}
+                                onClick={() => handleEdit(subject)}
+                                style={{ background: "none", border: "none", cursor: "pointer", color: "#4b5563" }}
+                              >
+                                <Edit2 size={16} />
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)" }}>
+                                View Only
+                              </span>
+                            )}
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                className="icon-button"
+                                title="Delete Subject"
+                                aria-label={`Delete ${subject.code} ${subject.name}`}
+                                onClick={() => setSubjectToDelete(subject)}
+                                style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626" }}
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       {/* Add / Edit Subject Modal */}
       <Modal
-        isOpen={isOpen && canEdit}
+        isOpen={isOpen}
         title={editingSubject ? "Edit Academic Subject" : "Register New Subject"}
         onClose={() => {
           setIsOpen(false);
@@ -322,7 +531,9 @@ export function SubjectsPage() {
       >
         <div className="form-grid">
           <div className="field-group">
-            <label htmlFor="subjectCode">Subject Code</label>
+            <label htmlFor="subjectCode">
+              Subject Code <span style={{ color: "#dc2626" }}>*</span>
+            </label>
             <input
               id="subjectCode"
               value={form.code}
@@ -330,17 +541,21 @@ export function SubjectsPage() {
               onChange={(event) => setForm({ ...form, code: event.target.value })}
               placeholder="e.g. IT101, BA102"
               required
+              aria-required="true"
             />
           </div>
 
           <div className="field-group">
-            <label htmlFor="subjectName">Subject Title</label>
+            <label htmlFor="subjectName">
+              Subject Title <span style={{ color: "#dc2626" }}>*</span>
+            </label>
             <input
               id="subjectName"
               value={form.name}
               onChange={(event) => setForm({ ...form, name: event.target.value })}
               placeholder="e.g. Computer Programming 1"
               required
+              aria-required="true"
             />
           </div>
 
@@ -450,6 +665,27 @@ export function SubjectsPage() {
           </button>
         </div>
       </Modal>
+
+      {/* Delete Subject Confirmation Modal (Heuristic 3 & 5) */}
+      <ConfirmModal
+        isOpen={Boolean(subjectToDelete)}
+        title="Remove Subject from Catalog"
+        variant="danger"
+        confirmLabel="Delete Subject"
+        loading={loading}
+        onCancel={() => setSubjectToDelete(null)}
+        onConfirm={executeDelete}
+        message={
+          <span>
+            Are you sure you want to delete <strong>{subjectToDelete?.code} - {subjectToDelete?.name}</strong> from the institutional curriculum catalog?
+            <br />
+            <br />
+            <span style={{ fontSize: "0.82rem", color: "#dc2626" }}>
+              ⚠️ Make sure any scheduled class blocks using this subject are updated accordingly.
+            </span>
+          </span>
+        }
+      />
     </motion.div>
   );
 }

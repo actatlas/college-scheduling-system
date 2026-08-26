@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../data/apiClient";
 import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
+import { ConfirmModal } from "../components/common/ConfirmModal";
 import { useSearchParams } from "react-router-dom";
 import {
   Plus,
@@ -22,6 +23,10 @@ import {
 import { useProgramContext } from "../contexts/ProgramContext";
 import { validateScheduleSlot, formatGroupedAvailability } from "../utils/scheduling";
 import { ScheduleDetailsModal } from "../components/schedule/ScheduleDetailsModal";
+import { TimetableSkeleton, CardGridSkeleton } from "../components/common/Skeleton";
+import { Tooltip } from "../components/common/Tooltip";
+import { SearchableSelect, type SearchableOption } from "../components/common/SearchableSelect";
+import { useNotifications } from "../contexts/NotificationContext";
 import type { ClassScheduleItem, ClassModality, BuildingType } from "../types";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -90,10 +95,76 @@ function getScheduleRowSpan(scheduleTime: string) {
   return Math.max(1, matchingCount);
 }
 
+const PROGRAM_COURSE_MAP: Record<string, string[]> = {
+  CJEP: ["CJEP", "BSCRIM", "CRIM", "CRIMINOLOGY"],
+  BSCRIM: ["CJEP", "BSCRIM", "CRIM", "CRIMINOLOGY"],
+  CRIM: ["CJEP", "BSCRIM", "CRIM", "CRIMINOLOGY"],
+  ITP: ["ITP", "BSIT", "BSCS", "IT", "CS", "INFORMATION TECHNOLOGY", "COMPUTER SCIENCE"],
+  BSIT: ["ITP", "BSIT", "BSCS", "IT", "CS", "INFORMATION TECHNOLOGY", "COMPUTER SCIENCE"],
+  BSCS: ["ITP", "BSIT", "BSCS", "IT", "CS", "INFORMATION TECHNOLOGY", "COMPUTER SCIENCE"],
+  BSA: ["BSA", "BSBA", "BA", "BUSINESS ADMINISTRATION"],
+  BSBA: ["BSA", "BSBA", "BA", "BUSINESS ADMINISTRATION"],
+  HMP: ["HMP", "BSHM", "HM", "HOSPITALITY MANAGEMENT"],
+  BSHM: ["HMP", "BSHM", "HM", "HOSPITALITY MANAGEMENT"],
+  TEP: ["TEP", "BSED", "BEED", "EDUC", "EDUCATION", "TEACHER EDUCATION"],
+  BSED: ["TEP", "BSED", "BEED", "EDUC", "EDUCATION", "TEACHER EDUCATION"],
+  BEED: ["TEP", "BSED", "BEED", "EDUC", "EDUCATION", "TEACHER EDUCATION"],
+};
+
+function isSubjectMatchingSection(sub: any, sec: any): boolean {
+  if (!sec || !sub) return true;
+
+  const secCourse = String(sec.course || sec.course_code || "").trim().toUpperCase();
+  const secProg = String(sec.program || sec.department || "").trim().toUpperCase();
+  const secYearStr = String(sec.yearLevel || sec.year_level || sec.year || "").replace(/\D/g, "");
+  const secLabel = String(sec.section || sec.section_label || "").trim().toUpperCase();
+
+  const subProg = String(sub.program || sub.programCode || sub.department || sub.courseCode || "").trim().toUpperCase();
+  const subYearStr = String(sub.yearLevel || sub.year || "").replace(/\D/g, "");
+  const isMajor = Boolean(sub.isMajor);
+
+  const getAliases = (key: string) => {
+    if (!key) return [];
+    const direct = PROGRAM_COURSE_MAP[key] || [key];
+    return Array.from(new Set([key, ...direct]));
+  };
+
+  const secAliases = [
+    ...getAliases(secCourse),
+    ...getAliases(secProg),
+  ];
+
+  for (const k of Object.keys(PROGRAM_COURSE_MAP)) {
+    if (secLabel.includes(k) || secLabel.startsWith(k)) {
+      secAliases.push(...getAliases(k));
+    }
+  }
+
+  const subAliases = getAliases(subProg);
+
+  let programMatches = false;
+  if (!subProg || subProg === "ALL" || subProg === "GEN ED" || subProg === "GENERAL EDUCATION") {
+    programMatches = true;
+  } else if (secAliases.some((sa) => subAliases.some((sb) => sa === sb || sa.includes(sb) || sb.includes(sa)))) {
+    programMatches = true;
+  }
+
+  let yearMatches = true;
+  if (secYearStr && subYearStr) {
+    yearMatches = secYearStr === subYearStr;
+  }
+
+  if (isMajor) {
+    return programMatches && yearMatches;
+  }
+
+  return (programMatches || (!sub.isMajor && subProg === "GEN ED")) && yearMatches;
+}
+
 export function SchedulesPage() {
   const [scheduleItems, setScheduleItems] = useState<ClassScheduleItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isFetching, setIsFetching] = useState(true);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const initialView = (searchParams.get("view") || searchParams.get("filter") || "grid") as "grid" | "list" | "unscheduled";
@@ -118,11 +189,13 @@ export function SchedulesPage() {
   const [isOpen, setIsOpen] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<ClassScheduleItem | null>(null);
   const [viewingSchedule, setViewingSchedule] = useState<ClassScheduleItem | null>(null);
+  const [scheduleToDelete, setScheduleToDelete] = useState<ClassScheduleItem | null>(null);
   const [isDraggingGrid, setIsDraggingGrid] = useState(false);
   const [dragStart, setDragStart] = useState<{ day: string; slotIdx: number } | null>(null);
   const [dragCurrent, setDragCurrent] = useState<{ day: string; slotIdx: number } | null>(null);
 
   const toast = useToast();
+  const { addNotification } = useNotifications();
   const { selectedProgram, matchesProgram } = useProgramContext();
   const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
   const currentUserName = localStorage.getItem("userName") || "";
@@ -210,10 +283,21 @@ export function SchedulesPage() {
   };
 
   const buildingOptions = useMemo(() => {
-    const defaults = ["College Building", "SHS Building", "JHS Building"];
     const roomBuildings = roomsList.map((r) => r.building).filter(Boolean);
-    return Array.from(new Set([...defaults, ...roomBuildings]));
+    const defaults = ["Main Building", "College Building", "Annex", "Science Block", "SHS Building", "JHS Building"];
+    return Array.from(new Set([...roomBuildings, ...defaults]));
   }, [roomsList]);
+
+  const availableRoomsForBuilding = useMemo(() => {
+    if (!form.building) return roomsList;
+    const matchingRooms = roomsList.filter(
+      (r) =>
+        r.building &&
+        (r.building.toLowerCase().trim() === form.building.toLowerCase().trim() ||
+          r.building.toLowerCase().includes(form.building.split(" ")[0].toLowerCase()))
+    );
+    return matchingRooms.length > 0 ? matchingRooms : roomsList;
+  }, [roomsList, form.building]);
 
   const isSlotInDragRange = (day: string, slotIdx: number) => {
     if (!isDraggingGrid || !dragStart || !dragCurrent || dragStart.day !== day) return false;
@@ -285,11 +369,16 @@ export function SchedulesPage() {
   };
 
   useEffect(() => {
-    fetchSchedules();
-    api.get("/faculty").then((res: any) => setFacultyList(res.data?.data || [])).catch(() => setFacultyList([]));
-    api.get("/subjects").then((res: any) => setSubjectsList(res.data?.data || [])).catch(() => setSubjectsList([]));
-    api.get("/rooms").then((res: any) => setRoomsList(res.data?.data || [])).catch(() => setRoomsList([]));
-    api.get("/sections").then((res: any) => setSectionsList(res.data?.data || [])).catch(() => setSectionsList([]));
+    setIsFetching(true);
+    Promise.all([
+      fetchSchedules(),
+      api.get("/faculty").then((res: any) => setFacultyList(res.data?.data || [])).catch(() => setFacultyList([])),
+      api.get("/subjects").then((res: any) => setSubjectsList(res.data?.data || [])).catch(() => setSubjectsList([])),
+      api.get("/rooms").then((res: any) => setRoomsList(res.data?.data || [])).catch(() => setRoomsList([])),
+      api.get("/sections").then((res: any) => setSectionsList(res.data?.data || [])).catch(() => setSectionsList([])),
+    ]).finally(() => {
+      setIsFetching(false);
+    });
   }, []);
 
   const availableSubjects = useMemo(() => {
@@ -298,6 +387,20 @@ export function SchedulesPage() {
     }
     return subjectsList;
   }, [role, subjectsList, selectedProgram.key, matchesProgram]);
+
+  const availableSections = useMemo(() => {
+    if (role === "program_head") {
+      return sectionsList.filter((s) => matchesProgram(s.program || s.course));
+    }
+    return sectionsList;
+  }, [role, sectionsList, selectedProgram.key, matchesProgram]);
+
+  const availableFaculty = useMemo(() => {
+    if (role === "program_head") {
+      return facultyList.filter((f) => matchesProgram(f.programs || f.department));
+    }
+    return facultyList;
+  }, [role, facultyList, selectedProgram.key, matchesProgram]);
 
   const scheduledSubjectCodes = useMemo(() => {
     return new Set(
@@ -327,11 +430,164 @@ export function SchedulesPage() {
     );
   }, [unscheduledSubjects, query]);
 
+  const selectedSectionObj = useMemo(() => {
+    if (!form.section) return availableSections[0] || null;
+    return (
+      availableSections.find((s) => {
+        const secLabel = s.section ? (s.course ? `${s.course} ${s.yearLevel || ''}-${s.section}`.trim() : s.section) : '';
+        return (
+          s.id === form.section ||
+          s.section === form.section ||
+          secLabel === form.section ||
+          (secLabel && form.section.includes(secLabel)) ||
+          (s.section && form.section.includes(s.section))
+        );
+      }) ||
+      availableSections[0] ||
+      null
+    );
+  }, [form.section, availableSections]);
+
+  const modalSubjects = useMemo(() => {
+    if (!selectedSectionObj) return availableSubjects;
+    const filtered = availableSubjects.filter((sub) => isSubjectMatchingSection(sub, selectedSectionObj));
+    return filtered.length > 0 ? filtered : availableSubjects;
+  }, [selectedSectionObj, availableSubjects]);
+
+  // Searchable Select Option Mappers for Categories
+  const sectionSelectOptions: SearchableOption[] = useMemo(() => {
+    return availableSections.map((sec, idx) => {
+      const secLabel = sec.section
+        ? sec.course
+          ? `${sec.course} ${sec.yearLevel || ""}-${sec.section}`.trim()
+          : sec.section
+        : `Section ${idx + 1}`;
+      const secValue = sec.section
+        ? sec.course
+          ? `${sec.course} ${sec.yearLevel || ""}-${sec.section}`.trim()
+          : sec.section
+        : secLabel;
+      const studentCount = sec.students || 30;
+
+      return {
+        value: secValue,
+        label: secLabel,
+        sublabel: `${sec.course || sec.program || "Academic Program"} · Year Level ${sec.yearLevel || "1"} · ${studentCount} enrolled students`,
+        badge: `${studentCount} Students`,
+        badgeTone: "blue",
+        searchKeywords: [
+          sec.course || "",
+          sec.program || "",
+          sec.section || "",
+          sec.department || "",
+          `Year ${sec.yearLevel}`,
+        ],
+      };
+    });
+  }, [availableSections]);
+
+  const facultySelectOptions: SearchableOption[] = useMemo(() => {
+    return availableFaculty.map((f) => {
+      const isFullTime = f.status === "Full-Time";
+      return {
+        value: f.id,
+        label: f.name,
+        sublabel: `${f.department || "Academic Faculty"} · Max Load: ${f.maxLoadHours || 24} hrs/wk`,
+        badge: f.status || "Full-Time",
+        badgeTone: isFullTime ? "emerald" : "amber",
+        searchKeywords: [
+          f.name,
+          f.department || "",
+          f.status || "",
+          f.email || "",
+          f.id,
+        ],
+      };
+    });
+  }, [availableFaculty]);
+
+  const subjectSelectOptions: SearchableOption[] = useMemo(() => {
+    return modalSubjects.map((sub) => {
+      const isMajor = Boolean(sub.isMajor);
+      const isLab = Number(sub.labHours || 0) > 0;
+      const units = sub.units || 3;
+      return {
+        value: sub.code,
+        label: `${sub.code} - ${sub.name}`,
+        sublabel: `${isMajor ? "Major Subject" : "General Education"} · ${units} Units · ${sub.program || sub.department || "Curriculum"} ${isLab ? "(Laboratory Required)" : "(Lecture)"}`,
+        badge: isMajor ? "Major" : "Gen Ed",
+        badgeTone: isMajor ? "blue" : "amber",
+        searchKeywords: [
+          sub.code,
+          sub.name,
+          sub.program || "",
+          sub.department || "",
+          isMajor ? "major" : "gen ed general education",
+          isLab ? "lab laboratory" : "lecture",
+        ],
+      };
+    });
+  }, [modalSubjects]);
+
+  const roomSelectOptions: SearchableOption[] = useMemo(() => {
+    return availableRoomsForBuilding.map((r) => {
+      const isLab = /lab/i.test(r.type || "") || /lab/i.test(r.building || "");
+      return {
+        value: r.number,
+        label: `${r.number} - ${r.building || "Campus"}`,
+        sublabel: `${r.type || "Classroom"} · Max Capacity: ${r.capacity} students · Status: ${r.status || "Available"}`,
+        badge: isLab ? "Lab" : `Cap: ${r.capacity}`,
+        badgeTone: isLab ? "purple" : "slate",
+        searchKeywords: [
+          r.number,
+          r.building || "",
+          r.type || "",
+          String(r.capacity),
+          r.status || "",
+        ],
+      };
+    });
+  }, [availableRoomsForBuilding]);
+
+  const handleSectionChange = (sectionVal: string) => {
+    const chosenSec = availableSections.find((s) => {
+      const secLabel = s.section ? (s.course ? `${s.course} ${s.yearLevel || ''}-${s.section}`.trim() : s.section) : '';
+      return (
+        s.id === sectionVal ||
+        s.section === sectionVal ||
+        secLabel === sectionVal ||
+        (secLabel && sectionVal.includes(secLabel)) ||
+        (s.section && sectionVal.includes(s.section))
+      );
+    });
+
+    const filteredForSec = availableSubjects.filter((sub) => isSubjectMatchingSection(sub, chosenSec));
+    const isCurrentValid = filteredForSec.some((s) => s.code === form.subjectCode);
+    const targetSub = isCurrentValid
+      ? filteredForSec.find((s) => s.code === form.subjectCode)
+      : (filteredForSec[0] || null);
+
+    const defInstructor = targetSub
+      ? availableFaculty.find((f) => f.id === targetSub.instructorId || f.name === targetSub.instructor)
+      : null;
+
+    setForm((prev) => ({
+      ...prev,
+      section: sectionVal,
+      program: chosenSec?.program || chosenSec?.course || prev.program,
+      subjectCode: targetSub ? targetSub.code : "",
+      subject: targetSub ? targetSub.name : "",
+      isMajor: targetSub ? Boolean(targetSub.isMajor) : prev.isMajor,
+      facultyId: defInstructor ? defInstructor.id : (targetSub ? "" : prev.facultyId),
+      faculty: defInstructor ? defInstructor.name : (targetSub ? "" : prev.faculty),
+    }));
+  };
+
   const handleScheduleUnscheduledSubject = (sub: any) => {
     if (!canCreate) return;
     setEditingSchedule(null);
-    const defFac = facultyList.find((f) => f.id === sub.instructorId || f.name === sub.instructor) || facultyList[0];
-    const defSec = sectionsList.find((s) => s.program === sub.program || s.course === sub.program) || sectionsList[0];
+    const defFac = availableFaculty.find((f) => f.id === sub.instructorId || f.name === sub.instructor) || availableFaculty[0] || facultyList[0];
+    const defSec = availableSections.find((s) => isSubjectMatchingSection(sub, s)) || availableSections[0] || sectionsList[0];
     const defSecVal = defSec ? (defSec.course && defSec.section ? `${defSec.course} ${defSec.yearLevel || ''}-${defSec.section}`.trim() : defSec.section) : "BSIT 1-A";
     const isLab = Number(sub.labHours || 0) > 0;
     const defRoom = roomsList.find((r) => isLab ? (/lab/i.test(r.type || '') || /lab/i.test(r.building || '')) : true)?.number || roomsList[0]?.number || "COL-101";
@@ -359,9 +615,14 @@ export function SchedulesPage() {
     const sub = subjectsList.find((s) => s.code === code);
     if (!sub) return;
 
-    const defInstructor = facultyList.find((f) => f.id === sub.instructorId || f.name === sub.instructor);
-    const matchingSection = sectionsList.find((sec) => !sub.program || sec.program === sub.program || sec.course === sub.program) || sectionsList[0];
-    const secVal = matchingSection ? (matchingSection.course && matchingSection.section ? `${matchingSection.course} ${matchingSection.yearLevel || ''}-${matchingSection.section}`.trim() : matchingSection.section) : "BSIT 1-A";
+    const defInstructor = availableFaculty.find((f) => f.id === sub.instructorId || f.name === sub.instructor);
+    const isCurrentSecValid = selectedSectionObj && isSubjectMatchingSection(sub, selectedSectionObj);
+
+    let nextSection = form.section;
+    if (!isCurrentSecValid) {
+      const matchingSection = availableSections.find((sec) => isSubjectMatchingSection(sub, sec)) || availableSections[0] || sectionsList[0];
+      nextSection = matchingSection ? (matchingSection.course && matchingSection.section ? `${matchingSection.course} ${matchingSection.yearLevel || ''}-${matchingSection.section}`.trim() : matchingSection.section) : form.section;
+    }
 
     setForm((prev) => ({
       ...prev,
@@ -371,9 +632,49 @@ export function SchedulesPage() {
       program: sub.program || prev.program,
       facultyId: defInstructor ? defInstructor.id : prev.facultyId,
       faculty: defInstructor ? defInstructor.name : prev.faculty,
-      section: secVal,
+      section: nextSection,
     }));
   };
+
+  const handleBuildingChange = (newBuilding: BuildingType) => {
+    const matchingRooms = roomsList.filter(
+      (r) =>
+        r.building &&
+        newBuilding &&
+        (r.building.toLowerCase().trim() === newBuilding.toLowerCase().trim() ||
+          r.building.toLowerCase().includes(newBuilding.split(" ")[0].toLowerCase()))
+    );
+    const isCurrentValid = matchingRooms.some((r) => r.number === form.room);
+    const nextRoom = isCurrentValid
+      ? form.room
+      : matchingRooms[0]?.number || roomsList[0]?.number || "";
+
+    setForm((prev) => ({
+      ...prev,
+      building: newBuilding,
+      room: nextRoom,
+    }));
+  };
+
+  const handleRoomChange = (roomNumber: string) => {
+    const selectedRoomObj = roomsList.find((r) => r.number === roomNumber);
+    setForm((prev) => ({
+      ...prev,
+      room: roomNumber,
+      building: (selectedRoomObj?.building as BuildingType) || prev.building,
+    }));
+  };
+
+  // Keep form.room synchronized with available rooms when building or modality changes
+  useEffect(() => {
+    if (!isOpen || form.modality !== "Face-to-Face") return;
+    if (availableRoomsForBuilding.length > 0 && !availableRoomsForBuilding.some((r) => r.number === form.room)) {
+      setForm((prev) => ({
+        ...prev,
+        room: availableRoomsForBuilding[0].number,
+      }));
+    }
+  }, [form.building, form.modality, isOpen, availableRoomsForBuilding, form.room]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -419,19 +720,24 @@ export function SchedulesPage() {
     setIsOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!canCreate) return;
-    if (!window.confirm("Remove this scheduled class block?")) return;
-
-    setDeletingId(id);
+  const executeDelete = async () => {
+    if (!canCreate || !scheduleToDelete) return;
+    setLoading(true);
     try {
-      await api.delete(`/schedules/${encodeURIComponent(id)}`);
-      toast.push("Class schedule removed", "success");
+      await api.delete(`/schedules/${encodeURIComponent(scheduleToDelete.id)}`);
+      toast.push("Class schedule removed successfully", "success");
+      addNotification({
+        title: "Class Schedule Removed",
+        message: `Schedule session for ${scheduleToDelete.subjectCode} (${scheduleToDelete.section}) was removed.`,
+        type: "warning",
+        link: "/schedules",
+      });
       fetchSchedules();
     } catch (err: any) {
       toast.push(err?.message || err?.response?.data?.error || "Failed to delete schedule", "error");
     } finally {
-      setDeletingId(null);
+      setLoading(false);
+      setScheduleToDelete(null);
     }
   };
 
@@ -448,6 +754,19 @@ export function SchedulesPage() {
 
     setLoading(true);
     try {
+      const isRoomInFiltered = availableRoomsForBuilding.some((r) => r.number === form.room);
+      const resolvedRoom =
+        form.modality === "Online"
+          ? (form.room || "Virtual Room")
+          : isRoomInFiltered
+            ? form.room
+            : (availableRoomsForBuilding[0]?.number || form.room || roomsList[0]?.number || "R-101");
+
+      const resolvedBuilding =
+        form.modality === "Online"
+          ? form.building
+          : (roomsList.find((r) => r.number === resolvedRoom)?.building as BuildingType) || form.building;
+
       const payload: Omit<ClassScheduleItem, "id"> & { id?: string } = {
         id: editingSchedule?.id,
         day: form.day,
@@ -457,8 +776,8 @@ export function SchedulesPage() {
         section: form.section,
         faculty: form.faculty,
         facultyId: form.facultyId,
-        room: form.modality === "Online" ? (form.room || "Virtual Room") : (form.room || roomsList[0]?.number || "R-101"),
-        building: form.building,
+        room: resolvedRoom,
+        building: resolvedBuilding,
         modality: form.modality,
         onlineLink: form.onlineLink,
         isMajor: form.isMajor,
@@ -475,9 +794,21 @@ export function SchedulesPage() {
       if (editingSchedule) {
         await api.put(`/schedules/${encodeURIComponent(editingSchedule.id)}`, payload);
         toast.push("Class schedule updated", "success");
+        addNotification({
+          title: "Class Schedule Updated",
+          message: `${form.subjectCode} for ${form.section} (${form.day} ${form.time}) updated.`,
+          type: "success",
+          link: "/schedules",
+        });
       } else {
         await api.post("/schedules", payload);
         toast.push("Class schedule created successfully", "success");
+        addNotification({
+          title: "New Class Scheduled",
+          message: `${form.subjectCode} assigned to ${form.faculty} on ${form.day} ${form.time}.`,
+          type: "success",
+          link: "/schedules",
+        });
       }
 
       setIsOpen(false);
@@ -501,7 +832,7 @@ export function SchedulesPage() {
         if (!isMatch) return false;
       }
 
-      if (role === "program_head") {
+      if (role === "program_head" || (selectedProgram.key && selectedProgram.key !== "ALL")) {
         if (!matchesProgram(item.program || selectedProgram.shortLabel)) {
           return false;
         }
@@ -571,11 +902,13 @@ export function SchedulesPage() {
               type="button"
               onClick={() => {
                 setEditingSchedule(null);
-                const firstSub = availableSubjects[0] || subjectsList[0];
-                const defFac = facultyList.find((f) => f.id === firstSub?.instructorId) || facultyList[0];
-                const defSec = sectionsList.find((s) => s.program === firstSub?.program) || sectionsList[0];
-                const defSecVal = defSec ? (defSec.course && defSec.section ? `${defSec.course} ${defSec.yearLevel || ''}-${defSec.section}`.trim() : defSec.section) : "BSIT 1-A";
-                const defRoom = roomsList[0]?.number || "room 101";
+                const firstSec = availableSections[0] || sectionsList[0];
+                const defSecVal = firstSec ? (firstSec.course && firstSec.section ? `${firstSec.course} ${firstSec.yearLevel || ''}-${firstSec.section}`.trim() : firstSec.section) : "BSIT 1-A";
+                const filteredSubs = availableSubjects.filter((s) => isSubjectMatchingSection(s, firstSec));
+                const firstSub = filteredSubs[0] || availableSubjects[0] || subjectsList[0];
+                const defFac = availableFaculty.find((f) => f.id === firstSub?.instructorId || f.name === firstSub?.instructor) || availableFaculty[0] || facultyList[0];
+                const isLab = Number(firstSub?.labHours || 0) > 0;
+                const defRoom = roomsList.find((r) => isLab ? (/lab/i.test(r.type || '') || /lab/i.test(r.building || '')) : true)?.number || roomsList[0]?.number || "COL-101";
                 const defBuilding = roomsList[0]?.building || "College Building";
                 setForm({
                   day: "Monday",
@@ -586,11 +919,11 @@ export function SchedulesPage() {
                   facultyId: defFac?.id || "",
                   faculty: defFac?.name || "",
                   room: defRoom,
-                  building: defBuilding,
+                  building: defBuilding as BuildingType,
                   modality: "Face-to-Face",
                   onlineLink: "",
                   isMajor: Boolean(firstSub?.isMajor),
-                  program: firstSub?.program || selectedProgram.key || "BSIT",
+                  program: firstSub?.program || firstSec?.program || selectedProgram.key || "BSIT",
                 });
                 setIsOpen(true);
               }}
@@ -616,85 +949,96 @@ export function SchedulesPage() {
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             {/* View Mode Switcher */}
-            <div style={{ display: "flex", background: "#e2e8f0", borderRadius: 8, padding: 2 }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setViewMode("grid");
-                  setSearchParams({});
-                }}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: 6,
-                  border: "none",
-                  background: viewMode === "grid" ? "#ffffff" : "transparent",
-                  fontWeight: 600,
-                  fontSize: "0.85rem",
-                  cursor: "pointer",
-                  color: viewMode === "grid" ? "#0d5499" : "#64748b",
-                  boxShadow: viewMode === "grid" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                }}
-              >
-                <CalendarDays size={14} style={{ display: "inline", marginRight: 4 }} />
-                Weekly Grid
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setViewMode("list");
-                  setSearchParams({});
-                }}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: 6,
-                  border: "none",
-                  background: viewMode === "list" ? "#ffffff" : "transparent",
-                  fontWeight: 600,
-                  fontSize: "0.85rem",
-                  cursor: "pointer",
-                  color: viewMode === "list" ? "#0d5499" : "#64748b",
-                  boxShadow: viewMode === "list" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                }}
-              >
-                <ListFilter size={14} style={{ display: "inline", marginRight: 4 }} />
-                List View
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setViewMode("unscheduled");
-                  setSearchParams({ view: "unscheduled" });
-                }}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: 6,
-                  border: "none",
-                  background: viewMode === "unscheduled" ? "#ffffff" : "transparent",
-                  fontWeight: 600,
-                  fontSize: "0.85rem",
-                  cursor: "pointer",
-                  color: viewMode === "unscheduled" ? "#d97706" : "#64748b",
-                  boxShadow: viewMode === "unscheduled" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                <CalendarRange size={14} />
-                <span>Unscheduled</span>
-                <span
+            <div style={{ display: "flex", background: "var(--srcb-surface-alt, #e2e8f0)", borderRadius: 8, padding: 2, border: "1px solid var(--srcb-border)" }}>
+              <Tooltip content="Weekly Timetable Grid">
+                <button
+                  type="button"
+                  aria-label="Weekly Timetable Grid View"
+                  onClick={() => {
+                    setViewMode("grid");
+                    setSearchParams({});
+                  }}
                   style={{
-                    padding: "1px 6px",
-                    borderRadius: 10,
-                    fontSize: "0.72rem",
-                    fontWeight: 700,
-                    background: viewMode === "unscheduled" ? "#fef3c7" : "rgba(148, 163, 184, 0.3)",
-                    color: viewMode === "unscheduled" ? "#92400e" : "#475569",
+                    padding: "6px 12px",
+                    borderRadius: 6,
+                    border: "none",
+                    background: viewMode === "grid" ? "var(--srcb-surface-elevated, #ffffff)" : "transparent",
+                    fontWeight: 600,
+                    fontSize: "0.85rem",
+                    cursor: "pointer",
+                    color: viewMode === "grid" ? "var(--srcb-navy, #0d5499)" : "var(--srcb-text-muted, #64748b)",
+                    boxShadow: viewMode === "grid" ? "var(--srcb-shadow-soft, 0 1px 3px rgba(0,0,0,0.1))" : "none",
                   }}
                 >
-                  {unscheduledSubjects.length}
-                </span>
-              </button>
+                  <CalendarDays size={14} style={{ display: "inline", marginRight: 4 }} />
+                  Weekly Grid
+                </button>
+              </Tooltip>
+
+              <Tooltip content="List View of Class Sessions">
+                <button
+                  type="button"
+                  aria-label="List View of Class Sessions"
+                  onClick={() => {
+                    setViewMode("list");
+                    setSearchParams({});
+                  }}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 6,
+                    border: "none",
+                    background: viewMode === "list" ? "var(--srcb-surface-elevated, #ffffff)" : "transparent",
+                    fontWeight: 600,
+                    fontSize: "0.85rem",
+                    cursor: "pointer",
+                    color: viewMode === "list" ? "var(--srcb-navy, #0d5499)" : "var(--srcb-text-muted, #64748b)",
+                    boxShadow: viewMode === "list" ? "var(--srcb-shadow-soft, 0 1px 3px rgba(0,0,0,0.1))" : "none",
+                  }}
+                >
+                  <ListFilter size={14} style={{ display: "inline", marginRight: 4 }} />
+                  List View
+                </button>
+              </Tooltip>
+
+              <Tooltip content="Unscheduled Curriculum Subjects">
+                <button
+                  type="button"
+                  aria-label="Unscheduled Curriculum Subjects"
+                  onClick={() => {
+                    setViewMode("unscheduled");
+                    setSearchParams({ view: "unscheduled" });
+                  }}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 6,
+                    border: "none",
+                    background: viewMode === "unscheduled" ? "var(--srcb-surface-elevated, #ffffff)" : "transparent",
+                    fontWeight: 600,
+                    fontSize: "0.85rem",
+                    cursor: "pointer",
+                    color: viewMode === "unscheduled" ? "var(--srcb-gold, #d97706)" : "var(--srcb-text-muted, #64748b)",
+                    boxShadow: viewMode === "unscheduled" ? "var(--srcb-shadow-soft, 0 1px 3px rgba(0,0,0,0.1))" : "none",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <CalendarRange size={14} />
+                  <span>Unscheduled</span>
+                  <span
+                    style={{
+                      padding: "1px 6px",
+                      borderRadius: 10,
+                      fontSize: "0.72rem",
+                      fontWeight: 700,
+                      background: viewMode === "unscheduled" ? "var(--srcb-gold-soft, #fef3c7)" : "var(--srcb-surface-alt, rgba(148, 163, 184, 0.3))",
+                      color: viewMode === "unscheduled" ? "var(--srcb-gold, #92400e)" : "var(--srcb-text-muted, #475569)",
+                    }}
+                  >
+                    {unscheduledSubjects.length}
+                  </span>
+                </button>
+              </Tooltip>
             </div>
 
             {/* Day Filter */}
@@ -714,25 +1058,25 @@ export function SchedulesPage() {
               </select>
             </label>
 
-            {/* Faculty / Teacher Filter */}
+            {/* Faculty / Teacher / Program Head Filter */}
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.85rem", fontWeight: 600 }}>
               Instructor:
               <select
                 value={selectedFacultyFilter}
                 onChange={(e) => setSelectedFacultyFilter(e.target.value)}
-                style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #cbd5e1", maxWidth: 180 }}
+                style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #cbd5e1", maxWidth: 190 }}
               >
                 <option value="All">All Faculty Members</option>
-                {role === "teacher" && currentUserName && (
+                {(role === "teacher" || role === "program_head") && currentUserName && (
                   <option value={currentTeacherId || currentUserName}>
-                    ⭐ My Schedule ({currentUserName})
+                    ⭐ {role === "program_head" ? `My Classes (${currentUserName})` : `My Schedule (${currentUserName})`}
                   </option>
                 )}
                 {facultyList
-                  .filter((f) => !currentUserName || f.name !== currentUserName)
+                  .filter((f) => !currentUserName || (f.name !== currentUserName && String(f.id) !== String(currentTeacherId)))
                   .map((f) => (
                     <option key={f.id} value={f.id}>
-                      {f.name} ({f.department})
+                      {f.name} ({f.department || "Academic"})
                     </option>
                   ))}
               </select>
@@ -750,9 +1094,22 @@ export function SchedulesPage() {
           </div>
         </div>
 
-        {/* View Mode: Weekly Matrix Grid */}
-        {viewMode === "grid" && (
-          <div className="table-wrap" style={{ marginTop: 16 }}>
+        {/* Schedules Content Views */}
+        {isFetching ? (
+          viewMode === "grid" ? (
+            <div style={{ marginTop: 16 }}>
+              <TimetableSkeleton />
+            </div>
+          ) : (
+            <div style={{ marginTop: 16 }}>
+              <CardGridSkeleton count={6} />
+            </div>
+          )
+        ) : (
+          <>
+            {/* View Mode: Weekly Matrix Grid */}
+            {viewMode === "grid" && (
+              <div className="table-wrap" style={{ marginTop: 16 }}>
             <table className="data-table" style={{ textAlign: "center" }}>
               <thead>
                 <tr>
@@ -980,15 +1337,16 @@ export function SchedulesPage() {
                                       type="button"
                                       onClick={() => handleEdit(item)}
                                       title="Edit Class Block"
+                                      aria-label={`Edit class block ${item.subjectCode}`}
                                       style={{ background: "none", border: "none", cursor: "pointer", color: "#475569", padding: "2px 4px" }}
                                     >
                                       <Edit2 size={13} />
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => handleDelete(item.id)}
-                                      disabled={deletingId === item.id}
+                                      onClick={() => setScheduleToDelete(item)}
                                       title="Delete Class Block"
+                                      aria-label={`Delete class block ${item.subjectCode}`}
                                       style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626", padding: "2px 4px" }}
                                     >
                                       <Trash2 size={13} />
@@ -1012,8 +1370,25 @@ export function SchedulesPage() {
         {viewMode === "list" && (
           <div style={{ marginTop: 16 }}>
             {visibleSchedules.length === 0 ? (
-              <div className="empty-state" style={{ padding: "32px 16px", background: "#f8fafc", borderRadius: 8, textAlign: "center" }}>
-                No scheduled classes found.
+              <div className="empty-state" style={{ padding: "36px 16px", background: "var(--srcb-surface-alt, #f8fafc)", borderRadius: 8, textAlign: "center" }}>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: "0.95rem" }}>No scheduled classes found matching your filters.</p>
+                <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "var(--srcb-text-muted)" }}>
+                  Try changing your Day or Instructor filter, or adjusting your search keywords.
+                </p>
+                {(query || selectedDayFilter !== "All" || selectedFacultyFilter !== "All") && (
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => {
+                      setQuery("");
+                      setSelectedDayFilter("All");
+                      setSelectedFacultyFilter("All");
+                    }}
+                    style={{ marginTop: 12, fontSize: "0.8rem" }}
+                  >
+                    Clear Search & Filters
+                  </button>
+                )}
               </div>
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
@@ -1106,6 +1481,7 @@ export function SchedulesPage() {
                           type="button"
                           className="secondary-button"
                           onClick={() => handleEdit(item)}
+                          aria-label={`Edit schedule for ${item.subjectCode}`}
                           style={{ padding: "5px 10px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: 4 }}
                         >
                           <Edit2 size={13} /> Edit
@@ -1113,8 +1489,8 @@ export function SchedulesPage() {
                         <button
                           type="button"
                           className="secondary-button"
-                          onClick={() => handleDelete(item.id)}
-                          disabled={deletingId === item.id}
+                          onClick={() => setScheduleToDelete(item)}
+                          aria-label={`Remove schedule for ${item.subjectCode}`}
                           style={{ padding: "5px 10px", fontSize: "0.78rem", color: "#dc2626", borderColor: "#fca5a5", display: "inline-flex", alignItems: "center", gap: 4 }}
                         >
                           <Trash2 size={13} /> Remove
@@ -1231,6 +1607,8 @@ export function SchedulesPage() {
             )}
           </div>
         )}
+          </>
+        )}
       </section>
 
       {/* Manual Class Schedule Modal */}
@@ -1307,63 +1685,64 @@ export function SchedulesPage() {
               2. Curriculum & Section Assignment
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
-              <div className="field-group" style={{ gridColumn: "1 / -1" }}>
-                <label htmlFor="schedSubject">Academic Subject</label>
-                <select
-                  id="schedSubject"
-                  value={form.subjectCode}
-                  onChange={(e) => handleSubjectChange(e.target.value)}
-                >
-                  <option value="">Select subject</option>
-                  {availableSubjects.map((sub) => (
-                    <option key={sub.code} value={sub.code}>
-                      {sub.code} - {sub.name} ({sub.isMajor ? "Major" : "Gen Ed"} · {sub.program || sub.department})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
               <div className="field-group">
-                <label htmlFor="schedSection">Student Section</label>
-                <select
+                <label htmlFor="schedSection">
+                  Student Section <span style={{ color: "#dc2626" }}>*</span>
+                </label>
+                <SearchableSelect
                   id="schedSection"
                   value={form.section}
-                  onChange={(e) => setForm({ ...form, section: e.target.value })}
-                >
-                  <option value="">Select section</option>
-                  {sectionsList.map((sec, idx) => {
-                    const secLabel = sec.section ? (sec.course ? `${sec.course} ${sec.yearLevel || ''}-${sec.section}`.trim() : sec.section) : `Section ${idx + 1}`;
-                    const secValue = sec.section ? (sec.course ? `${sec.course} ${sec.yearLevel || ''}-${sec.section}`.trim() : sec.section) : secLabel;
-                    return (
-                      <option key={sec.id || idx} value={secValue}>
-                        {secLabel} ({sec.students || 30} students)
-                      </option>
-                    );
-                  })}
-                </select>
+                  onChange={(val) => handleSectionChange(val)}
+                  options={sectionSelectOptions}
+                  placeholder="Search & select student section..."
+                  searchPlaceholder="Search sections (e.g. BSIT 1-A, Year 2, BSBA)..."
+                  emptyText="No matching student sections found"
+                />
               </div>
 
               <div className="field-group">
-                <label htmlFor="schedFaculty">Instructor</label>
-                <select
+                <label htmlFor="schedFaculty">
+                  Instructor <span style={{ color: "#dc2626" }}>*</span>
+                </label>
+                <SearchableSelect
                   id="schedFaculty"
                   value={form.facultyId}
-                  onChange={(e) => {
-                    const fac = facultyList.find((f) => f.id === e.target.value);
+                  onChange={(val) => {
+                    const fac = availableFaculty.find((f) => f.id === val);
                     setForm({
                       ...form,
-                      facultyId: e.target.value,
+                      facultyId: val,
                       faculty: fac ? fac.name : "",
                     });
                   }}
-                >
-                  <option value="">Select instructor</option>
-                  {facultyList.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name} ({f.status} · {f.department})
-                    </option>
-                  ))}
-                </select>
+                  options={facultySelectOptions}
+                  placeholder="Search & select instructor..."
+                  searchPlaceholder="Search instructors by name, department, status..."
+                  emptyText="No matching instructors found"
+                />
+              </div>
+
+              <div className="field-group" style={{ gridColumn: "1 / -1" }}>
+                <label htmlFor="schedSubject" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>
+                    Academic Subject <span style={{ color: "#dc2626" }}>*</span>
+                  </span>
+                  {selectedSectionObj && (
+                    <span style={{ fontSize: "0.75rem", fontWeight: 500, color: "var(--srcb-navy)" }}>
+                      Showing {modalSubjects.length} subject{modalSubjects.length === 1 ? "" : "s"} for {selectedSectionObj.course || selectedSectionObj.program}
+                    </span>
+                  )}
+                </label>
+                <SearchableSelect
+                  id="schedSubject"
+                  value={form.subjectCode}
+                  onChange={(val) => handleSubjectChange(val)}
+                  options={subjectSelectOptions}
+                  placeholder={modalSubjects.length === 0 ? "No curriculum subjects found for this section" : "Search & select academic subject..."}
+                  searchPlaceholder="Search subjects by code, title, program, or type..."
+                  emptyText="No matching curriculum subjects found"
+                  disabled={modalSubjects.length === 0}
+                />
               </div>
             </div>
           </div>
@@ -1398,7 +1777,7 @@ export function SchedulesPage() {
                 <select
                   id="schedBuilding"
                   value={form.building}
-                  onChange={(e) => setForm({ ...form, building: e.target.value as BuildingType })}
+                  onChange={(e) => handleBuildingChange(e.target.value as BuildingType)}
                 >
                   {buildingOptions.map((b) => (
                     <option key={b} value={b}>
@@ -1410,24 +1789,18 @@ export function SchedulesPage() {
 
               {form.modality === "Face-to-Face" ? (
                 <div className="field-group" style={{ gridColumn: "1 / -1" }}>
-                  <label htmlFor="schedRoom">Assigned Classroom / Lab</label>
-                  <select
+                  <label htmlFor="schedRoom">
+                    Assigned Classroom / Lab <span style={{ color: "#dc2626" }}>*</span>
+                  </label>
+                  <SearchableSelect
                     id="schedRoom"
                     value={form.room}
-                    onChange={(e) => setForm({ ...form, room: e.target.value })}
-                  >
-                    {(() => {
-                      const filtered = roomsList.filter((r) =>
-                        r.building && form.building && r.building.toLowerCase().includes(form.building.split(" ")[0].toLowerCase())
-                      );
-                      const roomsToDisplay = filtered.length > 0 ? filtered : roomsList;
-                      return roomsToDisplay.map((r) => (
-                        <option key={r.number} value={r.number}>
-                          {r.number} - {r.building || "Campus"} ({r.type || "Room"} · Cap: {r.capacity})
-                        </option>
-                      ));
-                    })()}
-                  </select>
+                    onChange={(val) => handleRoomChange(val)}
+                    options={roomSelectOptions}
+                    placeholder="Search & select classroom or laboratory..."
+                    searchPlaceholder="Search rooms by number, building, type, capacity..."
+                    emptyText="No matching classrooms or labs found"
+                  />
                 </div>
               ) : (
                 <div className="field-group" style={{ gridColumn: "1 / -1" }}>
@@ -1618,6 +1991,27 @@ export function SchedulesPage() {
         isOpen={Boolean(viewingSchedule)}
         onClose={() => setViewingSchedule(null)}
         schedule={viewingSchedule}
+      />
+
+      {/* Delete Schedule Block Confirmation Modal (Heuristic 3 & 5) */}
+      <ConfirmModal
+        isOpen={Boolean(scheduleToDelete)}
+        title="Remove Scheduled Class Block"
+        variant="danger"
+        confirmLabel="Delete Class Block"
+        loading={loading}
+        onCancel={() => setScheduleToDelete(null)}
+        onConfirm={executeDelete}
+        message={
+          <span>
+            Are you sure you want to remove the scheduled block for <strong>{scheduleToDelete?.subjectCode}</strong> ({scheduleToDelete?.day} {scheduleToDelete?.time}) in room <strong>{scheduleToDelete?.room}</strong>?
+            <br />
+            <br />
+            <span style={{ fontSize: "0.82rem", color: "#dc2626" }}>
+              ⚠️ The room, instructor timeslot, and section cohort will be immediately freed up.
+            </span>
+          </span>
+        }
       />
     </motion.div>
   );

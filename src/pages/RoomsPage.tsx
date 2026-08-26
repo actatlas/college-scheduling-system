@@ -4,13 +4,16 @@ import { useEffect, useState } from "react";
 import { api } from "../data/apiClient";
 import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
+import { ConfirmModal } from "../components/common/ConfirmModal";
+import { CardGridSkeleton } from "../components/common/Skeleton";
 import { Plus, Search, Edit2, Trash2, Building } from "lucide-react";
 import type { RoomItem, BuildingType } from "../types";
 
 export function RoomsPage() {
   const [rooms, setRooms] = useState<RoomItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [deletingNumber, setDeletingNumber] = useState<string | null>(null);
+  const [fetching, setFetching] = useState(true);
+  const [roomToDelete, setRoomToDelete] = useState<RoomItem | null>(null);
   const [query, setQuery] = useState("");
   const [buildingFilter, setBuildingFilter] = useState<string>("All");
 
@@ -41,27 +44,28 @@ export function RoomsPage() {
     setIsOpen(true);
   };
 
-  const handleDelete = async (number: string) => {
-    if (!canEdit) return;
-    if (!window.confirm("Remove this room from campus facilities inventory?")) return;
-
-    setDeletingNumber(number);
+  const executeDelete = async () => {
+    if (!canEdit || !roomToDelete) return;
+    setLoading(true);
     try {
-      await api.delete(`/rooms/${encodeURIComponent(number)}`);
+      await api.delete(`/rooms/${encodeURIComponent(roomToDelete.number)}`);
       toast.push("Room deleted successfully", "success");
       fetchRooms();
     } catch (err: any) {
       toast.push(err?.response?.data?.error || "Failed to delete room", "error");
     } finally {
-      setDeletingNumber(null);
+      setLoading(false);
+      setRoomToDelete(null);
     }
   };
 
   const fetchRooms = () => {
+    setFetching(true);
     api
       .get("/rooms")
       .then((res: any) => setRooms(res.data?.data || []))
-      .catch(() => setRooms([]));
+      .catch(() => setRooms([]))
+      .finally(() => setFetching(false));
   };
 
   useEffect(() => {
@@ -152,85 +156,100 @@ export function RoomsPage() {
           </div>
         </div>
 
-        <div className="grid-3" style={{ marginTop: 12 }}>
-          {filteredRooms.length === 0 ? (
-            <div className="empty-state" style={{ gridColumn: "1 / -1" }}>
-              No rooms found matching your search or building filter.
-            </div>
-          ) : (
-            filteredRooms.map((room) => (
-              <article
-                className="card"
-                key={room.number}
-                style={{
-                  position: "relative",
-                  borderLeft: `4px solid ${
-                    room.building.includes("College")
-                      ? "#0284c7"
-                      : room.building.includes("SHS")
-                        ? "#8b5cf6"
-                        : "#10b981"
-                  }`,
-                }}
-              >
-                {canEdit && (
-                  <div style={{ position: "absolute", top: 12, right: 12, display: "flex", gap: 6 }}>
-                    <button
-                      type="button"
-                      title="Edit Room"
-                      onClick={() => handleEdit(room)}
-                      style={{ background: "none", border: "none", cursor: "pointer", color: "#4b5563" }}
-                    >
-                      <Edit2 size={16} />
-                    </button>
-                    <button
-                      type="button"
-                      title="Delete Room"
-                      onClick={() => handleDelete(room.number)}
-                      disabled={deletingNumber === room.number}
-                      style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626" }}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                )}
-
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <Building size={16} color="#0d5499" />
-                  <p className="eyebrow" style={{ margin: 0 }}>{room.building}</p>
-                </div>
-
-                <h3 style={{ marginTop: 8 }}>{room.number}</h3>
-                <p className="muted" style={{ marginTop: 4 }}>
-                  {room.type} • Capacity: <strong>{room.capacity} students</strong>
+        {fetching ? (
+          <CardGridSkeleton count={6} />
+        ) : (
+          <div className="grid-3" style={{ marginTop: 12 }}>
+            {filteredRooms.length === 0 ? (
+              <div className="empty-state" style={{ gridColumn: "1 / -1", padding: "36px 16px", textAlign: "center" }}>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: "0.95rem" }}>No rooms found matching your search or building filter.</p>
+                <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "var(--srcb-text-muted)" }}>
+                  Try adjusting your search query or selecting "All Campus Buildings".
                 </p>
-
-                <div style={{ marginTop: 12, display: "flex", gap: 6 }}>
-                  <span
-                    className="pill"
-                    style={{
-                      backgroundColor:
-                        room.status === "Available"
-                          ? "#dcfce7"
-                          : room.status === "Reserved"
-                            ? "#fef3c7"
-                            : "#fee2e2",
-                      color:
-                        room.status === "Available"
-                          ? "#15803d"
-                          : room.status === "Reserved"
-                            ? "#b45309"
-                            : "#b91c1c",
+                {(query || buildingFilter !== "All") && (
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => {
+                      setQuery("");
+                      setBuildingFilter("All");
                     }}
+                    style={{ marginTop: 12, fontSize: "0.8rem" }}
                   >
-                    {room.status}
-                  </span>
-                  <span className="pill pill--slate">{room.type}</span>
-                </div>
-              </article>
-            ))
-          )}
-        </div>
+                    Clear Search & Filters
+                  </button>
+                )}
+              </div>
+            ) : (
+              filteredRooms.map((room) => (
+                <article
+                  className="card"
+                  key={room.number}
+                  style={{
+                    position: "relative",
+                    borderLeft: `4px solid ${
+                      room.building.includes("College")
+                        ? "#0284c7"
+                        : room.building.includes("SHS")
+                          ? "#8b5cf6"
+                          : "#10b981"
+                    }`,
+                  }}
+                >
+                  {canEdit && (
+                    <div style={{ position: "absolute", top: 12, right: 12, display: "flex", gap: 6 }}>
+                      <button
+                        type="button"
+                        className="icon-button"
+                        title="Edit Room"
+                        aria-label={`Edit room ${room.number}`}
+                        onClick={() => handleEdit(room)}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "#4b5563" }}
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-button"
+                        title="Delete Room"
+                        aria-label={`Delete room ${room.number}`}
+                        onClick={() => setRoomToDelete(room)}
+                        style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626" }}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <Building size={16} color="#0d5499" />
+                    <p className="eyebrow" style={{ margin: 0 }}>{room.building}</p>
+                  </div>
+
+                  <h3 style={{ marginTop: 8 }}>{room.number}</h3>
+                  <p className="muted" style={{ marginTop: 4 }}>
+                    {room.type} • Capacity: <strong>{room.capacity} students</strong>
+                  </p>
+
+                  <div style={{ marginTop: 12, display: "flex", gap: 6 }}>
+                    <span
+                      className={`pill ${
+                        room.status === "Available"
+                          ? "pill--success"
+                          : room.status === "Reserved"
+                            ? "pill--amber"
+                            : "pill--danger"
+                      }`}
+                    >
+                      {room.status}
+                    </span>
+                    <span className="pill pill--slate">{room.type}</span>
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
+        )}
       </section>
 
       {/* Add / Edit Room Modal */}
@@ -245,7 +264,9 @@ export function RoomsPage() {
       >
         <div className="form-grid">
           <div className="field-group">
-            <label htmlFor="roomNumber">Room Code / Number</label>
+            <label htmlFor="roomNumber">
+              Room Code / Number <span style={{ color: "#dc2626" }}>*</span>
+            </label>
             <input
               id="roomNumber"
               value={form.number}
@@ -253,6 +274,7 @@ export function RoomsPage() {
               onChange={(event) => setForm({ ...form, number: event.target.value })}
               placeholder="e.g. COL-101, COMLAB-1, SHS-102"
               required
+              aria-required="true"
             />
           </div>
 
@@ -355,6 +377,27 @@ export function RoomsPage() {
           </button>
         </div>
       </Modal>
+
+      {/* Delete Room Confirmation Modal (Heuristic 3 & 5) */}
+      <ConfirmModal
+        isOpen={Boolean(roomToDelete)}
+        title="Remove Campus Facility"
+        variant="danger"
+        confirmLabel="Delete Room"
+        loading={loading}
+        onCancel={() => setRoomToDelete(null)}
+        onConfirm={executeDelete}
+        message={
+          <span>
+            Are you sure you want to remove room <strong>{roomToDelete?.number}</strong> ({roomToDelete?.building}) from active campus inventory?
+            <br />
+            <br />
+            <span style={{ fontSize: "0.82rem", color: "#dc2626" }}>
+              ⚠️ Ensure no classes or examination schedules are actively occupying this venue.
+            </span>
+          </span>
+        }
+      />
     </motion.div>
   );
 }

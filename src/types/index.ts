@@ -59,7 +59,7 @@ export interface SectionItem {
   program?: string
   yearLevel: string
   section: string
-  adviser: string
+  adviser?: string
   adviserId?: string
   students: number
   semester: string
@@ -125,6 +125,19 @@ export interface MetricCard {
   detail: string
   icon: string
   tone: string
+}
+
+export interface ProgramItem {
+  code: string
+  name: string
+  focus?: string
+}
+
+export interface CourseItem {
+  code: string
+  name: string
+  department?: string
+  program?: string
 }
 
 // Backwards compatibility alias

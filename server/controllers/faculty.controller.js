@@ -1,4 +1,5 @@
 const { facultyService } = require('../services/faculty.service');
+const { query } = require('../utils/db');
 
 async function listFaculty(req, res, next) {
   try {
@@ -9,12 +10,13 @@ async function listFaculty(req, res, next) {
   }
 }
 
-const { query } = require('../utils/db');
-
 async function createFaculty(req, res, next) {
   try {
-    if (!['admin', 'super_admin', 'program_head'].includes(req.user?.role)) {
-      return res.status(403).json({ error: 'Forbidden', code: 'UNAUTHORIZED_ROLE' });
+    if (!['admin', 'super_admin'].includes(req.user?.role)) {
+      return res.status(403).json({
+        error: 'Forbidden. Only Administrators can create faculty records.',
+        code: 'UNAUTHORIZED_ROLE',
+      });
     }
     const payload = req.body || {};
     const row = await facultyService.createFaculty(payload);
@@ -33,9 +35,12 @@ async function updateFaculty(req, res, next) {
     const payload = req.body || {};
     const userRole = req.user?.role;
 
-    if (!['admin', 'super_admin', 'program_head'].includes(userRole)) {
+    if (!['admin', 'super_admin'].includes(userRole)) {
       if (userRole !== 'teacher') {
-        return res.status(403).json({ error: 'Forbidden', code: 'UNAUTHORIZED_ROLE' });
+        return res.status(403).json({
+          error: 'Forbidden. Only Administrators can manage global faculty records. Program Heads manage major-subject scheduling assignments.',
+          code: 'UNAUTHORIZED_ROLE',
+        });
       }
 
       // Check if user is a teacher updating their own availability
@@ -90,7 +95,10 @@ async function updateFaculty(req, res, next) {
 async function deleteFaculty(req, res, next) {
   try {
     if (!['admin', 'super_admin'].includes(req.user?.role)) {
-      return res.status(403).json({ error: 'Forbidden', code: 'UNAUTHORIZED_ROLE' });
+      return res.status(403).json({
+        error: 'Forbidden. Only Administrators can delete faculty records.',
+        code: 'UNAUTHORIZED_ROLE',
+      });
     }
     const { id } = req.params;
     await facultyService.deleteFaculty(id);
@@ -101,4 +109,3 @@ async function deleteFaculty(req, res, next) {
 }
 
 module.exports = { listFaculty, createFaculty, updateFaculty, deleteFaculty };
-

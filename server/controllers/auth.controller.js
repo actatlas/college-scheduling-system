@@ -57,5 +57,33 @@ async function authReset(req, res, next) {
   }
 }
 
-module.exports = { authRegister, authLogin, authForgot, authReset, authMe };
+async function authChangePassword(req, res, next) {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const result = await authService.changePassword(req.user.id, currentPassword, newPassword);
+    return res.json(result);
+  } catch (err) {
+    return next(err);
+  }
+}
+
+async function authUpdateProfile(req, res, next) {
+  try {
+    const { name, phone } = req.body;
+    const result = await authService.updateProfile(req.user.id, { name, phone });
+    return res.json(result);
+  } catch (err) {
+    return next(err);
+  }
+}
+
+module.exports = {
+  authRegister,
+  authLogin,
+  authForgot,
+  authReset,
+  authMe,
+  authChangePassword,
+  authUpdateProfile,
+};
 

@@ -1,7 +1,15 @@
 const express = require('express');
 const { body } = require('express-validator');
 const { validateRequest } = require('../middleware/validateRequest');
-const { authRegister, authLogin, authForgot, authReset, authMe } = require('../controllers/auth.controller');
+const {
+  authRegister,
+  authLogin,
+  authForgot,
+  authReset,
+  authMe,
+  authChangePassword,
+  authUpdateProfile,
+} = require('../controllers/auth.controller');
 const { authMiddleware } = require('../middleware/authMiddleware');
 
 const router = express.Router();
@@ -38,6 +46,28 @@ router.post(
 );
 
 router.get('/me', authMiddleware, authMe);
+
+router.post(
+  '/change-password',
+  authMiddleware,
+  [
+    body('currentPassword').isString().isLength({ min: 1 }),
+    body('newPassword').isString().isLength({ min: 6 }),
+  ],
+  validateRequest,
+  authChangePassword
+);
+
+router.put(
+  '/profile',
+  authMiddleware,
+  [
+    body('name').optional().isString().isLength({ min: 2, max: 120 }),
+    body('phone').optional().isString(),
+  ],
+  validateRequest,
+  authUpdateProfile
+);
 
 module.exports = router;
 

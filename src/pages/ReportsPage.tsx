@@ -4,6 +4,7 @@ import { FileDown, Printer, Building, GraduationCap, CalendarCheck } from "lucid
 import { api } from "../data/apiClient";
 import { useState, useEffect } from "react";
 import { useToast } from "../components/common/Toast";
+import { CardGridSkeleton, TableSkeleton } from "../components/common/Skeleton";
 
 export function ReportsPage() {
   const toast = useToast();
@@ -11,12 +12,18 @@ export function ReportsPage() {
   const [rooms, setRooms] = useState<any[]>([]);
   const [schedules, setSchedules] = useState<any[]>([]);
   const [exams, setExams] = useState<any[]>([]);
+  const [isFetching, setIsFetching] = useState(true);
 
   useEffect(() => {
-    api.get("/faculty").then((res: any) => setFaculty(res.data?.data || [])).catch(() => setFaculty([]));
-    api.get("/rooms").then((res: any) => setRooms(res.data?.data || [])).catch(() => setRooms([]));
-    api.get("/schedules").then((res: any) => setSchedules(res.data?.data || [])).catch(() => setSchedules([]));
-    api.get("/exams").then((res: any) => setExams(res.data?.data || [])).catch(() => setExams([]));
+    setIsFetching(true);
+    Promise.all([
+      api.get("/faculty").then((res: any) => setFaculty(res.data?.data || [])).catch(() => setFaculty([])),
+      api.get("/rooms").then((res: any) => setRooms(res.data?.data || [])).catch(() => setRooms([])),
+      api.get("/schedules").then((res: any) => setSchedules(res.data?.data || [])).catch(() => setSchedules([])),
+      api.get("/exams").then((res: any) => setExams(res.data?.data || [])).catch(() => setExams([])),
+    ]).finally(() => {
+      setIsFetching(false);
+    });
   }, []);
 
   const handlePrint = () => {
@@ -65,8 +72,11 @@ export function ReportsPage() {
         }
       />
 
-      <section className="grid-3">
-        <article className="card">
+      {isFetching ? (
+        <CardGridSkeleton count={3} />
+      ) : (
+        <section className="grid-3">
+          <article className="card">
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <GraduationCap size={18} color="#0d5499" />
             <p className="eyebrow" style={{ margin: 0 }}>Faculty Workload</p>
@@ -108,6 +118,7 @@ export function ReportsPage() {
           </div>
         </article>
       </section>
+      )}
 
       {/* Summary Table */}
       <section className="card" style={{ marginTop: 24 }}>
@@ -118,45 +129,49 @@ export function ReportsPage() {
           </div>
         </div>
 
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Faculty Name</th>
-                <th>Department</th>
-                <th>Status</th>
-                <th>Assigned Classes</th>
-                <th>Estimated Hours</th>
-                <th>Availability Scope</th>
-              </tr>
-            </thead>
-            <tbody>
-              {faculty.map((f) => {
-                const assigned = schedules.filter(
-                  (s) => (s.facultyId && s.facultyId === f.id) || ((s.faculty || '').toLowerCase().includes((f.name || '').toLowerCase()))
-                );
-                return (
-                  <tr key={f.id}>
-                    <td>
-                      <strong>{f.name}</strong>
-                    </td>
-                    <td>{f.department}</td>
-                    <td>
-                      <span className={`pill ${f.status === "Full-Time" ? "pill--royal" : "pill--navy"}`}>
-                        {f.status}
-                      </span>
-                    </td>
-                    <td>{assigned.length} Classes</td>
-                    <td>{assigned.length * 3} hrs/wk</td>
-                    <td style={{ fontSize: "0.8rem", color: "#64748b", maxWidth: 280 }}>
-                      {f.availability || "Standard Mon-Fri"}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        {isFetching ? (
+          <TableSkeleton rows={4} columns={6} />
+        ) : (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Faculty Name</th>
+                  <th>Department</th>
+                  <th>Status</th>
+                  <th>Assigned Classes</th>
+                  <th>Estimated Hours</th>
+                  <th>Availability Scope</th>
+                </tr>
+              </thead>
+              <tbody>
+                {faculty.map((f) => {
+                  const assigned = schedules.filter(
+                    (s) => (s.facultyId && s.facultyId === f.id) || ((s.faculty || '').toLowerCase().includes((f.name || '').toLowerCase()))
+                  );
+                  return (
+                    <tr key={f.id}>
+                      <td>
+                        <strong>{f.name}</strong>
+                      </td>
+                      <td>{f.department}</td>
+                      <td>
+                        <span className={`pill ${f.status === "Full-Time" ? "pill--royal" : "pill--navy"}`}>
+                          {f.status}
+                        </span>
+                      </td>
+                      <td>{assigned.length} Classes</td>
+                      <td>{assigned.length * 3} hrs/wk</td>
+                      <td style={{ fontSize: "0.8rem", color: "#64748b", maxWidth: 280 }}>
+                        {f.availability || "Standard Mon-Fri"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
     </motion.div>
   );

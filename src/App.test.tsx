@@ -82,11 +82,14 @@ describe("Scheduling system app", () => {
 
   it("shows a friendly validation message when sign-in is attempted with missing details", async () => {
     const { LoginPage } = await import("./pages/LoginPage");
+    const { MemoryRouter } = await import("react-router-dom");
 
     render(
-      <ToastProvider>
-        <LoginPage />
-      </ToastProvider>,
+      <MemoryRouter>
+        <ToastProvider>
+          <LoginPage />
+        </ToastProvider>
+      </MemoryRouter>,
     );
 
     fireEvent.click(screen.getByRole("button", { name: /sign in/i }));

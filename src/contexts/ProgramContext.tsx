@@ -29,32 +29,34 @@ const ProgramContext = createContext<ProgramContextValue | undefined>(
   undefined,
 );
 
-const emptyProgram: ProgramOption = {
-  key: "",
-  label: "All Programs",
-  shortLabel: "ALL",
+export const allProgramsOption: ProgramOption = {
+  key: "ALL",
+  label: "All Academic Programs",
+  shortLabel: "All Programs",
 };
 
 export function ProgramProvider({ children }: { children: ReactNode }) {
-  const [programOptions, setProgramOptions] = useState<ProgramOption[]>([]);
+  const [programOptions, setProgramOptions] = useState<ProgramOption[]>([allProgramsOption]);
   const [selectedProgramKey, setSelectedProgramKeyState] =
-    useState<ProgramKey>("");
+    useState<ProgramKey>("ALL");
 
   const loadPrograms = useCallback(() => {
     const rows = storage.getPrograms();
-    const values: ProgramOption[] = rows.map((row: any) => ({
+    const specificPrograms: ProgramOption[] = rows.map((row: any) => ({
       key: String(row.code || row.id || ""),
       label: String(row.name || row.code || ""),
       shortLabel: String(row.code || row.name || ""),
     }));
+
+    const values: ProgramOption[] = [allProgramsOption, ...specificPrograms];
     setProgramOptions(values);
 
     const saved = window.localStorage.getItem("selectedProgram");
     if (saved && values.some((option: ProgramOption) => option.key === saved)) {
       setSelectedProgramKeyState(saved);
-    } else if (values[0]) {
-      setSelectedProgramKeyState(values[0].key);
-      window.localStorage.setItem("selectedProgram", values[0].key);
+    } else {
+      setSelectedProgramKeyState("ALL");
+      window.localStorage.setItem("selectedProgram", "ALL");
     }
   }, []);
 
@@ -68,28 +70,49 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
   }, [loadPrograms]);
 
   const setSelectedProgramKey = useCallback((value: ProgramKey) => {
-    setSelectedProgramKeyState(value);
-    if (value) {
-      window.localStorage.setItem("selectedProgram", value);
-    }
+    const val = value || "ALL";
+    setSelectedProgramKeyState(val);
+    window.localStorage.setItem("selectedProgram", val);
   }, []);
 
   const selectedProgram = useMemo(
     () =>
       programOptions.find((option) => option.key === selectedProgramKey) ??
-      programOptions[0] ??
-      emptyProgram,
+      allProgramsOption,
     [programOptions, selectedProgramKey],
   );
 
   const matchesProgram = useCallback(
     (programs?: string[] | string | null) => {
-      if (!programs || !selectedProgramKey) return true;
+      if (!programs) return true;
+      if (!selectedProgramKey || selectedProgramKey === "ALL") return true;
       const values = Array.isArray(programs) ? programs : [programs];
+      const key = String(selectedProgramKey).toUpperCase().trim();
+
+      const IT_KEYS = ["ITP", "BSIT", "BSCS", "IT", "INFORMATION TECHNOLOGY", "COMPUTER"];
+      const CRIM_KEYS = ["CJEP", "BSCRIM", "CRIMINOLOGY", "CRIM", "CRIMINAL JUSTICE"];
+      const BUS_KEYS = ["BSA", "BSBA", "BUSINESS", "ACCOUNTANCY", "ADMINISTRATION"];
+      const HM_KEYS = ["HMP", "BSHM", "HOSPITALITY", "HOTEL", "TOURISM"];
+      const EDUC_KEYS = ["TEP", "BSED", "BEED", "EDUCATION", "TEACHER"];
+
+      const getFamily = (k: string) => {
+        if (IT_KEYS.some((x) => k.includes(x))) return "IT";
+        if (CRIM_KEYS.some((x) => k.includes(x))) return "CRIM";
+        if (BUS_KEYS.some((x) => k.includes(x))) return "BUS";
+        if (HM_KEYS.some((x) => k.includes(x))) return "HM";
+        if (EDUC_KEYS.some((x) => k.includes(x))) return "EDUC";
+        return "";
+      };
+
+      const selectedFamily = getFamily(key);
+
       return values.some((value) => {
-        const normalized = String(value).toUpperCase();
-        const key = String(selectedProgramKey).toUpperCase();
-        return normalized === key || normalized.includes(key);
+        if (!value) return false;
+        const normalized = String(value).toUpperCase().trim();
+        if (normalized === key || normalized.includes(key) || key.includes(normalized)) return true;
+        const valueFamily = getFamily(normalized);
+        if (selectedFamily && valueFamily && selectedFamily === valueFamily) return true;
+        return false;
       });
     },
     [selectedProgramKey],

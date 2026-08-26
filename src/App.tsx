@@ -5,14 +5,18 @@ import { ToastProvider } from "./components/common/Toast";
 import { ProgramProvider } from "./contexts/ProgramContext";
 import { DevFloatingTools } from "./components/dev/DevFloatingTools";
 
+import { NotificationProvider } from "./contexts/NotificationContext";
+
 function App() {
   return (
     <BrowserRouter>
       <ToastProvider>
-        <ProgramProvider>
-          <AppRoutes />
-          <DevFloatingTools />
-        </ProgramProvider>
+        <NotificationProvider>
+          <ProgramProvider>
+            <AppRoutes />
+            <DevFloatingTools />
+          </ProgramProvider>
+        </NotificationProvider>
       </ToastProvider>
     </BrowserRouter>
   );

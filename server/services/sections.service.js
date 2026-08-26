@@ -31,27 +31,113 @@ async function listSections() {
   }));
 }
 
-async function createSection({ courseCode, yearLevel, sectionLabel, adviserId, students, semester, schoolYear }) {
-  const [semesterRow] = await query('SELECT id FROM semesters WHERE name = ? LIMIT 1', [semester || '1st Semester']);
-  const [yearRow] = await query('SELECT id FROM academic_years WHERE name = ? LIMIT 1', [schoolYear || '2026-2027']);
+async function resolveCourseCode(rawCourse) {
+  if (!rawCourse) return 'BSIT';
+  const clean = String(rawCourse).trim();
+  const [exactCourse] = await query('SELECT code FROM courses WHERE code = ? LIMIT 1', [clean]);
+  if (exactCourse) return exactCourse.code;
+
+  // Check if rawCourse matches a program_code
+  const [progCourse] = await query('SELECT code FROM courses WHERE program_code = ? LIMIT 1', [clean]);
+  if (progCourse) return progCourse.code;
+
+  // If missing from courses, ensure it is added with a valid program_code
+  const [progRow] = await query('SELECT code FROM programs WHERE code = ? LIMIT 1', [clean]);
+  const validProg = progRow?.code || 'ITP';
+  try {
+    await query(
+      'INSERT INTO courses (code, name, program_code, year_duration) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=VALUES(name)',
+      [clean, `${clean} Degree Course`, validProg, 4]
+    );
+    return clean;
+  } catch {
+    const [fallback] = await query('SELECT code FROM courses LIMIT 1');
+    return fallback?.code || 'BSIT';
+  }
+}
+
+async function createSection(payload = {}) {
+  const rawCourse = payload.courseCode || payload.course || payload.program || 'BSIT';
+  const courseCode = await resolveCourseCode(rawCourse);
+  const sectionLabel = payload.sectionLabel || payload.section || 'A';
+  const yearLevel = Number(payload.yearLevel) || 1;
+  const adviserId = payload.adviserId || null;
+  const students = Number(payload.students) || 0;
+  const semester = payload.semester || '1st Semester';
+  const schoolYear = payload.schoolYear || '2026-2027';
+
+  const [semesterRow] = await query('SELECT id FROM semesters WHERE name = ? LIMIT 1', [semester]);
+  const [yearRow] = await query('SELECT id FROM academic_years WHERE name = ? LIMIT 1', [schoolYear]);
   const result = await query(
     `INSERT INTO sections (course_code, year_level, section_label, adviser_id, students, semester_id, academic_year_id)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [courseCode, Number(yearLevel) || 1, sectionLabel, adviserId || null, students || 0, semesterRow?.id || null, yearRow?.id || null]
+    [
+      courseCode,
+      yearLevel,
+      sectionLabel,
+      adviserId,
+      students,
+      semesterRow?.id || null,
+      yearRow?.id || null,
+    ]
   );
-  return { id: String(result.insertId), course: courseCode, yearLevel: String(yearLevel), section: sectionLabel, adviser: adviserId, students, semester, schoolYear };
+  const insertObj = Array.isArray(result) ? result[0] : result;
+  const newId = String(insertObj?.insertId || result?.insertId || Date.now());
+  return {
+    id: newId,
+    course: courseCode,
+    courseCode,
+    program: courseCode,
+    yearLevel: String(yearLevel),
+    section: sectionLabel,
+    adviser: adviserId || '',
+    adviserId: adviserId || '',
+    students,
+    semester,
+    schoolYear,
+  };
 }
 
-async function updateSection(id, { courseCode, yearLevel, sectionLabel, adviserId, students, semester, schoolYear }) {
-  const [semesterRow] = await query('SELECT id FROM semesters WHERE name = ? LIMIT 1', [semester || '1st Semester']);
-  const [yearRow] = await query('SELECT id FROM academic_years WHERE name = ? LIMIT 1', [schoolYear || '2026-2027']);
+async function updateSection(id, payload = {}) {
+  const rawCourse = payload.courseCode || payload.course || payload.program || 'BSIT';
+  const courseCode = await resolveCourseCode(rawCourse);
+  const sectionLabel = payload.sectionLabel || payload.section || 'A';
+  const yearLevel = Number(payload.yearLevel) || 1;
+  const adviserId = payload.adviserId || null;
+  const students = Number(payload.students) || 0;
+  const semester = payload.semester || '1st Semester';
+  const schoolYear = payload.schoolYear || '2026-2027';
+
+  const [semesterRow] = await query('SELECT id FROM semesters WHERE name = ? LIMIT 1', [semester]);
+  const [yearRow] = await query('SELECT id FROM academic_years WHERE name = ? LIMIT 1', [schoolYear]);
   await query(
     `UPDATE sections 
      SET course_code = ?, year_level = ?, section_label = ?, adviser_id = ?, students = ?, semester_id = ?, academic_year_id = ?
      WHERE id = ?`,
-    [courseCode, Number(yearLevel) || 1, sectionLabel, adviserId || null, students || 0, semesterRow?.id || null, yearRow?.id || null, id]
+    [
+      courseCode,
+      yearLevel,
+      sectionLabel,
+      adviserId,
+      students,
+      semesterRow?.id || null,
+      yearRow?.id || null,
+      id,
+    ]
   );
-  return { id, course: courseCode, yearLevel: String(yearLevel), section: sectionLabel, adviser: adviserId, students, semester, schoolYear };
+  return {
+    id,
+    course: courseCode,
+    courseCode,
+    program: courseCode,
+    yearLevel: String(yearLevel),
+    section: sectionLabel,
+    adviser: adviserId || '',
+    adviserId: adviserId || '',
+    students,
+    semester,
+    schoolYear,
+  };
 }
 
 async function deleteSection(id) {
@@ -60,4 +146,5 @@ async function deleteSection(id) {
 
 const sectionsService = { listSections, createSection, updateSection, deleteSection };
 module.exports = { sectionsService };
+
 

@@ -212,11 +212,16 @@ async function listExamSchedules({ user, program } = {}) {
     const orConds = [];
     if (teacherId) {
       orConds.push('es.proctor_id = ?');
-      params.push(teacherId);
+      params.push(String(teacherId).trim());
+      orConds.push('sub.instructor_id = ?');
+      params.push(String(teacherId).trim());
     }
     if (teacherName) {
+      const cleanName = teacherName.trim().toLowerCase();
       orConds.push('LOWER(TRIM(es.proctor_name)) = ? OR LOWER(TRIM(t.name)) = ?');
-      params.push(teacherName.trim().toLowerCase(), teacherName.trim().toLowerCase());
+      params.push(cleanName, cleanName);
+      orConds.push('LOWER(es.proctor_name) LIKE ? OR LOWER(t.name) LIKE ?');
+      params.push(`%${cleanName}%`, `%${cleanName}%`);
     }
 
     if (orConds.length > 0) {

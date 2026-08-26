@@ -3,8 +3,16 @@ import { PageHeader } from "../components/common/PageHeader";
 import { Save, School, Sliders, ShieldCheck } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "../components/common/Toast";
+import { Navigate } from "react-router-dom";
 
 export function SettingsPage() {
+  const role = (localStorage.getItem("userRole") || "").toLowerCase();
+  
+  // Requirement 2: System Settings is available ONLY to Admin
+  if (role !== "admin") {
+    return <Navigate to="/profile" replace />;
+  }
+
   const toast = useToast();
   const [settings, setSettings] = useState({
     institutionName: "St. Rita's College of Balingasag",

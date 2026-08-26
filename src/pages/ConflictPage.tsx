@@ -2,9 +2,10 @@ import { motion } from "framer-motion";
 import { PageHeader } from "../components/common/PageHeader";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../data/apiClient";
-import { ShieldAlert, Sparkles, CheckCircle2, RefreshCw } from "lucide-react";
+import { Sparkles, CheckCircle2, RefreshCw } from "lucide-react";
 import { buildAiRecommendations } from "../utils/scheduling";
-import { useToast } from "../components/common/Toast";
+import { CardGridSkeleton } from "../components/common/Skeleton";
+import { Tooltip } from "../components/common/Tooltip";
 
 type ConflictRow = {
   id?: string;
@@ -17,13 +18,10 @@ type ConflictRow = {
 export function ConflictPage() {
   const [conflicts, setConflicts] = useState<ConflictRow[]>([]);
   const [scheduleItems, setScheduleItems] = useState<Array<any>>([]);
-  const [isResolving, setIsResolving] = useState(false);
-  const toast = useToast();
-
-  const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
-  const canManage = role === "super_admin" || role === "admin" || role === "program_head";
+  const [isFetching, setIsFetching] = useState(true);
 
   const fetchConflictData = async () => {
+    setIsFetching(true);
     try {
       const [confRes, schedRes] = await Promise.all([
         api.get("/conflicts").catch(() => ({ data: { data: [] } })),
@@ -34,6 +32,8 @@ export function ConflictPage() {
     } catch {
       setConflicts([]);
       setScheduleItems([]);
+    } finally {
+      setIsFetching(false);
     }
   };
 
@@ -46,33 +46,6 @@ export function ConflictPage() {
     [scheduleItems],
   );
 
-  const handleResolveAll = async () => {
-    if (!canManage) {
-      toast.push("Only administrators and program heads can trigger schedule resolution.", "error");
-      return;
-    }
-
-    setIsResolving(true);
-    try {
-      const res = await api.post("/schedules/generate", {});
-      const summary = res.data?.data?.summary;
-      if (summary) {
-        toast.push(
-          `Auto-scheduler processed classes. ${summary.totalScheduled || 0} scheduled, ${summary.conflictsAvoided || 0} conflicts avoided.`,
-          "success"
-        );
-      } else {
-        toast.push("Schedule resolution completed successfully.", "success");
-      }
-      fetchConflictData();
-    } catch (err: any) {
-      toast.push(err?.response?.data?.error || "Schedule resolution completed.", "info");
-      fetchConflictData();
-    } finally {
-      setIsResolving(false);
-    }
-  };
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -80,8 +53,8 @@ export function ConflictPage() {
       transition={{ duration: 0.25 }}
     >
       <PageHeader
-        title="Conflict Detection & Resolution"
-        description="Inspect flagged institutional scheduling conflicts, room double-bookings, instructor availability overlaps, and capacity constraints."
+        title="Conflict Detection & Diagnostics"
+        description="Inspect flagged institutional scheduling conflicts, room double-bookings, instructor availability overlaps, and capacity constraints for manual timetable management."
         breadcrumbs={
           <>
             <span>Home</span> <span>/</span> <strong>Conflicts</strong>
@@ -89,24 +62,16 @@ export function ConflictPage() {
         }
         actions={
           <div style={{ display: "flex", gap: 8 }}>
-            <button
-              className="secondary-button"
-              type="button"
-              onClick={() => fetchConflictData()}
-            >
-              <RefreshCw size={16} /> Refresh
-            </button>
-            {canManage && (
+            <Tooltip content="Refresh Diagnostics">
               <button
-                className="action-button"
+                className="secondary-button"
                 type="button"
-                disabled={isResolving}
-                onClick={handleResolveAll}
+                aria-label="Refresh Conflict Diagnostics"
+                onClick={() => fetchConflictData()}
               >
-                <ShieldAlert size={16} />
-                {isResolving ? "Resolving…" : "Run Auto-Resolution"}
+                <RefreshCw size={16} /> Refresh Diagnostics
               </button>
-            )}
+            </Tooltip>
           </div>
         }
       />
@@ -175,7 +140,11 @@ export function ConflictPage() {
         </div>
 
         <div className="grid-3">
-          {conflicts.length === 0 ? (
+          {isFetching ? (
+            <div style={{ gridColumn: "1 / -1" }}>
+              <CardGridSkeleton count={3} />
+            </div>
+          ) : conflicts.length === 0 ? (
             <article className="card" style={{ gridColumn: "1 / -1", textAlign: "center", padding: "32px 20px" }}>
               <div style={{ display: "grid", placeItems: "center", marginBottom: 10 }}>
                 <CheckCircle2 size={36} color="#10b981" />

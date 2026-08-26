@@ -18,16 +18,30 @@ const handleResponse = async (response: Response) => {
   }
 
   if (!response.ok) {
-    // Auto-logout on 401: clear stale token and redirect to login
-    if (response.status === 401) {
+    // Auto-logout on 401 or ACCOUNT_SUSPENDED: clear stale token and redirect to login
+    const isSuspended =
+      response.status === 403 &&
+      (json.code === 'ACCOUNT_SUSPENDED' ||
+        (typeof json.error === 'string' && json.error.toLowerCase().includes('suspended')));
+
+    if (response.status === 401 || isSuspended) {
       localStorage.removeItem('token');
       localStorage.removeItem('userRole');
       localStorage.removeItem('userName');
       localStorage.removeItem('teacherId');
       localStorage.removeItem('teacherStatus');
+      localStorage.removeItem('selectedProgram');
+
+      if (isSuspended) {
+        sessionStorage.setItem(
+          'suspensionNotice',
+          json.error || 'Your account has been suspended. Please contact the ICT Office or system administrator.'
+        );
+      }
+
       // Only redirect if not already on the login page
       if (!window.location.pathname.includes('/login')) {
-        window.location.href = '/login';
+        window.location.href = isSuspended ? '/login?suspended=1' : '/login';
       }
     }
 

@@ -104,18 +104,19 @@ export function validateScheduleSlot(
   }
 
   // 2. Check Room Collision (if Face-to-Face)
-  if (candidate.modality === 'Face-to-Face') {
+  if (candidate.modality === 'Face-to-Face' && candidate.room) {
     const roomClash = schedules.find(
       (s) =>
         s.modality === 'Face-to-Face' &&
         s.day.toLowerCase() === candidate.day.toLowerCase() &&
         s.time === candidate.time &&
-        s.room.toLowerCase() === candidate.room.toLowerCase() &&
-        s.building.toLowerCase() === candidate.building.toLowerCase()
+        s.room &&
+        candidate.room &&
+        s.room.toLowerCase().trim() === candidate.room.toLowerCase().trim()
     )
     if (roomClash) {
       errors.push(
-        `Room collision: Room ${candidate.room} (${candidate.building}) is already occupied by ${roomClash.subject} (${roomClash.section}).`
+        `Room collision: Room ${candidate.room} is already occupied by ${roomClash.subject} (${roomClash.section}) on ${candidate.day} at ${candidate.time}.`
       )
     }
   }
