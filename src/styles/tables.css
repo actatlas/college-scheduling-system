@@ -72,33 +72,39 @@
 .pill--f2f,
 .pill--navy,
 .pill--royal {
-  background: #dbeafe;
-  color: #1e40af;
+  background: var(--srcb-navy-soft, #eef2f9);
+  color: var(--srcb-navy, #163269);
+  border: 1px solid rgba(var(--srcb-navy-rgb, 22, 50, 105), 0.15);
 }
 
 .pill--online,
 .pill--amber {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--srcb-amber-bg, #fffbeb);
+  color: var(--srcb-amber-text, #b45309);
+  border: 1px solid var(--srcb-amber-border, #fcd34d);
 }
 
 .pill--hybrid,
 .pill--slate {
-  background: #f3f4f6;
-  color: #374151;
+  background: #f1f5f9;
+  color: var(--srcb-slate, #565872);
+  border: 1px solid var(--srcb-border, #e2e8f0);
 }
 
 .pill--conflict,
 .pill--danger,
 .pill--red {
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--srcb-red-bg, #fef2f2);
+  color: var(--srcb-red-text, #dc2626);
+  border: 1px solid var(--srcb-red-border, #fca5a5);
 }
 
 .pill--emerald,
+.pill--green,
 .pill--success {
-  background: #d1fae5;
-  color: #065f46;
+  background: var(--srcb-green-soft, #eaf7ef);
+  color: var(--srcb-green-dark, #349b57);
+  border: 1px solid var(--srcb-green-border, #a7e3bd);
 }
 
 .schedule-list {

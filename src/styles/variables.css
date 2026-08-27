@@ -1,40 +1,51 @@
 :root {
-  /* EduSched Primary & Accent Palette */
-  --srcb-navy: #0f2c59;
-  --srcb-navy-dark: #0a1e3f;
-  --srcb-navy-soft: #e2e8f0;
-  --srcb-blue: #0f2c59;
-  --srcb-blue-strong: #1e40af;
-  --srcb-blue-soft: #dbeafe;
-  --srcb-terracotta: #963800;
-  --srcb-amber-bg: #ffece3;
-  --srcb-amber-border: #c2410c;
-  --srcb-amber-text: #7c2d12;
+  /* Official St. Rita's College of Balingasag (SRCB) Brand Palette */
+  --srcb-navy: #163269;
+  --srcb-navy-rgb: 22, 50, 105;
+  --srcb-navy-dark: #0e2249;
+  --srcb-navy-soft: #eef2f9;
+  --srcb-blue: #163269;
+  --srcb-blue-strong: #163269;
+  --srcb-blue-soft: #eef2f9;
+
+  /* Official SRCB Accent Emerald Green (Buttons, Active Indicators, Badges) */
+  --srcb-green: #3db166;
+  --srcb-green-rgb: 61, 177, 102;
+  --srcb-green-dark: #349b57;
+  --srcb-green-soft: #eaf7ef;
+  --srcb-green-border: #a7e3bd;
+
+  /* Disciplined Functional Semantic Status Tokens */
+  --srcb-terracotta: #163269;
+  --srcb-amber-bg: #fffbeb;
+  --srcb-amber-border: #fcd34d;
+  --srcb-amber-text: #b45309;
   --srcb-gold: #d97706;
   --srcb-gold-soft: #fef3c7;
-  --srcb-red-bg: #fee2e2;
+  --srcb-red-bg: #fef2f2;
   --srcb-red-border: #fca5a5;
-  --srcb-red-text: #991b1b;
-  --srcb-green: #059669;
-  --srcb-green-soft: #d1fae5;
-  --srcb-slate: #475569;
+  --srcb-red-text: #dc2626;
+
+  /* Neutral & Slate Tokens from official portal */
+  --srcb-slate: #565872;
   --srcb-border: #e2e8f0;
   --srcb-border-subtle: #f1f5f9;
-  --srcb-border-focus: #0f2c59;
-  --srcb-bg: #f4f6f9;
+  --srcb-border-focus: #163269;
+  --srcb-bg: #f8fafc;
   --srcb-surface: #ffffff;
   --srcb-surface-alt: #f8fafc;
   --srcb-surface-elevated: #ffffff;
   --srcb-surface-hover: #f1f5f9;
-  --srcb-sidebar-bg: #fafafc;
+  --srcb-sidebar-bg: #ffffff;
   --srcb-topbar-bg: #ffffff;
-  --srcb-text: #0f172a;
-  --srcb-text-muted: #64748b;
-  --srcb-text-subtle: #94a3b8;
-  --srcb-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
-  --srcb-shadow-soft: 0 2px 8px rgba(15, 23, 42, 0.04);
-  --srcb-radius: 14px;
-  --srcb-radius-sm: 10px;
+  --srcb-text: #163269;
+  --srcb-text-body: #1e293b;
+  --srcb-text-muted: #565872;
+  --srcb-text-subtle: #8d90a5;
+  --srcb-shadow: 0 4px 16px rgba(22, 50, 105, 0.08);
+  --srcb-shadow-soft: 0 2px 8px rgba(22, 50, 105, 0.04);
+  --srcb-radius: 12px;
+  --srcb-radius-sm: 8px;
   --srcb-transition: 200ms cubic-bezier(0.4, 0, 0.2, 1);
 
   /* Modern Tech Dark Theme Palette (SCSMS Landing & Auth) */
@@ -44,14 +55,14 @@
   --srcb-tech-surface-card: rgba(15, 27, 51, 0.75);
   --srcb-tech-surface-hover: rgba(26, 46, 85, 0.85);
   --srcb-tech-border: rgba(255, 255, 255, 0.1);
-  --srcb-tech-border-glow: rgba(30, 64, 175, 0.4);
-  --srcb-tech-glow-navy: rgba(15, 44, 89, 0.45);
+  --srcb-tech-border-glow: rgba(61, 177, 102, 0.35);
+  --srcb-tech-glow-navy: rgba(22, 50, 105, 0.45);
   --srcb-tech-glow-amber: rgba(217, 119, 6, 0.25);
-  --srcb-tech-glow-cyan: rgba(56, 189, 248, 0.25);
+  --srcb-tech-glow-cyan: rgba(61, 177, 102, 0.25);
 
-  /* Typography Standard - Primary: Roboto, Secondary: Open Sans */
-  --font-primary: 'Roboto', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-secondary: 'Open Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* Official Typography Standard - Poppins (matching https://www.srcb.edu.ph/) */
+  --font-primary: 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-secondary: 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-sans: var(--font-primary);
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 

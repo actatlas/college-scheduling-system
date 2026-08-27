@@ -12,12 +12,12 @@ const programMajorsRoutes = require('./programMajors.routes');
 const yearLevelsRoutes = require('./yearLevels.routes');
 const userRoutes = require('./users.routes');
 
-// New boilerplate routes
 const buildingsRoutes = require('./buildings.routes');
 const facultyAvailabilityRoutes = require('./facultyAvailability.routes');
 const examSchedulesRoutes = require('./examSchedules.routes');
 const conflictsRoutes = require('./conflicts.routes');
 const reportsRoutes = require('./reports.routes');
+const academicTermsRoutes = require('./academicTerms.routes');
 
 const router = express.Router();
 
@@ -38,6 +38,8 @@ router.use('/programs', programsRoutes);
 router.use('/program-majors', programMajorsRoutes);
 router.use('/year-levels', yearLevelsRoutes);
 router.use('/users', userRoutes);
+router.use('/terms', academicTermsRoutes);
+router.use('/system-settings', academicTermsRoutes);
 
 module.exports = router;
 

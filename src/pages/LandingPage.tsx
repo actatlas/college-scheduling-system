@@ -134,7 +134,7 @@ export function LandingPage() {
             <p className="landing-hero-desc">
               An intelligent institutional platform engineered for Super Admins, College Registrars,
               Program Heads, and Faculty members to seamlessly coordinate programs, faculty workloads,
-              lecture &amp; lab rooms, curricula, and automated conflict-free class &amp; examination timetables.
+              lecture &amp; lab rooms, curricula, and conflict-free class &amp; examination timetables with robust manual scheduling.
             </p>
 
             <div className="landing-hero-cta-group">

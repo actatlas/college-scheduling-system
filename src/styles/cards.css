@@ -148,19 +148,21 @@
 }
 
 /* Tone variants */
-.stat-card--royal  { border-top: 3px solid #0f2c59; }
-.stat-card--navy   { border-top: 3px solid #1e40af; }
-.stat-card--emerald{ border-top: 3px solid #059669; }
-.stat-card--gold   { border-top: 3px solid #d97706; }
-.stat-card--amber  { border-top: 3px solid #ea580c; }
-.stat-card--slate  { border-top: 3px solid #475569; }
+.stat-card--royal,
+.stat-card--navy   { border-top: 3px solid var(--srcb-navy); }
+.stat-card--emerald,
+.stat-card--green  { border-top: 3px solid var(--srcb-green); }
+.stat-card--gold,
+.stat-card--amber  { border-top: 3px solid var(--srcb-gold); }
+.stat-card--slate  { border-top: 3px solid var(--srcb-slate); }
 
-.stat-card--royal  .stat-card__icon { background: #dbeafe; color: #0f2c59; }
-.stat-card--navy   .stat-card__icon { background: #dbeafe; color: #1e40af; }
-.stat-card--emerald.stat-card--emerald .stat-card__icon { background: #d1fae5; color: #059669; }
-.stat-card--gold   .stat-card__icon { background: #fef3c7; color: #92400e; }
-.stat-card--amber  .stat-card__icon { background: #ffedd5; color: #c2410c; }
-.stat-card--slate  .stat-card__icon { background: #f1f5f9; color: #475569; }
+.stat-card--royal  .stat-card__icon,
+.stat-card--navy   .stat-card__icon { background: var(--srcb-navy-soft, #eef2f9); color: var(--srcb-navy); }
+.stat-card--emerald .stat-card__icon,
+.stat-card--green   .stat-card__icon { background: var(--srcb-green-soft, #eaf7ef); color: var(--srcb-green-dark, #349b57); }
+.stat-card--gold   .stat-card__icon,
+.stat-card--amber  .stat-card__icon { background: var(--srcb-amber-bg, #fffbeb); color: var(--srcb-amber-text, #b45309); }
+.stat-card--slate  .stat-card__icon { background: #f1f5f9; color: var(--srcb-slate); }
 
 /* EduSched Progress & Metric Cards */
 .progress-metrics-grid {

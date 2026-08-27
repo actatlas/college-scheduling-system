@@ -138,7 +138,7 @@
 
 .progress-bar-fill {
   height: 100%;
-  background: var(--srcb-navy);
+  background: linear-gradient(90deg, var(--srcb-navy, #163269) 0%, var(--srcb-green, #3db166) 100%);
   border-radius: 999px;
   transition: width 0.5s ease;
 }
@@ -152,15 +152,16 @@
 
 /* Immediate Attention Card */
 .attention-card {
-  background: #ffe8dc !important;
-  border: 1px solid #fed7aa !important;
+  background: #ffffff !important;
+  border: 1px solid var(--srcb-border) !important;
+  border-top: 3px solid var(--srcb-amber-border, #fcd34d) !important;
 }
 
 .attention-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #7c2d12;
+  color: var(--srcb-navy);
   font-size: 1.05rem;
   font-weight: 800;
   margin-bottom: 14px;
@@ -179,8 +180,8 @@
   padding: 11px 14px;
   border-radius: 8px;
   background: #ffffff;
-  border: 1px solid #ffedd5;
-  border-left: 4px solid #c2410c;
+  border: 1px solid var(--srcb-border);
+  border-left: 4px solid var(--srcb-gold, #d97706);
   cursor: pointer;
   transition: transform 150ms ease, box-shadow 150ms ease;
   text-decoration: none;
@@ -188,7 +189,8 @@
 
 .attention-item-box:hover {
   transform: translateX(3px);
-  box-shadow: 0 4px 12px rgba(194, 65, 12, 0.12);
+  box-shadow: 0 4px 12px rgba(217, 119, 6, 0.12);
+  border-color: rgba(217, 119, 6, 0.35);
 }
 
 .attention-item-left {
@@ -201,17 +203,17 @@
   margin: 0;
   font-size: 0.85rem;
   font-weight: 700;
-  color: #7c2d12;
+  color: var(--srcb-navy);
 }
 
 .attention-item-desc {
   margin: 0;
   font-size: 0.76rem;
-  color: #9a3412;
+  color: var(--srcb-text-muted);
 }
 
 .attention-item-chevron {
-  color: #c2410c;
+  color: var(--srcb-slate);
   font-weight: 700;
 }
 

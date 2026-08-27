@@ -109,6 +109,16 @@ function setupMockDb() {
       return [{ affectedRows: 1 }];
     }
 
+    if (s.includes('DELETE FROM teachers WHERE id = ?')) {
+      const tid = params[0];
+      testState.teachers = testState.teachers.filter((t) => t.id !== tid);
+      return [{ affectedRows: 1 }];
+    }
+
+    if (s.includes('UPDATE teachers SET')) {
+      return [{ affectedRows: 1 }];
+    }
+
     if (s.includes('INSERT INTO teacher_availability')) {
       const [tid, day, start, end] = params;
       testState.teacher_availability.push({
@@ -321,5 +331,79 @@ describe('Role and Faculty Availability Permissions', () => {
       statusCode: 409,
       code: 'FACULTY_UNAVAILABLE',
     });
+  });
+
+  it('Admin cannot delete faculty (returns 403 UNAUTHORIZED_ROLE)', async () => {
+    const adminUser = { sub: 2, role: 'admin', email: 'admin@srcb.edu.ph' };
+    const res = mockRes();
+    await facultyController.deleteFaculty(
+      { user: adminUser, params: { id: 'T001' } },
+      res,
+      () => {}
+    );
+    expect(res.statusCode).toBe(403);
+    expect(res.body.code).toBe('UNAUTHORIZED_ROLE');
+    expect(res.body.error).toContain('Only the Super Administrator can delete faculty records');
+  });
+
+  it('Super Admin CAN delete faculty records', async () => {
+    const superAdminUser = { sub: 1, role: 'super_admin', email: 'superadmin@srcb.edu.ph' };
+    const res = mockRes();
+    await facultyController.deleteFaculty(
+      { user: superAdminUser, params: { id: 'T001' } },
+      res,
+      () => {}
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.body.message).toBe('Faculty member deleted successfully');
+  });
+
+  it('Admin cannot edit teacher profiles (returns 403 UNAUTHORIZED_ROLE)', async () => {
+    const adminUser = { sub: 2, role: 'admin', email: 'admin@srcb.edu.ph' };
+    const res = mockRes();
+    await facultyController.updateFaculty(
+      { user: adminUser, params: { id: 'FAC-003' }, body: { name: 'Changed Name', phone: '09999999999' } },
+      res,
+      () => {}
+    );
+    expect(res.statusCode).toBe(403);
+    expect(res.body.code).toBe('UNAUTHORIZED_ROLE');
+    expect(res.body.error).toContain('Administrators cannot edit teacher profiles');
+  });
+
+  it('Admin CAN update faculty availability (returns 200)', async () => {
+    const adminUser = { sub: 2, role: 'admin', email: 'admin@srcb.edu.ph' };
+    const res = mockRes();
+    await facultyController.updateFaculty(
+      { user: adminUser, params: { id: 'FAC-003' }, body: { availability: 'Tuesday: 08:00-12:00' } },
+      res,
+      () => {}
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.body.data.availability).toBe('Tuesday: 08:00-12:00');
+  });
+
+  it('Super Admin CAN edit teacher profiles (returns 200)', async () => {
+    const superAdminUser = { sub: 1, role: 'super_admin', email: 'superadmin@srcb.edu.ph' };
+    const res = mockRes();
+    await facultyController.updateFaculty(
+      { user: superAdminUser, params: { id: 'FAC-003' }, body: { name: 'Marco Updated', phone: '09123456789' } },
+      res,
+      () => {}
+    );
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('Admin cannot create/register faculty (returns 403 UNAUTHORIZED_ROLE)', async () => {
+    const adminUser = { sub: 2, role: 'admin', email: 'admin@srcb.edu.ph' };
+    const res = mockRes();
+    await facultyController.createFaculty(
+      { user: adminUser, body: { id: 'FAC-NEW', name: 'New Faculty', email: 'new@srcb.edu.ph' } },
+      res,
+      () => {}
+    );
+    expect(res.statusCode).toBe(403);
+    expect(res.body.code).toBe('UNAUTHORIZED_ROLE');
+    expect(res.body.error).toContain('Only the Super Administrator can register faculty accounts');
   });
 });

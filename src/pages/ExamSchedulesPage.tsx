@@ -377,19 +377,17 @@ export function ExamSchedulesPage() {
                         title="Edit Exam"
                         aria-label={`Edit examination schedule for ${exam.subjectCode}`}
                         onClick={() => handleEdit(exam)}
-                        style={{ background: "none", border: "none", cursor: "pointer", color: "#4b5563" }}
                       >
-                        <Edit2 size={16} />
+                        <Edit2 size={15} />
                       </button>
                       <button
                         type="button"
-                        className="icon-button"
+                        className="icon-button icon-button--danger"
                         title="Delete Exam"
                         aria-label={`Delete examination schedule for ${exam.subjectCode}`}
                         onClick={() => setExamToDelete(exam)}
-                        style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626" }}
                       >
-                        <Trash2 size={16} />
+                        <Trash2 size={15} />
                       </button>
                     </div>
                   )}
@@ -406,29 +404,29 @@ export function ExamSchedulesPage() {
                       )}
                   </div>
 
-                  <h3 style={{ marginTop: 8, fontSize: "1.1rem" }}>{exam.subject}</h3>
+                  <h3 style={{ marginTop: 8, fontSize: "1.1rem", color: "var(--srcb-text)" }}>{exam.subject}</h3>
 
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12, fontSize: "0.85rem" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#334155" }}>
-                      <Calendar size={15} color="#0d5499" />
-                      <strong>Date:</strong> {exam.examDate}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--srcb-text)" }}>
+                      <Calendar size={15} color="var(--srcb-navy)" />
+                      <strong style={{ color: "var(--srcb-text)" }}>Date:</strong> <span>{exam.examDate}</span>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#334155" }}>
-                      <Clock size={15} color="#0d5499" />
-                      <strong>Time:</strong> {exam.time}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--srcb-text)" }}>
+                      <Clock size={15} color="var(--srcb-navy)" />
+                      <strong style={{ color: "var(--srcb-text)" }}>Time:</strong> <span>{exam.time}</span>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#334155" }}>
-                      <DoorOpen size={15} color="#0d5499" />
-                      <strong>Venue:</strong> {exam.room} ({exam.building})
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--srcb-text)" }}>
+                      <DoorOpen size={15} color="var(--srcb-navy)" />
+                      <strong style={{ color: "var(--srcb-text)" }}>Venue:</strong> <span>{exam.room} ({exam.building})</span>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#334155" }}>
-                      <Users size={15} color="#0d5499" />
-                      <strong>Proctor:</strong> {exam.proctor}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--srcb-text)" }}>
+                      <Users size={15} color="var(--srcb-navy)" />
+                      <strong style={{ color: "var(--srcb-text)" }}>Proctor:</strong> <span>{exam.proctor}</span>
                     </div>
                   </div>
 
                   <div style={{ marginTop: 14 }}>
-                    <p style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", color: "#64748b" }}>
+                    <p style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", color: "var(--srcb-text-muted)" }}>
                       Synchronized Cohorts:
                     </p>
                     <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
@@ -585,7 +583,7 @@ export function ExamSchedulesPage() {
                       borderRadius: 6,
                       fontSize: "0.85rem",
                       fontWeight: checked ? 700 : 500,
-                      color: checked ? "#0284c7" : "var(--srcb-text)",
+                      color: checked ? "var(--srcb-navy)" : "var(--srcb-text)",
                     }}
                   >
                     <input

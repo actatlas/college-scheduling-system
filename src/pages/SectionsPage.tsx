@@ -290,19 +290,17 @@ export function SectionsPage() {
                               title="Edit Section"
                               aria-label={`Edit ${section.section}`}
                               onClick={() => handleEdit(section)}
-                              style={{ background: "none", border: "none", cursor: "pointer", color: "#4b5563" }}
                             >
-                              <Edit2 size={16} />
+                              <Edit2 size={15} />
                             </button>
                             <button
                               type="button"
-                              className="icon-button"
+                              className="icon-button icon-button--danger"
                               title="Delete Section"
                               aria-label={`Delete ${section.section}`}
                               onClick={() => setSectionToDelete(section)}
-                              style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626" }}
                             >
-                              <Trash2 size={16} />
+                              <Trash2 size={15} />
                             </button>
                           </div>
                         </td>

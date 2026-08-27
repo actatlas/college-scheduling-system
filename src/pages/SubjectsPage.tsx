@@ -450,12 +450,29 @@ export function SubjectsPage() {
                           <strong>{subject.name}</strong>
                         </td>
                         <td>
-                          {subject.units} units ({subject.lectureHours} lec / {subject.labHours} lab)
+                          <div><strong>{subject.units} units</strong></div>
+                          <div style={{ fontSize: "0.74rem", color: "var(--srcb-text-muted)" }}>
+                            {subject.lectureHours}h lec / {subject.labHours}h lab
+                          </div>
+                          {subject.semester && (
+                            <div style={{ marginTop: 2 }}>
+                              <span className="pill pill--navy" style={{ fontSize: "0.68rem", padding: "1px 6px" }}>
+                                {subject.semester}
+                              </span>
+                            </div>
+                          )}
                         </td>
                         <td>
                           <span className={`pill ${subject.isMajor ? "pill--royal" : "pill--slate"}`}>
                             {subject.isMajor ? "Major Subject" : "Gen Ed / Minor"}
                           </span>
+                        </td>
+                        <td>
+                          {subject.instructor ? (
+                            <span style={{ fontWeight: 600, color: "var(--srcb-navy)" }}>{subject.instructor}</span>
+                          ) : (
+                            <span className="muted" style={{ fontSize: "0.78rem" }}>Unassigned</span>
+                          )}
                         </td>
                         <td>
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -486,9 +503,8 @@ export function SubjectsPage() {
                                 title="Edit Subject Assignment"
                                 aria-label={`Edit ${subject.code} ${subject.name}`}
                                 onClick={() => handleEdit(subject)}
-                                style={{ background: "none", border: "none", cursor: "pointer", color: "#4b5563" }}
                               >
-                                <Edit2 size={16} />
+                                <Edit2 size={15} />
                               </button>
                             ) : (
                               <span style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)" }}>
@@ -498,13 +514,12 @@ export function SubjectsPage() {
                             {isAdmin && (
                               <button
                                 type="button"
-                                className="icon-button"
+                                className="icon-button icon-button--danger"
                                 title="Delete Subject"
                                 aria-label={`Delete ${subject.code} ${subject.name}`}
                                 onClick={() => setSubjectToDelete(subject)}
-                                style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626" }}
                               >
-                                <Trash2 size={16} />
+                                <Trash2 size={15} />
                               </button>
                             )}
                           </div>

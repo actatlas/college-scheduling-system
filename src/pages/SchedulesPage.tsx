@@ -194,6 +194,10 @@ export function SchedulesPage() {
   const [dragStart, setDragStart] = useState<{ day: string; slotIdx: number } | null>(null);
   const [dragCurrent, setDragCurrent] = useState<{ day: string; slotIdx: number } | null>(null);
 
+  // Multi-Perspective Timetable State (Section vs Faculty vs Room)
+  const [perspectiveMode, setPerspectiveMode] = useState<"all" | "section" | "faculty" | "room">("all");
+  const [selectedPerspectiveEntity, setSelectedPerspectiveEntity] = useState<string>("All");
+
   const toast = useToast();
   const { addNotification } = useNotifications();
   const { selectedProgram, matchesProgram } = useProgramContext();
@@ -824,6 +828,21 @@ export function SchedulesPage() {
 
   const visibleSchedules = useMemo(() => {
     return scheduleItems.filter((item) => {
+      // Perspective filter: By Section, By Faculty, or By Room
+      if (perspectiveMode === "section" && selectedPerspectiveEntity !== "All") {
+        if (!item.section || !item.section.toLowerCase().includes(selectedPerspectiveEntity.toLowerCase())) {
+          return false;
+        }
+      } else if (perspectiveMode === "faculty" && selectedPerspectiveEntity !== "All") {
+        if (!item.faculty || !item.faculty.toLowerCase().includes(selectedPerspectiveEntity.toLowerCase())) {
+          return false;
+        }
+      } else if (perspectiveMode === "room" && selectedPerspectiveEntity !== "All") {
+        if (!item.room || !item.room.toLowerCase().includes(selectedPerspectiveEntity.toLowerCase())) {
+          return false;
+        }
+      }
+
       // If a specific instructor filter is chosen, filter by that instructor
       if (selectedFacultyFilter !== "All") {
         const isMatch =
@@ -859,7 +878,17 @@ export function SchedulesPage() {
 
       return true;
     });
-  }, [scheduleItems, role, selectedFacultyFilter, selectedDayFilter, query, selectedProgram.key, matchesProgram]);
+  }, [
+    scheduleItems,
+    perspectiveMode,
+    selectedPerspectiveEntity,
+    selectedFacultyFilter,
+    selectedDayFilter,
+    selectedProgram,
+    role,
+    matchesProgram,
+    query,
+  ]);
 
   // Selected faculty info for part-time availability view in modal
   const selectedFacultyMember = useMemo(() => {
@@ -1039,6 +1068,66 @@ export function SchedulesPage() {
                   </span>
                 </button>
               </Tooltip>
+            </div>
+
+            {/* Multi-Perspective Matrix View Selector */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--srcb-surface-alt, #f8fafc)", padding: "4px 8px", borderRadius: 8, border: "1px solid var(--srcb-border)" }}>
+              <label style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--srcb-navy)" }}>
+                Perspective:
+              </label>
+              <select
+                value={perspectiveMode}
+                onChange={(e) => {
+                  setPerspectiveMode(e.target.value as any);
+                  setSelectedPerspectiveEntity("All");
+                }}
+                style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", fontSize: "0.84rem", fontWeight: 600 }}
+              >
+                <option value="all">All Timetables</option>
+                <option value="section">By Section / Block</option>
+                <option value="faculty">By Faculty Member</option>
+                <option value="room">By Room / Facility</option>
+              </select>
+
+              {perspectiveMode === "section" && (
+                <select
+                  value={selectedPerspectiveEntity}
+                  onChange={(e) => setSelectedPerspectiveEntity(e.target.value)}
+                  style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", fontSize: "0.84rem", maxWidth: 170 }}
+                >
+                  <option value="All">All Sections</option>
+                  {availableSections.map((sec) => {
+                    const label = sec.section || (sec.course ? `${sec.course} ${sec.yearLevel || ''}-${sec.section}`.trim() : `Section ${sec.id}`);
+                    return <option key={sec.id || label} value={label}>{label}</option>;
+                  })}
+                </select>
+              )}
+
+              {perspectiveMode === "faculty" && (
+                <select
+                  value={selectedPerspectiveEntity}
+                  onChange={(e) => setSelectedPerspectiveEntity(e.target.value)}
+                  style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", fontSize: "0.84rem", maxWidth: 170 }}
+                >
+                  <option value="All">All Instructors</option>
+                  {availableFaculty.map((f) => (
+                    <option key={f.id} value={f.name}>{f.name} ({f.status})</option>
+                  ))}
+                </select>
+              )}
+
+              {perspectiveMode === "room" && (
+                <select
+                  value={selectedPerspectiveEntity}
+                  onChange={(e) => setSelectedPerspectiveEntity(e.target.value)}
+                  style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", fontSize: "0.84rem", maxWidth: 170 }}
+                >
+                  <option value="All">All Rooms & Labs</option>
+                  {roomsList.map((r) => (
+                    <option key={r.number} value={r.number}>{r.number} - {r.building}</option>
+                  ))}
+                </select>
+              )}
             </div>
 
             {/* Day Filter */}
@@ -1284,7 +1373,7 @@ export function SchedulesPage() {
                               >
                                 <div>
                                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 4 }}>
-                                    <span style={{ fontWeight: 800, fontSize: "0.86rem", color: "#0f172a" }}>
+                                    <span style={{ fontWeight: 800, fontSize: "0.86rem", color: "var(--srcb-text)" }}>
                                       {item.subjectCode}
                                     </span>
                                     <span
@@ -1294,19 +1383,19 @@ export function SchedulesPage() {
                                       {item.modality}
                                     </span>
                                   </div>
-                                  <div style={{ fontSize: "0.8rem", color: "#1e293b", marginTop: 3, fontWeight: 600 }}>
+                                  <div style={{ fontSize: "0.8rem", color: "var(--srcb-text)", marginTop: 3, fontWeight: 600 }}>
                                     {item.subject}
                                   </div>
-                                  <div style={{ fontSize: "0.75rem", color: "#64748b", marginTop: 4 }}>
+                                  <div style={{ fontSize: "0.75rem", color: "var(--srcb-text-muted)", marginTop: 4 }}>
                                     <strong>🕒 Time:</strong> {item.time}
                                   </div>
-                                  <div style={{ fontSize: "0.75rem", color: "#64748b" }}>
+                                  <div style={{ fontSize: "0.75rem", color: "var(--srcb-text-muted)" }}>
                                     <strong>👥 Sec:</strong> {item.section}
                                   </div>
-                                  <div style={{ fontSize: "0.75rem", color: "#64748b" }}>
+                                  <div style={{ fontSize: "0.75rem", color: "var(--srcb-text-muted)" }}>
                                     <strong>📍 Room:</strong> {item.room} ({item.building.split(" ")[0]})
                                   </div>
-                                  <div style={{ fontSize: "0.76rem", color: "#0d5499", fontWeight: 700, marginTop: 2 }}>
+                                  <div style={{ fontSize: "0.76rem", color: "var(--srcb-navy)", fontWeight: 700, marginTop: 2 }}>
                                     👨‍🏫 {item.faculty}
                                   </div>
 
@@ -1332,22 +1421,22 @@ export function SchedulesPage() {
                                 </div>
 
                                 {canCreate && (
-                                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 8, paddingTop: 4, borderTop: "1px dashed #cbd5e1" }}>
+                                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 8, paddingTop: 6, borderTop: "1px dashed var(--srcb-border, #cbd5e1)" }}>
                                     <button
                                       type="button"
+                                      className="icon-button icon-button--sm"
                                       onClick={() => handleEdit(item)}
                                       title="Edit Class Block"
                                       aria-label={`Edit class block ${item.subjectCode}`}
-                                      style={{ background: "none", border: "none", cursor: "pointer", color: "#475569", padding: "2px 4px" }}
                                     >
                                       <Edit2 size={13} />
                                     </button>
                                     <button
                                       type="button"
+                                      className="icon-button icon-button--sm icon-button--danger"
                                       onClick={() => setScheduleToDelete(item)}
                                       title="Delete Class Block"
                                       aria-label={`Delete class block ${item.subjectCode}`}
-                                      style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626", padding: "2px 4px" }}
                                     >
                                       <Trash2 size={13} />
                                     </button>
@@ -1396,8 +1485,8 @@ export function SchedulesPage() {
                   <div
                     key={item.id}
                     style={{
-                      background: item.modality === "Online" ? "#f0fdf4" : "#ffffff",
-                      border: "1.5px solid #e2e8f0",
+                      background: item.modality === "Online" ? "rgba(52, 211, 153, 0.12)" : "var(--srcb-surface-elevated, #ffffff)",
+                      border: "1px solid var(--srcb-border)",
                       borderLeft: `5px solid ${item.color || (item.modality === "Online" ? "#10b981" : "#2563eb")}`,
                       borderRadius: 10,
                       padding: "14px 16px",
@@ -1428,27 +1517,27 @@ export function SchedulesPage() {
                       </div>
 
                       {/* Subject Name */}
-                      <h4 style={{ fontSize: "0.9rem", color: "#1e293b", margin: "0 0 8px 0", fontWeight: 600, lineHeight: 1.3 }}>
+                      <h4 style={{ fontSize: "0.9rem", color: "var(--srcb-text)", margin: "0 0 8px 0", fontWeight: 600, lineHeight: 1.3 }}>
                         {item.subject}
                       </h4>
 
                       {/* Metadata Grid */}
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 10px", fontSize: "0.8rem", color: "#475569", background: "#f8fafc", padding: "8px 10px", borderRadius: 6, border: "1px solid #f1f5f9" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 10px", fontSize: "0.8rem", color: "var(--srcb-text-muted)", background: "var(--srcb-surface-alt)", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--srcb-border)" }}>
                         <div>
-                          <strong style={{ color: "#0f172a" }}>📅 Day:</strong> {item.day}
+                          <strong style={{ color: "var(--srcb-text)" }}>📅 Day:</strong> {item.day}
                         </div>
                         <div>
-                          <strong style={{ color: "#0f172a" }}>⏰ Time:</strong> {item.time}
+                          <strong style={{ color: "var(--srcb-text)" }}>⏰ Time:</strong> {item.time}
                         </div>
                         <div>
-                          <strong style={{ color: "#0f172a" }}>👥 Section:</strong> {item.section}
+                          <strong style={{ color: "var(--srcb-text)" }}>👥 Section:</strong> {item.section}
                         </div>
                         <div>
-                          <strong style={{ color: "#0f172a" }}>📍 Room:</strong> {item.room}
+                          <strong style={{ color: "var(--srcb-text)" }}>📍 Room:</strong> {item.room}
                         </div>
                       </div>
 
-                      <div style={{ marginTop: 8, fontSize: "0.82rem", color: "#0d5499", fontWeight: 600 }}>
+                      <div style={{ marginTop: 8, fontSize: "0.82rem", color: "var(--srcb-navy)", fontWeight: 600 }}>
                         👨‍🏫 {item.faculty}
                       </div>
 

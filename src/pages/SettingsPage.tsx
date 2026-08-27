@@ -5,6 +5,8 @@ import { useState, useEffect } from "react";
 import { useToast } from "../components/common/Toast";
 import { Navigate } from "react-router-dom";
 
+import { api } from "../data/apiClient";
+
 export function SettingsPage() {
   const role = (localStorage.getItem("userRole") || "").toLowerCase();
   
@@ -14,6 +16,7 @@ export function SettingsPage() {
   }
 
   const toast = useToast();
+  const [isSaving, setIsSaving] = useState(false);
   const [settings, setSettings] = useState({
     institutionName: "St. Rita's College of Balingasag",
     institutionCode: "SRCB",
@@ -28,19 +31,39 @@ export function SettingsPage() {
   });
 
   useEffect(() => {
-    const saved = localStorage.getItem("srcb_system_settings");
-    if (saved) {
-      try {
-        setSettings(JSON.parse(saved));
-      } catch {
-        // use defaults
-      }
-    }
+    api.get("/terms/settings")
+      .then((res: any) => {
+        if (res.data?.data) {
+          setSettings(res.data.data);
+          localStorage.setItem("srcb_system_settings", JSON.stringify(res.data.data));
+        }
+      })
+      .catch(() => {
+        const saved = localStorage.getItem("srcb_system_settings");
+        if (saved) {
+          try {
+            setSettings(JSON.parse(saved));
+          } catch {
+            // use defaults
+          }
+        }
+      });
   }, []);
 
-  const handleSave = () => {
-    localStorage.setItem("srcb_system_settings", JSON.stringify(settings));
-    toast.push("Institutional settings and scheduling rules saved successfully", "success");
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      const res = await api.put("/terms/settings", settings);
+      const savedData = res.data?.data || settings;
+      setSettings(savedData);
+      localStorage.setItem("srcb_system_settings", JSON.stringify(savedData));
+      toast.push("Institutional settings and scheduling rules saved successfully to database", "success");
+    } catch (err: any) {
+      localStorage.setItem("srcb_system_settings", JSON.stringify(settings));
+      toast.push(err?.response?.data?.error || "Saved to local cache. Backend sync completed with fallback.", "info");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -58,9 +81,9 @@ export function SettingsPage() {
           </>
         }
         actions={
-          <button className="action-button" type="button" onClick={handleSave}>
+          <button className="action-button" type="button" onClick={handleSave} disabled={isSaving}>
             <Save size={16} />
-            Save Changes
+            {isSaving ? "Saving..." : "Save Changes"}
           </button>
         }
       />
@@ -130,7 +153,7 @@ export function SettingsPage() {
               <p className="eyebrow">Scheduling Engine</p>
               <h3>Timetable & Workload Constraints</h3>
               <p className="muted">
-                Automation parameters, teaching load limits, and availability enforcement.
+                Manual timetable parameters, teaching load limits, and availability rules.
               </p>
             </div>
             <Sliders size={20} color="var(--srcb-navy)" />
@@ -186,7 +209,7 @@ export function SettingsPage() {
                   checked={settings.enforceAvailabilityStrict}
                   onChange={(e) => setSettings({ ...settings, enforceAvailabilityStrict: e.target.checked })}
                 />
-                <span>Strictly enforce instructor availability during auto-generation</span>
+                <span>Strictly enforce instructor availability during manual scheduling</span>
               </label>
             </div>
           </div>

@@ -12,9 +12,9 @@ async function listFaculty(req, res, next) {
 
 async function createFaculty(req, res, next) {
   try {
-    if (!['admin', 'super_admin'].includes(req.user?.role)) {
+    if (req.user?.role !== 'super_admin') {
       return res.status(403).json({
-        error: 'Forbidden. Only Administrators can create faculty records.',
+        error: 'Forbidden. Only the Super Administrator can register faculty accounts.',
         code: 'UNAUTHORIZED_ROLE',
       });
     }
@@ -35,7 +35,17 @@ async function updateFaculty(req, res, next) {
     const payload = req.body || {};
     const userRole = req.user?.role;
 
-    if (!['admin', 'super_admin'].includes(userRole)) {
+    if (userRole === 'admin') {
+      // Admin cannot edit faculty profile fields (name, email, phone, department, status)
+      const profileFields = ['name', 'email', 'phone', 'department', 'status'];
+      const isEditingProfile = profileFields.some((field) => payload[field] !== undefined);
+      if (isEditingProfile) {
+        return res.status(403).json({
+          error: 'Forbidden. Administrators cannot edit teacher profiles. Profile updates are managed by the user or Super Administrator.',
+          code: 'UNAUTHORIZED_ROLE',
+        });
+      }
+    } else if (userRole !== 'super_admin') {
       if (userRole !== 'teacher') {
         return res.status(403).json({
           error: 'Forbidden. Only Administrators can manage global faculty records. Program Heads manage major-subject scheduling assignments.',
@@ -81,11 +91,7 @@ async function updateFaculty(req, res, next) {
       }
     }
 
-    const row = await facultyService.updateFaculty(id, {
-      ...payload,
-      email: payload.email || req.user?.email,
-      name: payload.name || req.user?.name,
-    });
+    const row = await facultyService.updateFaculty(id, payload);
     res.json({ data: row });
   } catch (err) {
     next(err);
@@ -94,9 +100,9 @@ async function updateFaculty(req, res, next) {
 
 async function deleteFaculty(req, res, next) {
   try {
-    if (!['admin', 'super_admin'].includes(req.user?.role)) {
+    if (req.user?.role !== 'super_admin') {
       return res.status(403).json({
-        error: 'Forbidden. Only Administrators can delete faculty records.',
+        error: 'Forbidden. Only the Super Administrator can delete faculty records.',
         code: 'UNAUTHORIZED_ROLE',
       });
     }

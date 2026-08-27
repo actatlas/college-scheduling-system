@@ -4,530 +4,173 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../data/apiClient";
 import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
+import { ConfirmModal } from "../components/common/ConfirmModal";
+import { TableSkeleton } from "../components/common/Skeleton";
 import {
+  GraduationCap,
   BookOpen,
-  CalendarDays,
-  DoorOpen,
   Plus,
   Search,
   Trash2,
   Edit2,
+  Clock,
+  Layers,
+  Building2,
 } from "lucide-react";
-import { Skeleton } from "../components/common/Skeleton";
-import ConfirmModal from "../components/common/ConfirmModal";
-import { useProgramContext, type ProgramKey } from "../contexts/ProgramContext";
+import { useProgramContext } from "../contexts/ProgramContext";
+
+interface CourseRow {
+  code: string;
+  name: string;
+  year?: number | string;
+  programCode?: string;
+}
 
 export function CoursesPage() {
-  const [subjects, setSubjects] = useState<Array<any>>([]);
-  const [rooms, setRooms] = useState<Array<any>>([]);
-  const [schedules, setSchedules] = useState<Array<any>>([]);
+  const [courses, setCourses] = useState<CourseRow[]>([]);
+  const [subjects, setSubjects] = useState<any[]>([]);
+  const [programs, setPrograms] = useState<any[]>([]);
+  const [sections, setSections] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [loadingInitial, setLoadingInitial] = useState(false);
-  const [loadingSubjects, setLoadingSubjects] = useState(false);
-  const [loadingRooms, setLoadingRooms] = useState(false);
-  const [loadingSchedules, setLoadingSchedules] = useState(false);
-  const anyLoading =
-    loadingInitial || loadingSubjects || loadingRooms || loadingSchedules;
+  const [isFetching, setIsFetching] = useState(true);
   const [query, setQuery] = useState("");
-  const [isOpen, setIsOpen] = useState(false);
-  const [form, setForm] = useState({ code: "", name: "", year: "" });
-  const [addModalType, setAddModalType] = useState<
-    null | "subject" | "room" | "schedule"
-  >(null);
-  const [subjectForm, setSubjectForm] = useState({
+
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingCourse, setEditingCourse] = useState<CourseRow | null>(null);
+  const [courseToDelete, setCourseToDelete] = useState<CourseRow | null>(null);
+
+  const [form, setForm] = useState({
     code: "",
     name: "",
-    instructor: "",
+    year: "4",
+    programCode: "ITP",
   });
-  const [roomForm, setRoomForm] = useState({
-    name: "",
-    building: "",
-    capacity: "",
-  });
-  const [scheduleForm, setScheduleForm] = useState({
-    day: "",
-    time: "",
-    subject: "",
-    room: "",
-  });
+
   const toast = useToast();
-  const {
-    selectedProgramKey,
-    setSelectedProgramKey,
-    selectedProgram,
-    programOptions,
-  } = useProgramContext();
+  const { selectedProgramKey, selectedProgram } = useProgramContext();
 
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmTitle, setConfirmTitle] = useState("");
-  const [confirmMessage, setConfirmMessage] = useState<string | undefined>(
-    undefined,
-  );
-  const [confirmAction, setConfirmAction] = useState<null | (() => void)>(null);
+  const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
+  const canManage = role === "super_admin" || role === "admin";
 
-  const [editingSubject, setEditingSubject] = useState<string | null>(null);
-  const [editingRoom, setEditingRoom] = useState<string | null>(null);
-  const [editingSchedule, setEditingSchedule] = useState<number | null>(null);
+  const fetchAllData = async () => {
+    setIsFetching(true);
+    try {
+      const [cRes, sRes, pRes, secRes] = await Promise.all([
+        api.get("/courses").catch(() => ({ data: { data: [] } })),
+        api.get("/subjects").catch(() => ({ data: { data: [] } })),
+        api.get("/programs").catch(() => ({ data: { data: [] } })),
+        api.get("/sections").catch(() => ({ data: { data: [] } })),
+      ]);
 
-  const [subjectEdits, setSubjectEdits] = useState<Record<string, any>>({});
-  const [roomEdits, setRoomEdits] = useState<Record<string, any>>({});
-  const [scheduleEdits, setScheduleEdits] = useState<Record<string, any>>({});
+      setCourses(cRes.data?.data || []);
+      setSubjects(sRes.data?.data || []);
+      setPrograms(pRes.data?.data || []);
+      setSections(secRes.data?.data || []);
+    } catch {
+      setCourses([]);
+      setSubjects([]);
+      setPrograms([]);
+      setSections([]);
+    } finally {
+      setIsFetching(false);
+    }
+  };
 
   useEffect(() => {
-    setLoadingInitial(true);
-    Promise.all([
-      api.get("/subjects"),
-      api.get("/rooms"),
-      api.get("/schedules"),
-    ])
-      .then(([subRes, roomRes, schedRes]: any[]) => {
-        setSubjects(subRes.data?.data || []);
-        setRooms(roomRes.data?.data || []);
-        setSchedules(schedRes.data?.data || []);
-      })
-      .catch(() => {
-        setSubjects([]);
-        setRooms([]);
-        setSchedules([]);
-      })
-      .finally(() => setLoadingInitial(false));
+    fetchAllData();
   }, []);
 
-  // course list is not shown in the redesigned workspace; keep `courses` state for API sync
+  // Filter courses by search query and selected program
+  const filteredCourses = useMemo(() => {
+    return courses.filter((c) => {
+      const matchesSearch =
+        c.code.toLowerCase().includes(query.toLowerCase()) ||
+        c.name.toLowerCase().includes(query.toLowerCase()) ||
+        (c.programCode || "").toLowerCase().includes(query.toLowerCase());
 
-  const visibleSubjects = useMemo(() => {
-    const source = subjects.length > 0 ? subjects : [];
+      if (!matchesSearch) return false;
 
-    if (!selectedProgramKey || selectedProgramKey === "ALL" || selectedProgram.shortLabel === "All Programs" || selectedProgram.shortLabel === "N/A") {
-      return source;
-    }
+      if (!selectedProgramKey || selectedProgramKey === "ALL" || selectedProgram.shortLabel === "All Programs") {
+        return true;
+      }
 
-    return source.filter((subject) => {
-      const haystack = [
-        subject.code,
-        subject.name,
-        subject.department,
-        subject.program,
-        subject.instructor,
-      ]
-        .join(" ")
-        .toLowerCase();
+      const pKey = selectedProgramKey.toLowerCase();
       return (
-        haystack.includes(selectedProgramKey.toLowerCase()) ||
-        haystack.includes(selectedProgram.shortLabel.toLowerCase())
+        c.code.toLowerCase().includes(pKey) ||
+        (c.programCode || "").toLowerCase().includes(pKey) ||
+        c.name.toLowerCase().includes(pKey)
       );
     });
-  }, [
-    selectedProgramKey,
-    selectedProgram.shortLabel,
-    selectedProgram,
-    subjects,
-  ]);
+  }, [courses, query, selectedProgramKey, selectedProgram]);
 
-  const visibleRooms = useMemo(() => {
-    const source = rooms.length > 0 ? rooms : [];
-
-    if (!selectedProgramKey || selectedProgramKey === "ALL" || selectedProgram.shortLabel === "All Programs" || selectedProgram.shortLabel === "N/A") {
-      return source;
-    }
-
-    return source.filter((room) => {
-      const haystack = [
-        room.number,
-        room.name,
-        room.building,
-        room.type,
-        room.program,
-      ]
-        .join(" ")
-        .toLowerCase();
-      return (
-        haystack.includes(selectedProgramKey.toLowerCase()) ||
-        haystack.includes(selectedProgram.shortLabel.toLowerCase())
-      );
+  const handleOpenAdd = () => {
+    setEditingCourse(null);
+    setForm({
+      code: "",
+      name: "",
+      year: "4",
+      programCode: programs[0]?.code || "ITP",
     });
-  }, [selectedProgramKey, selectedProgram.shortLabel, rooms, selectedProgram]);
+    setIsModalOpen(true);
+  };
 
-  const visibleSchedules = useMemo(() => {
-    const source = schedules.length > 0 ? schedules : [];
-
-    if (!selectedProgramKey || selectedProgramKey === "ALL" || selectedProgram.shortLabel === "All Programs" || selectedProgram.shortLabel === "N/A") {
-      return source;
-    }
-
-    return source.filter((schedule) => {
-      const haystack = [
-        schedule.subject,
-        schedule.day,
-        schedule.time,
-        schedule.room,
-        schedule.program,
-      ]
-        .join(" ")
-        .toLowerCase();
-      return (
-        haystack.includes(selectedProgramKey.toLowerCase()) ||
-        haystack.includes(selectedProgram.shortLabel.toLowerCase())
-      );
+  const handleOpenEdit = (course: CourseRow) => {
+    setEditingCourse(course);
+    setForm({
+      code: course.code,
+      name: course.name,
+      year: String(course.year || 4),
+      programCode: course.programCode || programs[0]?.code || "ITP",
     });
-  }, [selectedProgramKey, selectedProgram.shortLabel, schedules, selectedProgram]);
+    setIsModalOpen(true);
+  };
 
-  const handleAddSubject = async () => {
-    if (!subjectForm.code || !subjectForm.name) {
-      toast.push("Subject code and name are required", "error");
+  const handleSaveCourse = async () => {
+    if (!form.code.trim() || !form.name.trim()) {
+      toast.push("Course code and degree name are required", "error");
       return;
     }
-    setLoadingSubjects(true);
-    try {
-      const payload = {
-        code: subjectForm.code,
-        name: subjectForm.name,
-        units: 0,
-        lectureHours: 0,
-        labHours: 0,
-        semester: "",
-        department: selectedProgramKey,
-        instructorId: null,
-      };
-      const res = await api.post("/subjects", payload);
-      const created = res.data?.data;
-      setSubjects((s) => [
-        ...s,
-        { code: created.code, name: created.name, instructor: "" },
-      ]);
-      toast.push("Subject added", "success");
-      setAddModalType(null);
-      setSubjectForm({ code: "", name: "", instructor: "" });
-    } catch (err: any) {
-      toast.push(
-        err?.response?.data?.error || "Failed to add subject",
-        "error",
-      );
-    } finally {
-      setLoadingSubjects(false);
-    }
-  };
 
-  const handleRemoveSubject = async (code: string) => {
-    setConfirmTitle("Remove subject");
-    setConfirmMessage(`Remove subject ${code}?`);
-    const deleted = subjects.find((s) => s.code === code);
-    setConfirmAction(() => async () => {
-      setLoadingSubjects(true);
-      try {
-        await api.delete(`/subjects/${encodeURIComponent(code)}`);
-        setSubjects((s) => s.filter((it) => it.code !== code));
-        toast.push("Subject removed", "success", "Undo", async () => {
-          try {
-            if (!deleted) return;
-            await api.post("/subjects", {
-              code: deleted.code,
-              name: deleted.name,
-              department: selectedProgramKey,
-            });
-            setSubjects((s) => [...s, deleted]);
-            toast.push("Undo successful", "success");
-          } catch (e) {
-            toast.push("Undo failed", "error");
-          }
+    setLoading(true);
+    try {
+      if (editingCourse) {
+        await api.put(`/courses/${encodeURIComponent(editingCourse.code)}`, {
+          name: form.name,
+          year: Number(form.year) || 4,
+          programCode: form.programCode,
         });
-      } catch (err: any) {
-        toast.push(
-          err?.response?.data?.error || "Failed to remove subject",
-          "error",
-        );
-      } finally {
-        setLoadingSubjects(false);
-        setConfirmOpen(false);
-      }
-    });
-    setConfirmOpen(true);
-  };
-
-  const handleAddRoom = async () => {
-    if (!roomForm.name) {
-      toast.push("Room name is required", "error");
-      return;
-    }
-    setLoadingRooms(true);
-    try {
-      const payload = {
-        number: roomForm.name,
-        capacity: Number(roomForm.capacity) || 0,
-        building: roomForm.building || "",
-        type: "",
-        status: "active",
-      };
-      const res = await api.post("/rooms", payload);
-      const created = res.data?.data;
-      setRooms((r) => [
-        ...r,
-        {
-          name: created.number,
-          building: created.building,
-          capacity: created.capacity,
-        },
-      ]);
-      toast.push("Room added", "success");
-      setAddModalType(null);
-      setRoomForm({ name: "", building: "", capacity: "" });
-    } catch (err: any) {
-      toast.push(err?.response?.data?.error || "Failed to add room", "error");
-    } finally {
-      setLoadingRooms(false);
-    }
-  };
-
-  const handleRemoveRoom = async (name: string) => {
-    setConfirmTitle("Remove room");
-    setConfirmMessage(`Remove room ${name}?`);
-    const deleted = rooms.find((r) => r.name === name);
-    setConfirmAction(() => async () => {
-      setLoadingRooms(true);
-      try {
-        await api.delete(`/rooms/${encodeURIComponent(name)}`);
-        setRooms((r) => r.filter((it) => it.name !== name));
-        toast.push("Room removed", "success", "Undo", async () => {
-          try {
-            if (!deleted) return;
-            await api.post("/rooms", {
-              number: deleted.name,
-              building: deleted.building,
-              capacity: deleted.capacity,
-            });
-            setRooms((r) => [...r, deleted]);
-            toast.push("Undo successful", "success");
-          } catch (e) {
-            toast.push("Undo failed", "error");
-          }
+        toast.push("Degree course updated successfully", "success");
+      } else {
+        await api.post("/courses", {
+          code: form.code.toUpperCase().trim(),
+          name: form.name.trim(),
+          year: Number(form.year) || 4,
+          programCode: form.programCode,
         });
-      } catch (err: any) {
-        toast.push(
-          err?.response?.data?.error || "Failed to remove room",
-          "error",
-        );
-      } finally {
-        setLoadingRooms(false);
-        setConfirmOpen(false);
+        toast.push("New degree course registered successfully", "success");
       }
-    });
-    setConfirmOpen(true);
-  };
-
-  const handleAddSchedule = async () => {
-    if (!scheduleForm.day || !scheduleForm.time || !scheduleForm.subject) {
-      toast.push("Day, time and subject are required", "error");
-      return;
-    }
-    setLoadingSchedules(true);
-    try {
-      const payload = {
-        day: scheduleForm.day,
-        start_time: scheduleForm.time,
-        end_time: null,
-        subject_code: scheduleForm.subject,
-        room_number: scheduleForm.room || null,
-      };
-      const res = await api.post("/schedules", payload);
-      const created = res.data?.data;
-      setSchedules((s) => [
-        ...s,
-        {
-          id: created.id,
-          day: created.day,
-          time: created.time,
-          subject: created.subject,
-          room: created.room,
-          color: created.color,
-        },
-      ]);
-      toast.push("Schedule added", "success");
-      setAddModalType(null);
-      setScheduleForm({ day: "", time: "", subject: "", room: "" });
+      setIsModalOpen(false);
+      fetchAllData();
     } catch (err: any) {
-      toast.push(
-        err?.response?.data?.error || "Failed to add schedule",
-        "error",
-      );
+      toast.push(err?.response?.data?.error || "Failed to save degree course", "error");
     } finally {
-      setLoadingSchedules(false);
+      setLoading(false);
     }
   };
 
-  const handleRemoveSchedule = async (key: any) => {
-    setConfirmTitle("Remove schedule");
-    setConfirmMessage("Remove this schedule?");
-    const deleted = key;
-    setConfirmAction(() => async () => {
-      setLoadingSchedules(true);
-      try {
-        if (key.id) {
-          await api.delete(`/schedules/${encodeURIComponent(key.id)}`);
-        }
-        setSchedules((s) =>
-          s.filter(
-            (it) =>
-              !(
-                it.day === key.day &&
-                it.time === key.time &&
-                it.room === key.room
-              ),
-          ),
-        );
-        toast.push("Schedule removed", "success", "Undo", async () => {
-          try {
-            if (!deleted) return;
-            await api.post("/schedules", {
-              day: deleted.day,
-              start_time: deleted.time,
-              subject_code: deleted.subject,
-              room_number: deleted.room,
-            });
-            setSchedules((s) => [...s, deleted]);
-            toast.push("Undo successful", "success");
-          } catch (e) {
-            toast.push("Undo failed", "error");
-          }
-        });
-      } catch (err: any) {
-        toast.push(
-          err?.response?.data?.error || "Failed to remove schedule",
-          "error",
-        );
-      } finally {
-        setLoadingSchedules(false);
-        setConfirmOpen(false);
-      }
-    });
-    setConfirmOpen(true);
-  };
-
-  // inline update handlers
-  const handleEditSubject = (code: string) => {
-    setEditingSubject(code);
-    const item = subjects.find((s) => s.code === code) || {};
-    setSubjectEdits((e) => ({
-      ...e,
-      [code]: { name: item.name || "", instructor: item.instructor || "" },
-    }));
-  };
-
-  const handleSaveSubject = async (code: string) => {
-    const edits = subjectEdits[code];
-    if (!edits) return setEditingSubject(null);
-    setLoadingSubjects(true);
+  const handleDeleteCourse = async () => {
+    if (!courseToDelete) return;
+    setLoading(true);
     try {
-      await api.put(`/subjects/${encodeURIComponent(code)}`, {
-        name: edits.name,
-        instructorId: null,
-        department: selectedProgramKey,
-      });
-      setSubjects((s) =>
-        s.map((it) =>
-          it.code === code
-            ? { ...it, name: edits.name, instructor: edits.instructor }
-            : it,
-        ),
-      );
-      toast.push("Subject updated", "success");
+      await api.delete(`/courses/${encodeURIComponent(courseToDelete.code)}`);
+      toast.push(`Degree course ${courseToDelete.code} removed`, "success");
+      setCourseToDelete(null);
+      fetchAllData();
     } catch (err: any) {
-      toast.push(
-        err?.response?.data?.error || "Failed to update subject",
-        "error",
-      );
+      toast.push(err?.response?.data?.error || "Failed to delete degree course", "error");
     } finally {
-      setLoadingSubjects(false);
-      setEditingSubject(null);
-    }
-  };
-
-  const handleEditRoom = (name: string) => {
-    setEditingRoom(name);
-    const item = rooms.find((r) => r.name === name) || {};
-    setRoomEdits((e) => ({
-      ...e,
-      [name]: { building: item.building || "", capacity: item.capacity || 0 },
-    }));
-  };
-
-  const handleSaveRoom = async (name: string) => {
-    const edits = roomEdits[name];
-    if (!edits) return setEditingRoom(null);
-    setLoadingRooms(true);
-    try {
-      await api.put(`/rooms/${encodeURIComponent(name)}`, {
-        building: edits.building,
-        capacity: Number(edits.capacity) || 0,
-        type: "",
-        status: "active",
-      });
-      setRooms((r) =>
-        r.map((it) =>
-          it.name === name
-            ? { ...it, building: edits.building, capacity: edits.capacity }
-            : it,
-        ),
-      );
-      toast.push("Room updated", "success");
-    } catch (err: any) {
-      toast.push(
-        err?.response?.data?.error || "Failed to update room",
-        "error",
-      );
-    } finally {
-      setLoadingRooms(false);
-      setEditingRoom(null);
-    }
-  };
-
-  const handleEditSchedule = (id: number) => {
-    setEditingSchedule(id);
-    const item = schedules.find((s) => s.id === id) || {};
-    setScheduleEdits((e) => ({
-      ...e,
-      [id]: {
-        day: item.day || "",
-        time: item.time || "",
-        subject: item.subject || "",
-        room: item.room || "",
-      },
-    }));
-  };
-
-  const handleSaveSchedule = async (id: number) => {
-    const edits = scheduleEdits[id];
-    if (!edits) return setEditingSchedule(null);
-    setLoadingSchedules(true);
-    try {
-      await api.put(`/schedules/${encodeURIComponent(id)}`, {
-        day: edits.day,
-        start_time: edits.time,
-        end_time: null,
-        subject_code: edits.subject,
-        room_number: edits.room,
-      });
-      setSchedules((s) =>
-        s.map((it) =>
-          it.id === id
-            ? {
-                ...it,
-                day: edits.day,
-                time: edits.time,
-                subject: edits.subject,
-                room: edits.room,
-              }
-            : it,
-        ),
-      );
-      toast.push("Schedule updated", "success");
-    } catch (err: any) {
-      toast.push(
-        err?.response?.data?.error || "Failed to update schedule",
-        "error",
-      );
-    } finally {
-      setLoadingSchedules(false);
-      setEditingSchedule(null);
+      setLoading(false);
     }
   };
 
@@ -538,682 +181,241 @@ export function CoursesPage() {
       transition={{ duration: 0.25 }}
     >
       <PageHeader
-        title="Programs / Courses"
-        description="Choose a program or course to view its subjects, rooms, and schedules."
+        title="Collegiate Degree Courses & Curricula"
+        description="Official collegiate degree offerings, program affiliations, year durations, and curriculum prospectus for St. Rita's College of Balingasag."
+        breadcrumbs={
+          <>
+            <span>Home</span> <span>/</span> <strong>Courses</strong>
+          </>
+        }
         actions={
-          <button
-            className="action-button"
-            type="button"
-            disabled={anyLoading}
-            onClick={() => setIsOpen(true)}
-          >
-            <Plus size={16} />
-            Add Course
-          </button>
+          canManage && (
+            <button className="action-button" type="button" onClick={handleOpenAdd}>
+              <Plus size={16} />
+              Add Degree Course
+            </button>
+          )
         }
       />
 
-      <section className="card">
-        <div className="card__header">
-          <div>
-            <p className="eyebrow">Academic workspace</p>
-            <h3>Select a course</h3>
+      {/* Search & Statistics Bar */}
+      <section className="card" style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 260 }}>
+            <div className="topbar__search" style={{ width: "100%", maxWidth: 380 }}>
+              <Search size={16} color="var(--srcb-slate)" />
+              <input
+                type="text"
+                placeholder="Search courses by code, title, program..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
           </div>
-          <label className="topbar__search" aria-label="Search courses">
-            <Search size={16} />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search course"
-            />
-          </label>
-        </div>
-
-        <div className="form-grid">
-          <div className="field-group">
-            <label htmlFor="courseSelect">Choose course</label>
-            <select
-              id="courseSelect"
-              value={selectedProgramKey}
-              onChange={(event) =>
-                setSelectedProgramKey(event.target.value as ProgramKey)
-              }
-            >
-              {programOptions.map((option) => (
-                <option key={option.key} value={option.key}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field-group">
-            <label htmlFor="courseFocus">Course focus</label>
-            <input id="courseFocus" value={selectedProgram.label} readOnly />
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span className="pill pill--navy">
+              <GraduationCap size={14} /> {courses.length} Registered Degrees
+            </span>
+            <span className="pill pill--royal">
+              <BookOpen size={14} /> {subjects.length} Curriculum Subjects
+            </span>
           </div>
         </div>
       </section>
 
+      {/* Main Course Roster Table */}
       <section className="card">
-        <div className="card__header">
-          <div>
-            <p className="eyebrow">Course workspace</p>
-            <h3>{selectedProgram.label}</h3>
-            <p className="muted">
-              Manage subjects, rooms and schedules for the selected program.
+        {isFetching ? (
+          <TableSkeleton rows={5} columns={5} />
+        ) : filteredCourses.length === 0 ? (
+          <div className="empty-state">
+            <GraduationCap size={36} color="var(--srcb-slate)" style={{ margin: "0 auto 12px" }} />
+            <p style={{ margin: 0, fontWeight: 600 }}>No subjects available for this program yet.</p>
+            <p className="muted" style={{ margin: "4px 0 0", fontSize: "0.85rem" }}>
+              {query ? "Try clearing your search query" : "Click 'Add Degree Course' above to register an academic degree offering."}
             </p>
           </div>
-        </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th style={{ width: "130px" }}>Course Code</th>
+                  <th>Degree Program Title</th>
+                  <th>Department / Program</th>
+                  <th>Duration</th>
+                  <th>Cohort Sections</th>
+                  {canManage && <th style={{ textAlign: "right" }}>Actions</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredCourses.map((course) => {
+                  const courseSections = sections.filter(
+                    (s) => (s.course || s.course_code || "").toUpperCase() === course.code.toUpperCase()
+                  );
+                  const progMatch = programs.find((p) => p.code === course.programCode);
 
-        <div className="grid-3">
-          <article className="card">
-            <div className="card__header">
-              <div>
-                <p className="eyebrow">Subjects</p>
-                <h3>Course subjects</h3>
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  className="icon-button"
-                  title="Add subject"
-                  disabled={loadingSubjects || loadingInitial}
-                  onClick={() => setAddModalType("subject")}
-                >
-                  <Plus size={16} />
-                </button>
-                <BookOpen size={18} />
-              </div>
-            </div>
-            <div className="schedule-list">
-              {loadingSubjects || loadingInitial ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 12 }}>
-                  <Skeleton height={42} borderRadius={8} />
-                  <Skeleton height={42} borderRadius={8} />
-                  <Skeleton height={42} borderRadius={8} />
-                </div>
-              ) : visibleSubjects.length === 0 ? (
-                <div className="empty-state">
-                  No subjects available for this program yet.
-                </div>
-              ) : (
-                visibleSubjects.map((subject) => (
-                  <div className="schedule-item" key={subject.code}>
-                    <div>
-                      {editingSubject === subject.code ? (
-                        <>
-                          <input
-                            value={subjectEdits[subject.code]?.name || ""}
-                            onChange={(e) =>
-                              setSubjectEdits((p) => ({
-                                ...p,
-                                [subject.code]: {
-                                  ...(p[subject.code] || {}),
-                                  name: e.target.value,
-                                },
-                              }))
-                            }
-                          />
-                          <input
-                            value={subjectEdits[subject.code]?.instructor || ""}
-                            onChange={(e) =>
-                              setSubjectEdits((p) => ({
-                                ...p,
-                                [subject.code]: {
-                                  ...(p[subject.code] || {}),
-                                  instructor: e.target.value,
-                                },
-                              }))
-                            }
-                          />
-                        </>
-                      ) : (
-                        <>
-                          <p className="schedule-item__title">{subject.name}</p>
-                          <p className="schedule-item__meta">
-                            {subject.code} • {subject.instructor}
-                          </p>
-                        </>
+                  return (
+                    <tr key={course.code}>
+                      <td>
+                        <span
+                          className="pill pill--royal"
+                          style={{
+                            fontFamily: "var(--font-mono)",
+                            fontWeight: 800,
+                            letterSpacing: "0.04em",
+                          }}
+                        >
+                          {course.code}
+                        </span>
+                      </td>
+                      <td>
+                        <strong style={{ color: "var(--srcb-text)", fontSize: "0.92rem" }}>
+                          {course.name}
+                        </strong>
+                      </td>
+                      <td>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <Building2 size={15} color="var(--srcb-slate)" />
+                          <span>{progMatch ? progMatch.name : (course.programCode || "Collegiate Department")}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <Clock size={15} color="var(--srcb-slate)" />
+                          <span>{course.year || 4} Academic Years</span>
+                        </div>
+                      </td>
+                      <td>
+                        <span className="pill pill--navy">
+                          <Layers size={13} /> {courseSections.length} Sections
+                        </span>
+                      </td>
+                      {canManage && (
+                        <td style={{ textAlign: "right" }}>
+                          <div style={{ display: "inline-flex", gap: 6 }}>
+                            <button
+                              className="icon-button"
+                              type="button"
+                              title="Edit Course"
+                              onClick={() => handleOpenEdit(course)}
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                            {role === "super_admin" && (
+                              <button
+                                className="icon-button icon-button--danger"
+                                type="button"
+                                title="Delete Course"
+                                onClick={() => setCourseToDelete(course)}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
                       )}
-                    </div>
-                    <div
-                      style={{ display: "flex", gap: 8, alignItems: "center" }}
-                    >
-                      <span className="pill">{subject.code}</span>
-                      {editingSubject === subject.code ? (
-                        <>
-                          <button
-                            className="secondary-button"
-                            disabled={loadingSubjects || loadingInitial}
-                            onClick={() => setEditingSubject(null)}
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            className="action-button"
-                            disabled={loadingSubjects || loadingInitial}
-                            onClick={() => handleSaveSubject(subject.code)}
-                          >
-                            Save
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            className="icon-button"
-                            disabled={loadingSubjects || loadingInitial}
-                            onClick={() => handleEditSubject(subject.code)}
-                            aria-label="Edit subject"
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          <button
-                            className="icon-button"
-                            disabled={loadingSubjects || loadingInitial}
-                            onClick={() => handleRemoveSubject(subject.code)}
-                            aria-label="Remove subject"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </article>
-
-          <article className="card">
-            <div className="card__header">
-              <div>
-                <p className="eyebrow">Rooms</p>
-                <h3>Assigned rooms</h3>
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  className="icon-button"
-                  title="Add room"
-                  disabled={loadingRooms || loadingInitial}
-                  onClick={() => setAddModalType("room")}
-                >
-                  <Plus size={16} />
-                </button>
-                <DoorOpen size={18} />
-              </div>
-            </div>
-            <div className="schedule-list">
-              {loadingRooms || loadingInitial ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 12 }}>
-                  <Skeleton height={42} borderRadius={8} />
-                  <Skeleton height={42} borderRadius={8} />
-                  <Skeleton height={42} borderRadius={8} />
-                </div>
-              ) : visibleRooms.length === 0 ? (
-                <div className="empty-state">
-                  No rooms linked to this program yet.
-                </div>
-              ) : (
-                visibleRooms.map((room) => (
-                  <div className="schedule-item" key={room.name}>
-                    <div>
-                      {editingRoom === room.name ? (
-                        <>
-                          <input
-                            value={roomEdits[room.name]?.building || ""}
-                            onChange={(e) =>
-                              setRoomEdits((p) => ({
-                                ...p,
-                                [room.name]: {
-                                  ...(p[room.name] || {}),
-                                  building: e.target.value,
-                                },
-                              }))
-                            }
-                          />
-                          <input
-                            value={roomEdits[room.name]?.capacity || ""}
-                            onChange={(e) =>
-                              setRoomEdits((p) => ({
-                                ...p,
-                                [room.name]: {
-                                  ...(p[room.name] || {}),
-                                  capacity: e.target.value,
-                                },
-                              }))
-                            }
-                          />
-                        </>
-                      ) : (
-                        <>
-                          <p className="schedule-item__title">{room.name}</p>
-                          <p className="schedule-item__meta">
-                            {room.building} • Capacity {room.capacity}
-                          </p>
-                        </>
-                      )}
-                    </div>
-                    <div
-                      style={{ display: "flex", gap: 8, alignItems: "center" }}
-                    >
-                      <span className="pill">{room.capacity}</span>
-                      {editingRoom === room.name ? (
-                        <>
-                          <button
-                            className="secondary-button"
-                            disabled={loadingRooms || loadingInitial}
-                            onClick={() => setEditingRoom(null)}
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            className="action-button"
-                            disabled={loadingRooms || loadingInitial}
-                            onClick={() => handleSaveRoom(room.name)}
-                          >
-                            Save
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            className="icon-button"
-                            disabled={loadingRooms || loadingInitial}
-                            onClick={() => handleEditRoom(room.name)}
-                            aria-label="Edit room"
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          <button
-                            className="icon-button"
-                            disabled={loadingRooms || loadingInitial}
-                            onClick={() => handleRemoveRoom(room.name)}
-                            aria-label="Remove room"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </article>
-
-          <article className="card">
-            <div className="card__header">
-              <div>
-                <p className="eyebrow">Schedules</p>
-                <h3>Course timetable</h3>
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  className="icon-button"
-                  title="Add schedule"
-                  onClick={() => setAddModalType("schedule")}
-                  disabled={loadingSchedules || loadingInitial}
-                >
-                  <Plus size={16} />
-                </button>
-                <CalendarDays size={18} />
-              </div>
-            </div>
-            <div className="schedule-list">
-              {loadingSchedules || loadingInitial ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 12 }}>
-                  <Skeleton height={42} borderRadius={8} />
-                  <Skeleton height={42} borderRadius={8} />
-                  <Skeleton height={42} borderRadius={8} />
-                </div>
-              ) : visibleSchedules.length === 0 ? (
-                <div className="empty-state">
-                  No schedules available for this program yet.
-                </div>
-              ) : (
-                visibleSchedules.map((schedule) => (
-                  <div
-                    className="schedule-item"
-                    key={
-                      schedule.id ||
-                      `${schedule.day}-${schedule.time}-${schedule.room}`
-                    }
-                  >
-                    <div>
-                      {editingSchedule === schedule.id ? (
-                        <>
-                          <input
-                            value={scheduleEdits[schedule.id]?.day || ""}
-                            onChange={(e) =>
-                              setScheduleEdits((p) => ({
-                                ...p,
-                                [schedule.id]: {
-                                  ...(p[schedule.id] || {}),
-                                  day: e.target.value,
-                                },
-                              }))
-                            }
-                          />
-                          <input
-                            value={scheduleEdits[schedule.id]?.time || ""}
-                            onChange={(e) =>
-                              setScheduleEdits((p) => ({
-                                ...p,
-                                [schedule.id]: {
-                                  ...(p[schedule.id] || {}),
-                                  time: e.target.value,
-                                },
-                              }))
-                            }
-                          />
-                          <input
-                            value={scheduleEdits[schedule.id]?.subject || ""}
-                            onChange={(e) =>
-                              setScheduleEdits((p) => ({
-                                ...p,
-                                [schedule.id]: {
-                                  ...(p[schedule.id] || {}),
-                                  subject: e.target.value,
-                                },
-                              }))
-                            }
-                          />
-                        </>
-                      ) : (
-                        <>
-                          <p className="schedule-item__title">
-                            {schedule.subject}
-                          </p>
-                          <p className="schedule-item__meta">
-                            {schedule.day} • {schedule.time} • {schedule.room}
-                          </p>
-                        </>
-                      )}
-                    </div>
-                    <div
-                      style={{ display: "flex", gap: 8, alignItems: "center" }}
-                    >
-                      <span className="pill">{schedule.room}</span>
-                      {editingSchedule === schedule.id ? (
-                        <>
-                          <button
-                            className="secondary-button"
-                            onClick={() => setEditingSchedule(null)}
-                            disabled={loadingSchedules || loadingInitial}
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            className="action-button"
-                            onClick={() => handleSaveSchedule(schedule.id)}
-                            disabled={loadingSchedules || loadingInitial}
-                          >
-                            Save
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            className="icon-button"
-                            onClick={() => handleEditSchedule(schedule.id)}
-                            disabled={loadingSchedules || loadingInitial}
-                            aria-label="Edit schedule"
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          <button
-                            className="icon-button"
-                            onClick={() => handleRemoveSchedule(schedule)}
-                            disabled={loadingSchedules || loadingInitial}
-                            aria-label="Remove schedule"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </article>
-        </div>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
-      <ConfirmModal
-        isOpen={confirmOpen}
-        title={confirmTitle}
-        message={confirmMessage}
-        onConfirm={() => {
-          if (confirmAction) confirmAction();
-        }}
-        onCancel={() => setConfirmOpen(false)}
-      />
-
+      {/* Add / Edit Course Modal */}
       <Modal
-        isOpen={addModalType !== null}
-        title={
-          addModalType === "subject"
-            ? "Add Subject"
-            : addModalType === "room"
-              ? "Add Room"
-              : addModalType === "schedule"
-                ? "Add Schedule"
-                : ""
-        }
-        description={
-          addModalType === "subject"
-            ? "Register a new subject for the selected program."
-            : addModalType === "room"
-              ? "Assign a room to this program."
-              : addModalType === "schedule"
-                ? "Create a schedule entry for this program."
-                : ""
-        }
-        onClose={() => setAddModalType(null)}
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editingCourse ? `Edit Degree Course (${editingCourse.code})` : "Register New Degree Course"}
       >
-        {addModalType === "subject" && (
-          <div className="form-grid">
-            <div className="field-group">
-              <label>Subject Code</label>
-              <input
-                value={subjectForm.code}
-                onChange={(e) =>
-                  setSubjectForm({ ...subjectForm, code: e.target.value })
-                }
-              />
-            </div>
-            <div className="field-group">
-              <label>Subject Name</label>
-              <input
-                value={subjectForm.name}
-                onChange={(e) =>
-                  setSubjectForm({ ...subjectForm, name: e.target.value })
-                }
-              />
-            </div>
-            <div className="field-group" style={{ gridColumn: "1 / -1" }}>
-              <label>Instructor</label>
-              <input
-                value={subjectForm.instructor}
-                onChange={(e) =>
-                  setSubjectForm({ ...subjectForm, instructor: e.target.value })
-                }
-              />
-            </div>
-          </div>
-        )}
-
-        {addModalType === "room" && (
-          <div className="form-grid">
-            <div className="field-group">
-              <label>Room Name / Number</label>
-              <input
-                value={roomForm.name}
-                onChange={(e) =>
-                  setRoomForm({ ...roomForm, name: e.target.value })
-                }
-              />
-            </div>
-            <div className="field-group">
-              <label>Building</label>
-              <input
-                value={roomForm.building}
-                onChange={(e) =>
-                  setRoomForm({ ...roomForm, building: e.target.value })
-                }
-              />
-            </div>
-            <div className="field-group">
-              <label>Capacity</label>
-              <input
-                value={roomForm.capacity}
-                onChange={(e) =>
-                  setRoomForm({ ...roomForm, capacity: e.target.value })
-                }
-              />
-            </div>
-          </div>
-        )}
-
-        {addModalType === "schedule" && (
-          <div className="form-grid">
-            <div className="field-group">
-              <label>Day</label>
-              <input
-                value={scheduleForm.day}
-                onChange={(e) =>
-                  setScheduleForm({ ...scheduleForm, day: e.target.value })
-                }
-              />
-            </div>
-            <div className="field-group">
-              <label>Time</label>
-              <input
-                value={scheduleForm.time}
-                onChange={(e) =>
-                  setScheduleForm({ ...scheduleForm, time: e.target.value })
-                }
-              />
-            </div>
-            <div className="field-group">
-              <label>Subject</label>
-              <input
-                value={scheduleForm.subject}
-                onChange={(e) =>
-                  setScheduleForm({ ...scheduleForm, subject: e.target.value })
-                }
-              />
-            </div>
-            <div className="field-group">
-              <label>Room</label>
-              <input
-                value={scheduleForm.room}
-                onChange={(e) =>
-                  setScheduleForm({ ...scheduleForm, room: e.target.value })
-                }
-              />
-            </div>
-          </div>
-        )}
-
-        <div className="table-actions">
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => setAddModalType(null)}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="action-button"
-            onClick={() => {
-              if (addModalType === "subject") return handleAddSubject();
-              if (addModalType === "room") return handleAddRoom();
-              if (addModalType === "schedule") return handleAddSchedule();
-            }}
-            disabled={loading}
-          >
-            {loading ? <span className="spinner" /> : null}
-            Save
-          </button>
-        </div>
-      </Modal>
-
-      <Modal
-        isOpen={isOpen}
-        title="Create course"
-        description="Register a new course in the curriculum catalog."
-        onClose={() => setIsOpen(false)}
-      >
-        <div className="form-grid">
-          <div className="field-group">
-            <label htmlFor="courseCode">Course Code</label>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div>
+            <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, marginBottom: 4 }}>
+              Course Code (Acronym) *
+            </label>
             <input
-              id="courseCode"
+              type="text"
+              className="user-mgmt-modal-input"
+              placeholder="e.g. BSIT, BSBA, BSHM, BSCRIM"
               value={form.code}
-              onChange={(event) =>
-                setForm({ ...form, code: event.target.value })
-              }
+              disabled={Boolean(editingCourse)}
+              onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--srcb-border)" }}
             />
           </div>
-          <div className="field-group">
-            <label htmlFor="courseName">Course Name</label>
+
+          <div>
+            <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, marginBottom: 4 }}>
+              Official Degree Title *
+            </label>
             <input
-              id="courseName"
+              type="text"
+              className="user-mgmt-modal-input"
+              placeholder="e.g. Bachelor of Science in Information Technology"
               value={form.name}
-              onChange={(event) =>
-                setForm({ ...form, name: event.target.value })
-              }
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--srcb-border)" }}
             />
           </div>
-          <div className="field-group" style={{ gridColumn: "1 / -1" }}>
-            <label htmlFor="courseYears">Duration / Years</label>
-            <input
-              id="courseYears"
-              value={form.year}
-              onChange={(event) =>
-                setForm({ ...form, year: event.target.value })
-              }
-            />
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, marginBottom: 4 }}>
+                Department / Program
+              </label>
+              <select
+                value={form.programCode}
+                onChange={(e) => setForm({ ...form, programCode: e.target.value })}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)" }}
+              >
+                {programs.map((p) => (
+                  <option key={p.code} value={p.code}>
+                    {p.code} - {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, marginBottom: 4 }}>
+                Duration (Years)
+              </label>
+              <select
+                value={form.year}
+                onChange={(e) => setForm({ ...form, year: e.target.value })}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)" }}
+              >
+                <option value="2">2 Years (Associate)</option>
+                <option value="3">3 Years</option>
+                <option value="4">4 Years (Standard Baccalaureate)</option>
+                <option value="5">5 Years</option>
+              </select>
+            </div>
           </div>
-        </div>
-        <div className="table-actions">
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => setIsOpen(false)}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="action-button"
-            disabled={loading}
-            onClick={async () => {
-              if (!form.code || !form.name) {
-                toast.push("Course code and name are required", "error");
-                return;
-              }
-              setLoading(true);
-              try {
-                await api.post("/courses", form);
-                toast.push("Course created", "success");
-                setIsOpen(false);
-                setForm({ code: "", name: "", year: "" });
-              } catch (err: any) {
-                toast.push(
-                  err?.response?.data?.error || "Failed to create course",
-                  "error",
-                );
-              } finally {
-                setLoading(false);
-              }
-            }}
-          >
-            {loading ? "Saving…" : "Save Course"}
-          </button>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
+            <button className="secondary-button" type="button" onClick={() => setIsModalOpen(false)}>
+              Cancel
+            </button>
+            <button className="action-button" type="button" onClick={handleSaveCourse} disabled={loading}>
+              {loading ? "Saving..." : editingCourse ? "Save Changes" : "Register Course"}
+            </button>
+          </div>
         </div>
       </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(courseToDelete)}
+        onCancel={() => setCourseToDelete(null)}
+        onConfirm={handleDeleteCourse}
+        title={`Delete Course ${courseToDelete?.code}?`}
+        message={`Are you sure you want to remove ${courseToDelete?.name} (${courseToDelete?.code})? This will permanently unregister this degree offering.`}
+        confirmLabel="Yes, Delete Course"
+        variant="danger"
+      />
     </motion.div>
   );
 }

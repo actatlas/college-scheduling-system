@@ -12,6 +12,7 @@ import {
   Trash2,
   ExternalLink,
   X,
+  ChevronDown,
 } from "lucide-react";
 import { useEffect, useState, useRef, type FormEvent } from "react";
 import { useNavigate, Link } from "react-router-dom";
@@ -170,35 +171,27 @@ export function Topbar({ title, onToggleMobileSidebar }: TopbarProps) {
             <img
               src={currentProgramLogo}
               alt="Program Logo"
-              style={{
-                width: "24px",
-                height: "24px",
-                borderRadius: "5px",
-                objectFit: "contain",
-              }}
+              className="topbar__program-logo"
             />
-            <span style={{ fontSize: "0.82rem", fontWeight: 700, letterSpacing: "0.01em" }}>
+            <span style={{ fontSize: "0.84rem", fontWeight: 700, letterSpacing: "-0.01em" }}>
               {selectedProgram.shortLabel || selectedProgram.label}
             </span>
           </div>
         ) : role !== "teacher" && role !== "super_admin" ? (
-          <div className="topbar__program-badge">
+          <label className="topbar__program-badge" title="Active Academic Program Filter">
             <img
               src={currentProgramLogo}
               alt="Program Logo"
-              style={{
-                width: "24px",
-                height: "24px",
-                borderRadius: "5px",
-                objectFit: "contain",
-              }}
+              className="topbar__program-logo"
             />
-            <label className="topbar__program-select" aria-label="Filter by academic program">
+            <span className="topbar__program-select-wrapper">
               <select
+                className="topbar__program-native-select"
                 value={selectedProgram.key}
                 onChange={(event) =>
                   setSelectedProgramKey(event.target.value as any)
                 }
+                aria-label="Filter by academic program"
               >
                 {programOptions.map((option) => (
                   <option key={option.key} value={option.key}>
@@ -206,8 +199,9 @@ export function Topbar({ title, onToggleMobileSidebar }: TopbarProps) {
                   </option>
                 ))}
               </select>
-            </label>
-          </div>
+              <ChevronDown size={14} className="topbar__program-chevron" aria-hidden="true" />
+            </span>
+          </label>
         ) : null}
 
         <form className="topbar__search" onSubmit={handleSearch} role="search" aria-label="Global search">

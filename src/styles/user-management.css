@@ -69,7 +69,7 @@
 .user-mgmt-search-input:focus {
   background: var(--srcb-surface);
   border-color: var(--srcb-navy);
-  box-shadow: 0 0 0 3px rgba(15, 44, 89, 0.12);
+  box-shadow: 0 0 0 3px rgba(var(--srcb-navy-rgb, 22, 50, 105), 0.12);
 }
 
 .user-mgmt-search-clear {
@@ -89,7 +89,7 @@
 
 .user-mgmt-search-clear:hover {
   color: var(--srcb-text);
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--srcb-surface-hover, #f1f5f9);
 }
 
 .user-mgmt-actions-group {
@@ -99,11 +99,11 @@
   flex-wrap: wrap;
 }
 
-/* Secondary Button (Filter, Export) */
+/* Secondary Button (Filter, Export, etc.) */
 .user-mgmt-secondary-btn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   height: 40px;
   padding: 0 14px;
   border-radius: 8px;
@@ -120,13 +120,13 @@
 
 .user-mgmt-secondary-btn:hover {
   background: var(--srcb-surface-hover, #f1f5f9);
-  border-color: rgba(15, 44, 89, 0.25);
+  border-color: rgba(var(--srcb-navy-rgb, 22, 50, 105), 0.25);
   color: var(--srcb-navy);
 }
 
 .user-mgmt-secondary-btn.is-active {
   border-color: var(--srcb-navy);
-  background: rgba(15, 44, 89, 0.05);
+  background: rgba(var(--srcb-navy-rgb, 22, 50, 105), 0.05);
   color: var(--srcb-navy);
 }
 
@@ -158,14 +158,14 @@
   font-size: 0.88rem;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 2px 6px rgba(15, 44, 89, 0.25);
+  box-shadow: 0 2px 6px rgba(var(--srcb-navy-rgb, 22, 50, 105), 0.25);
   transition: all var(--srcb-transition);
   user-select: none;
 }
 
 .user-mgmt-primary-btn:hover {
-  background: var(--srcb-navy-dark, #0a1e3f);
-  box-shadow: 0 4px 12px rgba(15, 44, 89, 0.35);
+  background: var(--srcb-navy-dark, #0e2249);
+  box-shadow: 0 4px 12px rgba(var(--srcb-navy-rgb, 22, 50, 105), 0.35);
   transform: translateY(-1px);
 }
 
@@ -338,8 +338,8 @@
   gap: 12px;
   padding: 10px 16px;
   border-radius: 8px;
-  background: rgba(15, 44, 89, 0.06);
-  border: 1px solid rgba(15, 44, 89, 0.15);
+  background: var(--srcb-navy-soft, #eef2f9);
+  border: 1px solid rgba(var(--srcb-navy-rgb, 22, 50, 105), 0.15);
   animation: bulkBarSlideDown 200ms ease;
   flex-wrap: wrap;
 }
@@ -548,16 +548,23 @@
   width: fit-content;
 }
 
-.status-indicator-pill.active {
-  background: #dcfce7;
-  color: #15803d;
-  border: 1px solid rgba(21, 128, 61, 0.2);
+.status-indicator-pill.active,
+.status-indicator-pill.full-time {
+  background: var(--srcb-green-soft, #eaf7ef);
+  color: var(--srcb-green-dark, #349b57);
+  border: 1px solid var(--srcb-green-border, #a7e3bd);
 }
 
 .status-indicator-pill.suspended {
   background: #fee2e2;
   color: #b91c1c;
   border: 1px solid rgba(185, 28, 28, 0.2);
+}
+
+.status-indicator-pill.part-time {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid rgba(180, 83, 9, 0.25);
 }
 
 .status-dot {
@@ -567,14 +574,20 @@
   flex-shrink: 0;
 }
 
-.status-indicator-pill.active .status-dot {
-  background: #16a34a;
-  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.2);
+.status-indicator-pill.active .status-dot,
+.status-indicator-pill.full-time .status-dot {
+  background: var(--srcb-green, #3db166);
+  box-shadow: 0 0 0 2px rgba(61, 177, 102, 0.25);
 }
 
 .status-indicator-pill.suspended .status-dot {
   background: #dc2626;
   box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.2);
+}
+
+.status-indicator-pill.part-time .status-dot {
+  background: #d97706;
+  box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.2);
 }
 
 /* Suspended Row Accent & Avatar Badge */
@@ -629,6 +642,18 @@ html[data-theme="dark"] .user-avatar-suspended-badge {
 html[data-theme="dark"] .ict-suspended-board-alert {
   background: linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(239, 68, 68, 0.1) 100%);
   border-color: rgba(245, 158, 11, 0.25);
+}
+
+html[data-theme="dark"] .status-indicator-pill.full-time {
+  background: rgba(22, 163, 74, 0.15);
+  color: #4ade80;
+  border-color: rgba(74, 222, 128, 0.25);
+}
+
+html[data-theme="dark"] .status-indicator-pill.part-time {
+  background: rgba(217, 119, 6, 0.15);
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.25);
 }
 
 /* Action Dropdown Trigger in Table Row */

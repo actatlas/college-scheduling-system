@@ -1,14 +1,32 @@
 import { motion } from "framer-motion";
 import { PageHeader } from "../components/common/PageHeader";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { api } from "../data/apiClient";
 import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
 import { ConfirmModal } from "../components/common/ConfirmModal";
 import { TableSkeleton } from "../components/common/Skeleton";
-import { Tooltip } from "../components/common/Tooltip";
 import { useNotifications } from "../contexts/NotificationContext";
-import { Plus, Search, Edit2, Trash2, Clock } from "lucide-react";
+import {
+  Plus,
+  Search,
+  Edit2,
+  Trash2,
+  Clock,
+  Filter,
+  Download,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  X,
+  FileSpreadsheet,
+  FileCode,
+  Printer,
+  CheckCircle2,
+  Building2,
+} from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
 import { formatSystemId } from "../utils/idFormatter";
 import type { FacultyMember } from "../types";
@@ -37,7 +55,19 @@ export function FacultyPage() {
   const [fetching, setFetching] = useState(true);
   const [facultyToDelete, setFacultyToDelete] = useState<FacultyMember | null>(null);
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("All");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [deptFilter, setDeptFilter] = useState<string>("all");
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isExportOpen, setIsExportOpen] = useState(false);
+  const [openRowActionId, setOpenRowActionId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const filterRef = useRef<HTMLDivElement>(null);
+  const exportRef = useRef<HTMLDivElement>(null);
+  const actionMenuRef = useRef<HTMLDivElement>(null);
+
   const [isOpen, setIsOpen] = useState(false);
   const [editingFaculty, setEditingFaculty] = useState<FacultyMember | null>(null);
 
@@ -57,8 +87,10 @@ export function FacultyPage() {
   const { addNotification } = useNotifications();
 
   const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
-  const isAdmin = role === "super_admin" || role === "admin";
-  const canEdit = isAdmin;
+  const isSuperAdmin = role === "super_admin";
+  const isAdmin = isSuperAdmin || role === "admin";
+  const canEdit = isSuperAdmin;
+  const canDelete = isSuperAdmin;
   const isProgramHead = role === "program_head";
 
   const [form, setForm] = useState({
@@ -90,6 +122,10 @@ export function FacultyPage() {
   }, []);
 
   const handleEdit = (f: FacultyMember) => {
+    if (!canEdit) {
+      toast.push("Forbidden. Administrators cannot edit teacher profiles.", "error");
+      return;
+    }
     setEditingFaculty(f);
     const parts = (f.name || "").trim().split(" ");
     const fName = parts.slice(0, -1).join(" ") || parts[0] || "";
@@ -113,6 +149,10 @@ export function FacultyPage() {
   };
 
   const handleOpenAdd = () => {
+    if (!canEdit) {
+      toast.push("Forbidden. Only the Super Administrator can register new faculty.", "error");
+      return;
+    }
     setEditingFaculty(null);
     setFirstName("");
     setLastName("");
@@ -164,6 +204,11 @@ export function FacultyPage() {
 
   const executeDelete = async () => {
     if (!facultyToDelete) return;
+    if (!canDelete) {
+      toast.push("Forbidden. Only the Super Administrator can delete faculty members.", "error");
+      setFacultyToDelete(null);
+      return;
+    }
     setLoading(true);
     try {
       await api.delete(`/faculty/${encodeURIComponent(facultyToDelete.id)}`);
@@ -217,7 +262,6 @@ export function FacultyPage() {
 
     try {
       await api.put(`/faculty/${encodeURIComponent(selectedFacultyForAvail.id)}`, {
-        ...selectedFacultyForAvail,
         availability: formatted || "Monday-Friday: 08:00-17:00",
       });
       toast.push(`Updated availability for ${selectedFacultyForAvail.name}`, "success");
@@ -276,6 +320,11 @@ export function FacultyPage() {
 
     const fullName = `${firstName.trim()} ${lastName.trim()}`;
 
+    if (!canEdit) {
+      toast.push("Forbidden. Administrators cannot edit teacher profiles.", "error");
+      return;
+    }
+
     setLoading(true);
     try {
       const payload = {
@@ -313,27 +362,186 @@ export function FacultyPage() {
     }
   };
 
-  const filteredFaculty = faculty.filter((entry) => {
-    const matchesQuery = [
-      entry.name,
-      entry.department,
-      entry.status,
-      entry.availability,
-      entry.id,
-      entry.email,
-    ]
-      .join(" ")
-      .toLowerCase()
-      .includes(query.toLowerCase());
+  // Click outside listener for filter, export, and row actions popovers
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (filterRef.current && !filterRef.current.contains(target)) {
+        setIsFilterOpen(false);
+      }
+      if (exportRef.current && !exportRef.current.contains(target)) {
+        setIsExportOpen(false);
+      }
+      if (actionMenuRef.current && !actionMenuRef.current.contains(target)) {
+        setOpenRowActionId(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
-    const matchesStatus = statusFilter === "All" || entry.status === statusFilter;
-    const matchesProg = matchesProgram(entry.programs || entry.department);
+  // Distinct departments for filter popover
+  const departments = useMemo(() => {
+    const set = new Set<string>();
+    faculty.forEach((f) => {
+      if (f.department) set.add(f.department);
+    });
+    return Array.from(set).sort();
+  }, [faculty]);
 
-    return matchesQuery && matchesStatus && matchesProg;
-  });
+  // Filtered faculty calculation
+  const filteredFaculty = useMemo(() => {
+    return faculty.filter((entry) => {
+      const formattedId = formatSystemId(entry.id);
+      const matchesQuery =
+        !query.trim() ||
+        [
+          entry.name,
+          entry.department,
+          entry.status,
+          entry.availability,
+          entry.id,
+          formattedId,
+          entry.email || "",
+          entry.phone || "",
+          ...(entry.programs || []),
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(query.trim().toLowerCase());
+
+      const matchesStatus =
+        statusFilter === "all" ||
+        entry.status.toLowerCase() === statusFilter.toLowerCase();
+      const matchesDept =
+        deptFilter === "all" ||
+        entry.department.toLowerCase() === deptFilter.toLowerCase();
+      const matchesProg = matchesProgram(entry.programs || entry.department);
+
+      return matchesQuery && matchesStatus && matchesDept && matchesProg;
+    });
+  }, [faculty, query, statusFilter, deptFilter, matchesProgram]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [query, statusFilter, deptFilter, pageSize]);
+
+  // Pagination calculation
+  const totalPages = Math.max(1, Math.ceil(filteredFaculty.length / pageSize));
+  const paginatedFaculty = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return filteredFaculty.slice(startIndex, startIndex + pageSize);
+  }, [filteredFaculty, currentPage, pageSize]);
+
+  // Active filter count
+  const activeFilterCount =
+    (statusFilter !== "all" ? 1 : 0) + (deptFilter !== "all" ? 1 : 0);
+
+  const resetFilters = () => {
+    setQuery("");
+    setStatusFilter("all");
+    setDeptFilter("all");
+    setIsFilterOpen(false);
+  };
+
+  // Row Selection Handlers
+  const isAllCurrentPageSelected =
+    paginatedFaculty.length > 0 &&
+    paginatedFaculty.every((f) => selectedIds.has(f.id));
+
+  const handleToggleSelectAll = () => {
+    if (isAllCurrentPageSelected) {
+      const next = new Set(selectedIds);
+      paginatedFaculty.forEach((f) => next.delete(f.id));
+      setSelectedIds(next);
+    } else {
+      const next = new Set(selectedIds);
+      paginatedFaculty.forEach((f) => next.add(f.id));
+      setSelectedIds(next);
+    }
+  };
+
+  const handleToggleSelectRow = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setSelectedIds(next);
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+  };
+
+  const getInitials = (name: string) => {
+    if (!name) return "F";
+    const parts = name.trim().split(" ").filter(Boolean);
+    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
+
+  // Export handlers
+  const exportToCsv = (data: FacultyMember[], filename = "scsms_faculty_roster.csv") => {
+    const headers = [
+      "System ID",
+      "Employee ID",
+      "Full Name",
+      "Email Address",
+      "Phone",
+      "Department",
+      "Employment Status",
+      "Max Load (Hours)",
+      "Availability Schedule",
+    ];
+    const rows = data.map((f) => [
+      `"${f.id}"`,
+      `"${formatSystemId(f.id)}"`,
+      `"${(f.name || "").replace(/"/g, '""')}"`,
+      `"${f.email || ""}"`,
+      `"${f.phone || ""}"`,
+      `"${f.department || ""}"`,
+      `"${f.status || ""}"`,
+      `"${f.maxLoadHours || (f.status === "Part-Time" ? 12 : 24)}"`,
+      `"${(f.availability || "").replace(/"/g, '""')}"`,
+    ]);
+    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.push(`Exported ${data.length} faculty records to CSV`, "info");
+    setIsExportOpen(false);
+  };
+
+  const exportToJson = (data: FacultyMember[], filename = "scsms_faculty_roster.json") => {
+    const jsonContent = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonContent], { type: "application/json;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.push(`Exported ${data.length} faculty records to JSON`, "info");
+    setIsExportOpen(false);
+  };
+
+  const handlePrint = () => {
+    setIsExportOpen(false);
+    window.print();
+  };
 
   return (
     <motion.div
+      className="user-mgmt-container"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
@@ -363,174 +571,546 @@ export function FacultyPage() {
         actions={
           canEdit ? (
             <button
-              className="action-button"
+              className="user-mgmt-primary-btn"
               type="button"
               onClick={handleOpenAdd}
+              aria-label="Add new faculty member"
             >
               <Plus size={16} />
-              Add Faculty
+              <span>Add Faculty</span>
             </button>
           ) : undefined
         }
       />
 
-      <section className="card">
-        <div className="card__header" style={{ flexWrap: "wrap", gap: 12 }}>
-          <div>
-            <p className="eyebrow">Academic Roster</p>
-            <h3>Faculty Members ({filteredFaculty.length})</h3>
-          </div>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.85rem", fontWeight: 600 }}>
-              Status:
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #cbd5e1" }}
-              >
-                <option value="All">All Statuses</option>
-                <option value="Full-Time">Full-Time Only</option>
-                <option value="Part-Time">Part-Time Only</option>
-              </select>
-            </label>
-            <label className="topbar__search" aria-label="Search faculty">
+      {/* Main Faculty Roster Data Table Card */}
+      <section className="user-mgmt-card">
+        {/* Controls Toolbar (Search, Filter, Export, Add Faculty) */}
+        <div className="user-mgmt-toolbar">
+          {/* Search Input with Clear Button */}
+          <div className="user-mgmt-search-wrapper">
+            <span className="user-mgmt-search-icon">
               <Search size={16} />
-              <input
-                placeholder="Search name, department, ID..."
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-            </label>
+            </span>
+            <input
+              type="text"
+              className="user-mgmt-search-input"
+              placeholder="Search faculty by name, department, ID..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="Search faculty by name, department, or ID"
+            />
+            {query && (
+              <button
+                type="button"
+                className="user-mgmt-search-clear"
+                onClick={() => setQuery("")}
+                aria-label="Clear search"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* Controls Actions Group */}
+          <div className="user-mgmt-actions-group">
+            {/* Filter Popover Trigger */}
+            <div style={{ position: "relative" }} ref={filterRef}>
+              <button
+                type="button"
+                className={`user-mgmt-secondary-btn ${isFilterOpen || activeFilterCount > 0 ? "is-active" : ""}`}
+                onClick={() => setIsFilterOpen((prev) => !prev)}
+                aria-label="Filter faculty records"
+                aria-expanded={isFilterOpen}
+              >
+                <Filter size={15} />
+                <span>Filter</span>
+                {activeFilterCount > 0 && (
+                  <span className="filter-badge-count">{activeFilterCount}</span>
+                )}
+              </button>
+
+              {/* Filter Dropdown Popover */}
+              {isFilterOpen && (
+                <div className="user-mgmt-dropdown-popover user-mgmt-filter-popover" role="dialog">
+                  <div className="filter-popover-header">
+                    <h4 className="filter-popover-title">Filter Faculty</h4>
+                    {activeFilterCount > 0 && (
+                      <button
+                        type="button"
+                        className="filter-popover-reset"
+                        onClick={resetFilters}
+                      >
+                        Reset All
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Filter by Status */}
+                  <div className="filter-group">
+                    <label htmlFor="facultyStatusFilter">Employment Status</label>
+                    <select
+                      id="facultyStatusFilter"
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                    >
+                      <option value="all">All Statuses</option>
+                      <option value="Full-Time">Full-Time Only</option>
+                      <option value="Part-Time">Part-Time Only</option>
+                    </select>
+                  </div>
+
+                  {/* Filter by Department */}
+                  <div className="filter-group">
+                    <label htmlFor="facultyDeptFilter">Department</label>
+                    <select
+                      id="facultyDeptFilter"
+                      value={deptFilter}
+                      onChange={(e) => setDeptFilter(e.target.value)}
+                    >
+                      <option value="all">All Departments</option>
+                      {departments.map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Export Dropdown Trigger */}
+            <div style={{ position: "relative" }} ref={exportRef}>
+              <button
+                type="button"
+                className={`user-mgmt-secondary-btn ${isExportOpen ? "is-active" : ""}`}
+                onClick={() => setIsExportOpen((prev) => !prev)}
+                aria-label="Export faculty records"
+                aria-expanded={isExportOpen}
+              >
+                <Download size={15} />
+                <span>Export</span>
+                <ChevronDown size={14} />
+              </button>
+
+              {/* Export Menu Popover */}
+              {isExportOpen && (
+                <div className="user-mgmt-dropdown-popover user-mgmt-export-popover" role="menu">
+                  <button
+                    type="button"
+                    className="user-mgmt-menu-item"
+                    onClick={() => exportToCsv(filteredFaculty, "scsms_faculty_roster.csv")}
+                    role="menuitem"
+                  >
+                    <FileSpreadsheet size={16} style={{ color: "#10b981" }} />
+                    <span>Export as CSV</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="user-mgmt-menu-item"
+                    onClick={() => exportToJson(filteredFaculty, "scsms_faculty_roster.json")}
+                    role="menuitem"
+                  >
+                    <FileCode size={16} style={{ color: "#3b82f6" }} />
+                    <span>Export as JSON</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="user-mgmt-menu-item"
+                    onClick={handlePrint}
+                    role="menuitem"
+                  >
+                    <Printer size={16} style={{ color: "#6366f1" }} />
+                    <span>Print Table</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Add Faculty Primary Action Button */}
+            {canEdit && (
+              <button
+                type="button"
+                className="user-mgmt-primary-btn"
+                onClick={handleOpenAdd}
+                aria-label="Add new faculty member"
+              >
+                <Plus size={16} />
+                <span>Add Faculty</span>
+              </button>
+            )}
           </div>
         </div>
 
+        {/* Bulk Selection Bar (appears when 1+ rows selected) */}
+        {selectedIds.size > 0 && (
+          <div className="user-mgmt-bulk-bar" role="region" aria-label="Bulk actions toolbar">
+            <div className="bulk-bar-info">
+              <CheckCircle2 size={16} />
+              <span>
+                <strong>{selectedIds.size}</strong> of {filteredFaculty.length} instructor{selectedIds.size > 1 ? "s" : ""} selected
+              </span>
+            </div>
+            <div className="bulk-bar-actions">
+              <button
+                type="button"
+                className="bulk-action-btn"
+                onClick={() => {
+                  const selectedList = faculty.filter((f) => selectedIds.has(f.id));
+                  exportToCsv(selectedList, "scsms_selected_faculty.csv");
+                }}
+              >
+                <Download size={14} />
+                <span>Export Selected</span>
+              </button>
+              <button
+                type="button"
+                className="bulk-action-btn"
+                onClick={clearSelection}
+              >
+                <X size={14} />
+                <span>Clear Selection</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Data Table */}
         {fetching ? (
-          <TableSkeleton rows={6} columns={6} />
+          <TableSkeleton rows={7} columns={6} />
         ) : (
-          <div className="table-wrap">
-            <table>
+          <div className="user-mgmt-table-wrap">
+            <table className="user-mgmt-table" aria-label="Faculty roster data table">
               <thead>
                 <tr>
-                  <th>Employee ID</th>
-                  <th>Faculty Name</th>
-                  <th>Department / Programs</th>
-                  <th>Status</th>
-                  <th>Max Load / Availability</th>
-                  <th style={{ textAlign: "right" }}>Actions</th>
+                  <th className="user-mgmt-checkbox-cell">
+                    <input
+                      type="checkbox"
+                      className="custom-table-checkbox"
+                      checked={isAllCurrentPageSelected}
+                      onChange={handleToggleSelectAll}
+                      aria-label="Select all instructors on current page"
+                    />
+                  </th>
+                  <th>FACULTY MEMBER</th>
+                  <th>DEPARTMENT / PROGRAMS</th>
+                  <th>STATUS</th>
+                  <th>TEACHING LOAD / AVAILABILITY</th>
+                  <th style={{ textAlign: "right" }}>ACTIONS</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredFaculty.length === 0 ? (
+                {paginatedFaculty.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ textAlign: "center", padding: "32px 16px" }}>
-                      <p className="muted" style={{ margin: 0 }}>
-                        {isProgramHead
-                          ? `No faculty members found for ${selectedProgram.label}.`
-                          : "No faculty records match the selected criteria."}
-                      </p>
+                    <td colSpan={6}>
+                      <div className="user-mgmt-empty-state">
+                        <p className="empty-state-title">No faculty records found</p>
+                        <p className="empty-state-desc">
+                          {query || statusFilter !== "all" || deptFilter !== "all"
+                            ? "Try adjusting your search criteria, employment status, or department filters."
+                            : isProgramHead
+                            ? `No faculty members found for ${selectedProgram.label}.`
+                            : "No registered faculty exist yet. Click 'Add Faculty' above to register the first instructor."}
+                        </p>
+                        {(query || statusFilter !== "all" || deptFilter !== "all") && (
+                          <button
+                            type="button"
+                            className="empty-state-reset-btn"
+                            onClick={resetFilters}
+                          >
+                            Reset All Filters
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ) : (
-                  filteredFaculty.map((f) => (
-                    <tr key={f.id}>
-                      <td>
-                        <strong style={{ fontFamily: "var(--font-mono, monospace)", color: "var(--srcb-navy)" }}>
-                          {formatSystemId(f.id)}
-                        </strong>
-                      </td>
-                      <td>
-                        <div>
-                          <strong>{f.name}</strong>
-                          {f.email && (
-                            <p style={{ margin: 0, fontSize: "0.78rem", color: "var(--srcb-text-muted)" }}>
-                              {f.email}
-                            </p>
-                          )}
-                        </div>
-                      </td>
-                      <td>
-                        <div>
-                          <span>{f.department}</span>
-                          {f.programs && f.programs.length > 0 && (
-                            <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
-                              {f.programs.map((p) => (
-                                <span key={p} className="pill" style={{ fontSize: "0.72rem" }}>
-                                  {p}
-                                </span>
-                              ))}
+                  paginatedFaculty.map((f) => {
+                    const isSelected = selectedIds.has(f.id);
+                    const isActionOpen = openRowActionId === f.id;
+                    const availabilityDays = f.availability
+                      ? f.availability.split("|").length
+                      : 0;
+
+                    return (
+                      <tr key={f.id} className={isSelected ? "is-selected" : ""}>
+                        {/* Checkbox Column */}
+                        <td className="user-mgmt-checkbox-cell">
+                          <input
+                            type="checkbox"
+                            className="custom-table-checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleSelectRow(f.id)}
+                            aria-label={`Select instructor ${f.name}`}
+                          />
+                        </td>
+
+                        {/* Faculty Member Identity Cell */}
+                        <td>
+                          <div className="user-identity-cell">
+                            <div className="user-avatar-wrap">
+                              <div className="user-avatar-circle" aria-hidden="true">
+                                {getInitials(f.name)}
+                              </div>
                             </div>
-                          )}
-                        </div>
-                      </td>
-                      <td>
-                        <span className={`pill ${f.status === "Full-Time" ? "pill--success" : "pill--warning"}`}>
-                          {f.status}
-                        </span>
-                      </td>
-                      <td>
-                        <div>
-                          <span style={{ fontWeight: 700, color: "var(--srcb-navy)" }}>
-                            {f.maxLoadHours || (f.status === "Part-Time" ? 12 : 24)} hrs/wk
+                            <div className="user-identity-details">
+                              <span className="user-identity-name">{f.name}</span>
+                              <span className="user-identity-email">
+                                {f.email || f.phone || "No email recorded"}
+                              </span>
+                              <span className="user-identity-id">
+                                {formatSystemId(f.id)}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Department / Programs Cell */}
+                        <td>
+                          <div>
+                            <span className="pill" style={{ fontWeight: 700 }}>
+                              <Building2 size={13} style={{ marginRight: 4 }} />
+                              {f.department}
+                            </span>
+                            {f.programs && f.programs.length > 0 && (
+                              <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
+                                {f.programs.map((p) => (
+                                  <span key={p} className="pill pill--slate" style={{ fontSize: "0.72rem" }}>
+                                    {p}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Employment Status Cell */}
+                        <td>
+                          <span
+                            className={`status-indicator-pill ${
+                              f.status === "Part-Time" ? "part-time" : "full-time"
+                            }`}
+                          >
+                            <span className="status-dot" aria-hidden="true" />
+                            <span>{f.status}</span>
                           </span>
-                          <p style={{ margin: "2px 0 0", fontSize: "0.76rem", color: "var(--srcb-text-muted)" }}>
-                            {f.availability
-                              ? f.availability.split("|").length > 2
-                                ? `${f.availability.split("|").length} Active Days Configured`
-                                : f.availability
-                              : "Standard Schedule"}
-                          </p>
-                        </div>
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
-                          <Tooltip content="Manage Weekly Availability">
+                        </td>
+
+                        {/* Teaching Load / Availability Cell */}
+                        <td>
+                          <div>
+                            <span style={{ fontWeight: 700, color: "var(--srcb-navy)" }}>
+                              {f.maxLoadHours || (f.status === "Part-Time" ? 12 : 24)} hrs/wk max
+                            </span>
+                            <p
+                              style={{
+                                margin: "3px 0 0",
+                                fontSize: "0.76rem",
+                                color: "var(--srcb-text-muted)",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 4,
+                              }}
+                            >
+                              <Clock size={12} />
+                              {f.availability
+                                ? availabilityDays > 2
+                                  ? `${availabilityDays} Active Days Configured`
+                                  : f.availability
+                                : "Standard Schedule"}
+                            </p>
+                          </div>
+                        </td>
+
+                        {/* Actions Dropdown Column */}
+                        <td style={{ textAlign: "right" }}>
+                          <div
+                            style={{ position: "relative", display: "inline-block" }}
+                            ref={isActionOpen ? actionMenuRef : undefined}
+                          >
                             <button
                               type="button"
-                              className="icon-button"
-                              aria-label={`Manage weekly availability for ${f.name}`}
-                              onClick={() => openAvailabilityModal(f)}
-                              style={{ background: "none", border: "none", cursor: "pointer", color: "#0284c7" }}
+                              className={`row-actions-trigger ${isActionOpen ? "is-open" : ""}`}
+                              onClick={() =>
+                                setOpenRowActionId((prev) => (prev === f.id ? null : f.id))
+                              }
+                              aria-label={`Actions for ${f.name}`}
+                              aria-expanded={isActionOpen}
                             >
-                              <Clock size={16} />
+                              <span>Actions</span>
+                              <ChevronDown size={13} />
                             </button>
-                          </Tooltip>
 
-                          {canEdit && (
-                            <>
-                              <Tooltip content="Edit Faculty Profile">
+                            {/* Row Action Dropdown Popover */}
+                            {isActionOpen && (
+                              <div className="user-mgmt-dropdown-popover" role="menu">
                                 <button
                                   type="button"
-                                  className="icon-button"
-                                  aria-label={`Edit profile for ${f.name}`}
-                                  onClick={() => handleEdit(f)}
-                                  style={{ background: "none", border: "none", cursor: "pointer", color: "#4b5563" }}
+                                  className="user-mgmt-menu-item"
+                                  onClick={() => {
+                                    setOpenRowActionId(null);
+                                    openAvailabilityModal(f);
+                                  }}
+                                  role="menuitem"
                                 >
-                                  <Edit2 size={16} />
+                                  <Clock size={15} style={{ color: "#0284c7" }} />
+                                  <span>Manage Availability</span>
                                 </button>
-                              </Tooltip>
-
-                              <Tooltip content="Delete Faculty">
-                                <button
-                                  type="button"
-                                  className="icon-button"
-                                  aria-label={`Delete profile for ${f.name}`}
-                                  onClick={() => setFacultyToDelete(f)}
-                                  style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626" }}
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              </Tooltip>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                                {canEdit && (
+                                  <button
+                                    type="button"
+                                    className="user-mgmt-menu-item"
+                                    onClick={() => {
+                                      setOpenRowActionId(null);
+                                      handleEdit(f);
+                                    }}
+                                    role="menuitem"
+                                  >
+                                    <Edit2 size={15} />
+                                    <span>Edit Profile</span>
+                                  </button>
+                                )}
+                                {canDelete && (
+                                  <>
+                                    <div className="user-mgmt-menu-divider" />
+                                    <button
+                                      type="button"
+                                      className="user-mgmt-menu-item danger"
+                                      onClick={() => {
+                                        setOpenRowActionId(null);
+                                        setFacultyToDelete(f);
+                                      }}
+                                      role="menuitem"
+                                    >
+                                      <Trash2 size={15} />
+                                      <span>Delete Faculty</span>
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
         )}
+
+        {/* Pagination & Summary Footer */}
+        <div className="user-mgmt-pagination">
+          <div className="pagination-summary">
+            {filteredFaculty.length === 0
+              ? "Showing 0 entries"
+              : `Showing ${Math.min(
+                  (currentPage - 1) * pageSize + 1,
+                  filteredFaculty.length
+                )} to ${Math.min(
+                  currentPage * pageSize,
+                  filteredFaculty.length
+                )} of ${filteredFaculty.length} entries`}
+          </div>
+
+          <div className="pagination-controls-group">
+            {/* Rows per page selector */}
+            <div className="pagination-rows-select">
+              <span>Rows per page:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                aria-label="Select rows per page"
+              >
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+              </select>
+            </div>
+
+            {/* Pagination Navigation */}
+            <div className="pagination-nav-buttons" role="navigation" aria-label="Pagination">
+              <button
+                type="button"
+                className="pagination-btn"
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                title="First Page"
+                aria-label="First Page"
+              >
+                <ChevronsLeft size={16} />
+              </button>
+              <button
+                type="button"
+                className="pagination-btn"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                title="Previous Page"
+                aria-label="Previous Page"
+              >
+                <ChevronLeft size={16} />
+              </button>
+
+              {/* Numbered page buttons */}
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((page) => {
+                  if (totalPages <= 5) return true;
+                  return (
+                    page === 1 ||
+                    page === totalPages ||
+                    Math.abs(page - currentPage) <= 1
+                  );
+                })
+                .map((page, idx, arr) => {
+                  const prev = arr[idx - 1];
+                  const showEllipsis = prev && page - prev > 1;
+
+                  return (
+                    <div key={page} style={{ display: "inline-flex", alignItems: "center" }}>
+                      {showEllipsis && (
+                        <span style={{ padding: "0 4px", color: "var(--srcb-text-muted)", fontSize: "0.85rem" }}>
+                          …
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        className={`pagination-btn ${currentPage === page ? "is-active" : ""}`}
+                        onClick={() => setCurrentPage(page)}
+                        aria-label={`Page ${page}`}
+                        aria-current={currentPage === page ? "page" : undefined}
+                      >
+                        {page}
+                      </button>
+                    </div>
+                  );
+                })}
+
+              <button
+                type="button"
+                className="pagination-btn"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages || totalPages === 0}
+                title="Next Page"
+                aria-label="Next Page"
+              >
+                <ChevronRight size={16} />
+              </button>
+              <button
+                type="button"
+                className="pagination-btn"
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages || totalPages === 0}
+                title="Last Page"
+                aria-label="Last Page"
+              >
+                <ChevronsRight size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* Add / Edit Faculty Modal */}
@@ -782,7 +1362,7 @@ export function FacultyPage() {
 
       {/* Delete Faculty Confirmation Modal */}
       <ConfirmModal
-        isOpen={Boolean(facultyToDelete)}
+        isOpen={Boolean(facultyToDelete) && canDelete}
         title="Delete Faculty Profile"
         message={`Are you sure you want to delete ${facultyToDelete?.name} (${facultyToDelete?.id})? Active class schedules assigned to this faculty member will become unassigned.`}
         confirmLabel="Delete Faculty"

@@ -389,7 +389,7 @@ export function SearchableSelect({
                           style={{
                             fontSize: "0.86rem",
                             fontWeight: isSelected ? 700 : 500,
-                            color: isSelected ? "var(--srcb-navy, #0f2c59)" : "var(--srcb-text, #1e293b)",
+                            color: isSelected ? "var(--srcb-navy, #163269)" : "var(--srcb-text, #1e293b)",
                           }}
                         >
                           {opt.label}

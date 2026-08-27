@@ -204,19 +204,17 @@ export function RoomsPage() {
                         title="Edit Room"
                         aria-label={`Edit room ${room.number}`}
                         onClick={() => handleEdit(room)}
-                        style={{ background: "none", border: "none", cursor: "pointer", color: "#4b5563" }}
                       >
-                        <Edit2 size={16} />
+                        <Edit2 size={15} />
                       </button>
                       <button
                         type="button"
-                        className="icon-button"
+                        className="icon-button icon-button--danger"
                         title="Delete Room"
                         aria-label={`Delete room ${room.number}`}
                         onClick={() => setRoomToDelete(room)}
-                        style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626" }}
                       >
-                        <Trash2 size={16} />
+                        <Trash2 size={15} />
                       </button>
                     </div>
                   )}

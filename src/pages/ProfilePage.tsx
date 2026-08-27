@@ -239,14 +239,14 @@ export function ProfilePage() {
                 width: 52,
                 height: 52,
                 borderRadius: "50%",
-                background: "linear-gradient(135deg, var(--srcb-navy, #0f2c59), #0284c7)",
+                background: "linear-gradient(135deg, var(--srcb-navy, #163269), #0284c7)",
                 color: "#ffffff",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 fontWeight: 800,
                 fontSize: "1.2rem",
-                boxShadow: "0 4px 12px rgba(15, 44, 89, 0.2)",
+                boxShadow: "0 4px 12px rgba(var(--srcb-navy-rgb, 22, 50, 105), 0.2)",
                 flexShrink: 0,
               }}
             >

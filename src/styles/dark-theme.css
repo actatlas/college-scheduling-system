@@ -26,16 +26,20 @@ html[data-theme="dark"] {
 
   /* Brand Accents (Vibrant & legible in Dark Mode) */
   --srcb-navy: #38bdf8;
+  --srcb-navy-rgb: 56, 189, 248;
   --srcb-navy-dark: #60a5fa;
   --srcb-navy-soft: rgba(56, 189, 248, 0.12);
   --srcb-blue: #38bdf8;
   --srcb-blue-strong: #60a5fa;
   --srcb-blue-soft: rgba(56, 189, 248, 0.14);
-  --srcb-terracotta: #fb923c;
+  --srcb-terracotta: #38bdf8;
 
-  /* Status Colors */
+  /* Official SRCB Status & Accent Colors in Dark Mode */
   --srcb-green: #34d399;
+  --srcb-green-rgb: 52, 211, 153;
+  --srcb-green-dark: #10b981;
   --srcb-green-soft: rgba(52, 211, 153, 0.14);
+  --srcb-green-border: rgba(52, 211, 153, 0.3);
   --srcb-gold: #fbbf24;
   --srcb-gold-soft: rgba(251, 191, 36, 0.14);
   --srcb-amber-bg: rgba(245, 158, 11, 0.12);
@@ -206,20 +210,29 @@ html[data-theme="dark"] .topbar__program-badge {
   color: #f1f5f9;
 }
 
-html[data-theme="dark"] .topbar__program-badge:hover,
-html[data-theme="dark"] .topbar__program-badge:focus-within {
+html[data-theme="dark"] .topbar__program-badge:hover {
   background: rgba(255, 255, 255, 0.08);
   border-color: #38bdf8;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
-html[data-theme="dark"] .topbar__program-select select {
-  background: transparent;
-  color: #f4f4f6;
+html[data-theme="dark"] .topbar__program-badge:focus-within {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
 }
 
-html[data-theme="dark"] .topbar__program-select select option {
+html[data-theme="dark"] .topbar__program-native-select {
+  color: #f1f5f9;
+  background: transparent !important;
+}
+
+html[data-theme="dark"] .topbar__program-native-select option {
   background: #181920;
   color: #f4f4f6;
+}
+
+html[data-theme="dark"] .topbar__program-chevron {
+  color: #94a3b8;
 }
 
 html[data-theme="dark"] .topbar__icon {
@@ -296,12 +309,49 @@ html[data-theme="dark"] .hero-card,
 html[data-theme="dark"] .stat-card,
 html[data-theme="dark"] .table-wrap,
 html[data-theme="dark"] .modal-card {
-  background: var(--srcb-surface);
+  background: var(--srcb-surface-elevated, #181920);
   border: 1px solid var(--srcb-border);
   box-shadow: var(--srcb-shadow-soft);
   color: var(--srcb-text);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+}
+
+html[data-theme="dark"] .card h1,
+html[data-theme="dark"] .card h2,
+html[data-theme="dark"] .card h3,
+html[data-theme="dark"] .card h4,
+html[data-theme="dark"] .card h5,
+html[data-theme="dark"] .card strong,
+html[data-theme="dark"] .card b {
+  color: var(--srcb-text, #f4f4f6);
+}
+
+html[data-theme="dark"] .card p {
+  color: var(--srcb-text-muted, #a1a1aa);
+}
+
+/* Force legibility for any legacy inline dark slate/navy colors inside cards */
+html[data-theme="dark"] .card [style*="color: #334155"],
+html[data-theme="dark"] .card [style*="color:#334155"],
+html[data-theme="dark"] .card [style*="color: #1e293b"],
+html[data-theme="dark"] .card [style*="color:#1e293b"],
+html[data-theme="dark"] .card [style*="color: #0f172a"],
+html[data-theme="dark"] .card [style*="color:#0f172a"] {
+  color: #f4f4f6 !important;
+}
+
+html[data-theme="dark"] .card [style*="color: #64748b"],
+html[data-theme="dark"] .card [style*="color:#64748b"],
+html[data-theme="dark"] .card [style*="color: #475569"],
+html[data-theme="dark"] .card [style*="color:#475569"] {
+  color: #cbd5e1 !important;
+}
+
+html[data-theme="dark"] .card svg[stroke="#0d5499"],
+html[data-theme="dark"] .card svg[color="#0d5499"] {
+  stroke: #38bdf8 !important;
+  color: #38bdf8 !important;
 }
 
 html[data-theme="dark"] .card:hover {
@@ -435,7 +485,7 @@ html[data-theme="dark"] .progress-bar-track {
 }
 
 html[data-theme="dark"] .progress-bar-fill {
-  background: linear-gradient(90deg, #2563eb, #38bdf8);
+  background: linear-gradient(90deg, #38bdf8, #34d399);
 }
 
 html[data-theme="dark"] .progress-footnote {
@@ -665,6 +715,7 @@ html[data-theme="dark"] .login-button:hover {
 
 html[data-theme="dark"] .secondary-button,
 html[data-theme="dark"] .ghost-button,
+html[data-theme="dark"] .cancel-button,
 html[data-theme="dark"] .action-button--outline {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -673,6 +724,7 @@ html[data-theme="dark"] .action-button--outline {
 
 html[data-theme="dark"] .secondary-button:hover,
 html[data-theme="dark"] .ghost-button:hover,
+html[data-theme="dark"] .cancel-button:hover,
 html[data-theme="dark"] .action-button--outline:hover {
   background: rgba(255, 255, 255, 0.09);
   border-color: rgba(255, 255, 255, 0.2);
@@ -689,6 +741,28 @@ html[data-theme="dark"] .icon-button:hover {
   background: rgba(255, 255, 255, 0.09);
   border-color: rgba(255, 255, 255, 0.18);
   color: #ffffff;
+}
+
+html[data-theme="dark"] .icon-button--danger {
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+html[data-theme="dark"] .icon-button--danger:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+}
+
+html[data-theme="dark"] .icon-button--info {
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.25);
+}
+
+html[data-theme="dark"] .icon-button--info:hover {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #7dd3fc;
 }
 
 html[data-theme="dark"] .action-button--royal,
