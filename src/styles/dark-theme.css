@@ -609,16 +609,20 @@ html[data-theme="dark"] .pill--royal {
   border: 1px solid rgba(56, 189, 248, 0.25);
 }
 
-html[data-theme="dark"] .pill--online,
 html[data-theme="dark"] .pill--emerald,
 html[data-theme="dark"] .pill--active,
+html[data-theme="dark"] .pill--available,
+html[data-theme="dark"] .pill--approved,
 html[data-theme="dark"] .pill--success {
   background: rgba(52, 211, 153, 0.14);
   color: #34d399;
   border: 1px solid rgba(52, 211, 153, 0.25);
 }
 
+html[data-theme="dark"] .pill--online,
 html[data-theme="dark"] .pill--amber,
+html[data-theme="dark"] .pill--warning,
+html[data-theme="dark"] .pill--pending,
 html[data-theme="dark"] .pill--gold {
   background: rgba(245, 158, 11, 0.14);
   color: #fbbf24;
@@ -627,7 +631,11 @@ html[data-theme="dark"] .pill--gold {
 
 html[data-theme="dark"] .pill--conflict,
 html[data-theme="dark"] .pill--danger,
-html[data-theme="dark"] .pill--red {
+html[data-theme="dark"] .pill--red,
+html[data-theme="dark"] .pill--inactive,
+html[data-theme="dark"] .pill--suspended,
+html[data-theme="dark"] .pill--unavailable,
+html[data-theme="dark"] .pill--error {
   background: rgba(239, 68, 68, 0.14);
   color: #f87171;
   border: 1px solid rgba(239, 68, 68, 0.25);
@@ -1161,6 +1169,45 @@ html[data-theme="dark"] .searchable-select-item.is-selected {
   background: rgba(56, 189, 248, 0.15) !important;
   border-left-color: #38bdf8 !important;
 }
+
+/* ==========================================================================
+   SCHEDULE DETAILS MODAL & CONFIRM MODAL (DARK THEME)
+   ========================================================================== */
+
+html[data-theme="dark"] .modal-card--confirm {
+  background: #14151a !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+html[data-theme="dark"] .schedule-details-subject-card,
+html[data-theme="dark"] .schedule-details-card {
+  background: #14151a !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+html[data-theme="dark"] .schedule-details-card-value {
+  color: #f1f5f9 !important;
+}
+
+html[data-theme="dark"] .schedule-details-badge-bar {
+  background: rgba(56, 189, 248, 0.12) !important;
+  border-color: rgba(56, 189, 248, 0.3) !important;
+}
+
+html[data-theme="dark"] .user-mgmt-empty-state {
+  background: #14151a !important;
+}
+
+html[data-theme="dark"] .empty-state-title {
+  color: #f1f5f9 !important;
+}
+
+html[data-theme="dark"] .empty-state-reset-btn {
+  background: #1e2029 !important;
+  color: #38bdf8 !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
 
 
 

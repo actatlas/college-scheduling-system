@@ -1,0 +1,98 @@
+/* ==========================================================================
+   SCHEDULE DETAILS MODAL COMPONENT STYLES
+   ========================================================================== */
+
+.schedule-details-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.schedule-details-badge-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 8px;
+}
+
+.schedule-details-badge-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--srcb-text, #0f172a);
+}
+
+.schedule-details-subject-card {
+  padding: 14px;
+  background: var(--srcb-surface, #ffffff);
+  border: 1px solid var(--srcb-border, #e2e8f0);
+  border-radius: 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.schedule-details-subject-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(2, 132, 199, 0.12);
+  color: #0284c7;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.schedule-details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.schedule-details-card {
+  padding: 12px;
+  background: var(--srcb-surface, #ffffff);
+  border: 1px solid var(--srcb-border, #e2e8f0);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.schedule-details-card-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.schedule-details-card-label {
+  font-size: 0.72rem;
+  color: var(--srcb-text-muted, #64748b);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.schedule-details-card-value {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--srcb-text, #0f172a);
+  margin-top: 2px;
+}
+
+.schedule-details-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--srcb-border, #e2e8f0);
+}

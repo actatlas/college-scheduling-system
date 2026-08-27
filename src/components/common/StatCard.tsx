@@ -1,9 +1,11 @@
+import type React from "react";
+
 interface StatCardProps {
   label: string;
   value: string;
   detail: string;
-  icon: string;
-  tone: "royal" | "gold" | "navy" | "slate" | "emerald" | "amber";
+  icon: React.ReactNode;
+  tone: "royal" | "gold" | "navy" | "slate" | "emerald" | "amber" | "danger" | "red";
   onClick?: () => void;
 }
 

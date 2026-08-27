@@ -78,7 +78,9 @@
 }
 
 .pill--online,
-.pill--amber {
+.pill--amber,
+.pill--warning,
+.pill--pending {
   background: var(--srcb-amber-bg, #fffbeb);
   color: var(--srcb-amber-text, #b45309);
   border: 1px solid var(--srcb-amber-border, #fcd34d);
@@ -93,7 +95,11 @@
 
 .pill--conflict,
 .pill--danger,
-.pill--red {
+.pill--red,
+.pill--inactive,
+.pill--suspended,
+.pill--unavailable,
+.pill--error {
   background: var(--srcb-red-bg, #fef2f2);
   color: var(--srcb-red-text, #dc2626);
   border: 1px solid var(--srcb-red-border, #fca5a5);
@@ -101,7 +107,10 @@
 
 .pill--emerald,
 .pill--green,
-.pill--success {
+.pill--success,
+.pill--active,
+.pill--available,
+.pill--approved {
   background: var(--srcb-green-soft, #eaf7ef);
   color: var(--srcb-green-dark, #349b57);
   border: 1px solid var(--srcb-green-border, #a7e3bd);

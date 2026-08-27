@@ -15,6 +15,7 @@ import {
   Users,
   DoorOpen,
   CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 import { api } from "../data/apiClient";
 import { useProgramContext } from "../contexts/ProgramContext";
@@ -636,8 +637,8 @@ export function ExamSchedulesPage() {
             Are you sure you want to remove the <strong>{examToDelete?.term} Examination</strong> schedule for <strong>{examToDelete?.subjectCode} - {examToDelete?.subject}</strong> on {examToDelete?.examDate}?
             <br />
             <br />
-            <span style={{ fontSize: "0.82rem", color: "#dc2626" }}>
-              ⚠️ Synchronized sections ({examToDelete?.synchronizedSections?.join(", ")}) and the assigned proctor ({examToDelete?.proctor}) will be released.
+            <span style={{ fontSize: "0.82rem", color: "#dc2626", display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <AlertTriangle size={14} style={{ flexShrink: 0 }} /> Synchronized sections ({examToDelete?.synchronizedSections?.join(", ")}) and the assigned proctor ({examToDelete?.proctor}) will be released.
             </span>
           </span>
         }

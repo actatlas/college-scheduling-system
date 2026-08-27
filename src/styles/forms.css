@@ -79,3 +79,22 @@
   background: #fee2e2;
 }
 
+.user-mgmt-modal-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--srcb-border, #cbd5e1);
+  border-radius: 8px;
+  background: var(--srcb-surface-elevated, #ffffff);
+  color: var(--srcb-text, #0f172a);
+  font-size: 0.88rem;
+  transition: all 0.15s ease;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.user-mgmt-modal-input:focus {
+  border-color: var(--srcb-navy, #163269);
+  box-shadow: 0 0 0 3px rgba(22, 50, 105, 0.12);
+}
+
+

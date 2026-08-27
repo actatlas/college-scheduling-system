@@ -6,7 +6,7 @@ import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
 import { ConfirmModal } from "../components/common/ConfirmModal";
 import { TableSkeleton } from "../components/common/Skeleton";
-import { Plus, Search, Edit2, Trash2 } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, AlertTriangle } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
 import { getProgramLogo } from "../utils/programLogos";
 import type { SubjectItem, CourseItem, ProgramItem, FacultyMember } from "../types";
@@ -695,8 +695,8 @@ export function SubjectsPage() {
             Are you sure you want to delete <strong>{subjectToDelete?.code} - {subjectToDelete?.name}</strong> from the institutional curriculum catalog?
             <br />
             <br />
-            <span style={{ fontSize: "0.82rem", color: "#dc2626" }}>
-              ⚠️ Make sure any scheduled class blocks using this subject are updated accordingly.
+            <span style={{ fontSize: "0.82rem", color: "#dc2626", display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <AlertTriangle size={14} style={{ flexShrink: 0 }} /> Make sure any scheduled class blocks using this subject are updated accordingly.
             </span>
           </span>
         }

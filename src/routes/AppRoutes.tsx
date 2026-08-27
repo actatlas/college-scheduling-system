@@ -82,6 +82,12 @@ const LandingPage = lazy(() =>
     default: module.LandingPage,
   })),
 );
+const SidebarDemoPage = lazy(() =>
+  import("../pages/SidebarDemoPage").then((module) => ({
+    default: module.SidebarDemoPage,
+  })),
+);
+
 
 interface ProtectedRouteProps {
   allowedRoles: string[];
@@ -112,6 +118,7 @@ export function AppRoutes() {
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/sidebar-demo" element={<SidebarDemoPage />} />
 
         <Route element={<MainLayout />}>
           {/* Dashboard and Profile accessible by all authenticated roles */}

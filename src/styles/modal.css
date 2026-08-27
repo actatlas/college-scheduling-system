@@ -48,3 +48,18 @@
   gap: 16px;
 }
 
+.modal-card--confirm {
+  width: min(440px, 100%);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  width: 100%;
+}
+
+

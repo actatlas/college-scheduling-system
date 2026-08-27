@@ -32,6 +32,10 @@ import {
   Sparkles,
   CheckCircle2,
   Building2,
+  AlertTriangle,
+  AlertCircle,
+  Lock,
+  Lightbulb,
 } from "lucide-react";
 import { formatSystemId } from "../utils/idFormatter";
 import type { UserAccount, UserRole, ProgramItem, FacultyMember } from "../types";
@@ -812,10 +816,10 @@ export function UserManagementPage() {
             </div>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <strong style={{ fontSize: "0.95rem", color: "#991b1b" }}>
-                  ⚠️ ICT Governance Board Notice: {totalSuspendedCount} Account{totalSuspendedCount === 1 ? "" : "s"} Suspended
+                <strong style={{ fontSize: "0.95rem", color: "#991b1b", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <AlertTriangle size={16} style={{ flexShrink: 0 }} /> ICT Governance Board Notice: {totalSuspendedCount} Account{totalSuspendedCount === 1 ? "" : "s"} Suspended
                 </strong>
-                <span className="pill pill--amber" style={{ fontSize: "0.7rem", fontWeight: 700 }}>
+                <span className="pill pill--danger" style={{ fontSize: "0.7rem", fontWeight: 700 }}>
                   Login Blocked
                 </span>
               </div>
@@ -1188,16 +1192,19 @@ export function UserManagementPage() {
                                 )}
                                 {isSuspended && (
                                   <span
-                                    className="pill pill--amber"
+                                    className="pill pill--danger"
                                     style={{
                                       marginLeft: 6,
                                       fontSize: "0.68rem",
-                                      padding: "1px 6px",
+                                      padding: "2px 6px",
                                       fontWeight: 700,
                                       letterSpacing: "0.02em",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 4,
                                     }}
                                   >
-                                    🔒 SUSPENDED
+                                    <Lock size={11} style={{ flexShrink: 0 }} /> Suspended
                                   </span>
                                 )}
                               </span>
@@ -1764,8 +1771,8 @@ export function UserManagementPage() {
                 aria-required="true"
               />
               {firstNameError && (
-                <p className="field-error-msg" role="alert">
-                  ⚠️ {firstNameError}
+                <p className="field-error-msg" role="alert" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <AlertCircle size={13} style={{ flexShrink: 0 }} /> {firstNameError}
                 </p>
               )}
             </div>
@@ -1784,8 +1791,8 @@ export function UserManagementPage() {
                 placeholder="e.g. Mathison"
               />
               {middleNameError && (
-                <p className="field-error-msg" role="alert">
-                  ⚠️ {middleNameError}
+                <p className="field-error-msg" role="alert" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <AlertCircle size={13} style={{ flexShrink: 0 }} /> {middleNameError}
                 </p>
               )}
             </div>
@@ -1803,8 +1810,8 @@ export function UserManagementPage() {
                 aria-required="true"
               />
               {lastNameError && (
-                <p className="field-error-msg" role="alert">
-                  ⚠️ {lastNameError}
+                <p className="field-error-msg" role="alert" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <AlertCircle size={13} style={{ flexShrink: 0 }} /> {lastNameError}
                 </p>
               )}
             </div>
@@ -1839,8 +1846,8 @@ export function UserManagementPage() {
               placeholder="e.g. 09171234567"
             />
             {phoneError && (
-              <p className="field-error-msg" role="alert">
-                ⚠️ {phoneError}
+              <p className="field-error-msg" role="alert" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <AlertCircle size={13} style={{ flexShrink: 0 }} /> {phoneError}
               </p>
             )}
           </div>
@@ -1852,10 +1859,10 @@ export function UserManagementPage() {
               value={form.role}
               onChange={(e) => setForm({ ...form, role: e.target.value as UserRole })}
             >
-              <option value="super_admin">⚡ Super Admin (ICT Office)</option>
-              <option value="admin">🏛️ Administrator (Registrar)</option>
-              <option value="program_head">🎓 Program Head</option>
-              <option value="teacher">👨‍🏫 Faculty / Teacher</option>
+              <option value="super_admin">Super Admin (ICT Office)</option>
+              <option value="admin">Administrator (College Registrar)</option>
+              <option value="program_head">Program Head</option>
+              <option value="teacher">Faculty Member / Teacher</option>
             </select>
           </div>
 
@@ -1989,9 +1996,15 @@ export function UserManagementPage() {
                     fontSize: "0.78rem",
                     color: "var(--srcb-navy)",
                     lineHeight: 1.4,
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 6,
                   }}
                 >
-                  💡 <strong>Teaching Load Notice:</strong> Program Heads teach major subjects (such as 3rd Year classes). Linking a faculty profile enables them to be assigned to classes and view their teaching schedule.
+                  <Lightbulb size={15} style={{ flexShrink: 0, marginTop: 1 }} />
+                  <span>
+                    <strong>Teaching Load Notice:</strong> Program Heads teach major subjects (such as 3rd Year classes). Linking a faculty profile enables them to be assigned to classes and view their teaching schedule.
+                  </span>
                 </p>
               )}
             </div>

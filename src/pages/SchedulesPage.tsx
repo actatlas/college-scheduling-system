@@ -19,6 +19,11 @@ import {
   Clock,
   ExternalLink,
   Eye,
+  Download,
+  Calendar,
+  GraduationCap,
+  DoorOpen,
+  UserCheck,
 } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
 import { validateScheduleSlot, formatGroupedAvailability } from "../utils/scheduling";
@@ -1158,7 +1163,7 @@ export function SchedulesPage() {
                 <option value="All">All Faculty Members</option>
                 {(role === "teacher" || role === "program_head") && currentUserName && (
                   <option value={currentTeacherId || currentUserName}>
-                    ⭐ {role === "program_head" ? `My Classes (${currentUserName})` : `My Schedule (${currentUserName})`}
+                    {role === "program_head" ? `My Classes (${currentUserName})` : `My Schedule (${currentUserName})`}
                   </option>
                 )}
                 {facultyList
@@ -1282,10 +1287,12 @@ export function SchedulesPage() {
                               >
                                 <div className="schedule-empty-slot">
                                   {isDropHover ? (
-                                    <span className="schedule-drag-hint">📥 Drop to assign here</span>
+                                    <span className="schedule-drag-hint" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                      <Download size={13} style={{ flexShrink: 0 }} /> Drop to assign here
+                                    </span>
                                   ) : inRange && dragStart && dragCurrent ? (
-                                    <span className="schedule-drag-hint">
-                                      🎯 {TIME_SLOTS[Math.min(dragStart.slotIdx, dragCurrent.slotIdx)].split("-")[0]} -{" "}
+                                    <span className="schedule-drag-hint" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                      <Clock size={13} style={{ flexShrink: 0 }} /> {TIME_SLOTS[Math.min(dragStart.slotIdx, dragCurrent.slotIdx)].split("-")[0]} -{" "}
                                       {TIME_SLOTS[Math.max(dragStart.slotIdx, dragCurrent.slotIdx)].split("-")[1]}
                                     </span>
                                   ) : canCreate ? (
@@ -1386,17 +1393,17 @@ export function SchedulesPage() {
                                   <div style={{ fontSize: "0.8rem", color: "var(--srcb-text)", marginTop: 3, fontWeight: 600 }}>
                                     {item.subject}
                                   </div>
-                                  <div style={{ fontSize: "0.75rem", color: "var(--srcb-text-muted)", marginTop: 4 }}>
-                                    <strong>🕒 Time:</strong> {item.time}
+                                  <div style={{ fontSize: "0.75rem", color: "var(--srcb-text-muted)", marginTop: 4, display: "flex", alignItems: "center", gap: 5 }}>
+                                    <Clock size={12} style={{ flexShrink: 0 }} /> <strong>Time:</strong> {item.time}
                                   </div>
-                                  <div style={{ fontSize: "0.75rem", color: "var(--srcb-text-muted)" }}>
-                                    <strong>👥 Sec:</strong> {item.section}
+                                  <div style={{ fontSize: "0.75rem", color: "var(--srcb-text-muted)", display: "flex", alignItems: "center", gap: 5 }}>
+                                    <GraduationCap size={12} style={{ flexShrink: 0 }} /> <strong>Sec:</strong> {item.section}
                                   </div>
-                                  <div style={{ fontSize: "0.75rem", color: "var(--srcb-text-muted)" }}>
-                                    <strong>📍 Room:</strong> {item.room} ({item.building.split(" ")[0]})
+                                  <div style={{ fontSize: "0.75rem", color: "var(--srcb-text-muted)", display: "flex", alignItems: "center", gap: 5 }}>
+                                    <DoorOpen size={12} style={{ flexShrink: 0 }} /> <strong>Room:</strong> {item.room} ({item.building.split(" ")[0]})
                                   </div>
-                                  <div style={{ fontSize: "0.76rem", color: "var(--srcb-navy)", fontWeight: 700, marginTop: 2 }}>
-                                    👨‍🏫 {item.faculty}
+                                  <div style={{ fontSize: "0.76rem", color: "var(--srcb-navy)", fontWeight: 700, marginTop: 3, display: "flex", alignItems: "center", gap: 5 }}>
+                                    <UserCheck size={13} style={{ flexShrink: 0 }} /> {item.faculty}
                                   </div>
 
                                   {item.modality === "Online" && item.onlineLink && (
@@ -1523,22 +1530,22 @@ export function SchedulesPage() {
 
                       {/* Metadata Grid */}
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 10px", fontSize: "0.8rem", color: "var(--srcb-text-muted)", background: "var(--srcb-surface-alt)", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--srcb-border)" }}>
-                        <div>
-                          <strong style={{ color: "var(--srcb-text)" }}>📅 Day:</strong> {item.day}
+                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                          <Calendar size={12} style={{ flexShrink: 0 }} /> <strong style={{ color: "var(--srcb-text)" }}>Day:</strong> {item.day}
                         </div>
-                        <div>
-                          <strong style={{ color: "var(--srcb-text)" }}>⏰ Time:</strong> {item.time}
+                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                          <Clock size={12} style={{ flexShrink: 0 }} /> <strong style={{ color: "var(--srcb-text)" }}>Time:</strong> {item.time}
                         </div>
-                        <div>
-                          <strong style={{ color: "var(--srcb-text)" }}>👥 Section:</strong> {item.section}
+                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                          <GraduationCap size={12} style={{ flexShrink: 0 }} /> <strong style={{ color: "var(--srcb-text)" }}>Section:</strong> {item.section}
                         </div>
-                        <div>
-                          <strong style={{ color: "var(--srcb-text)" }}>📍 Room:</strong> {item.room}
+                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                          <DoorOpen size={12} style={{ flexShrink: 0 }} /> <strong style={{ color: "var(--srcb-text)" }}>Room:</strong> {item.room}
                         </div>
                       </div>
 
-                      <div style={{ marginTop: 8, fontSize: "0.82rem", color: "var(--srcb-navy)", fontWeight: 600 }}>
-                        👨‍🏫 {item.faculty}
+                      <div style={{ marginTop: 8, fontSize: "0.82rem", color: "var(--srcb-navy)", fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}>
+                        <UserCheck size={13} style={{ flexShrink: 0 }} /> {item.faculty}
                       </div>
 
                       {item.modality === "Online" && item.onlineLink && (
@@ -1856,8 +1863,8 @@ export function SchedulesPage() {
                   value={form.modality}
                   onChange={(e) => setForm({ ...form, modality: e.target.value as ClassModality })}
                 >
-                  <option value="Face-to-Face">🏫 Face-to-Face (On-Campus)</option>
-                  <option value="Online">🌐 Online (Virtual Meet)</option>
+                  <option value="Face-to-Face">Face-to-Face (On-Campus)</option>
+                  <option value="Online">Online (Virtual Meet)</option>
                 </select>
               </div>
 
@@ -2096,8 +2103,8 @@ export function SchedulesPage() {
             Are you sure you want to remove the scheduled block for <strong>{scheduleToDelete?.subjectCode}</strong> ({scheduleToDelete?.day} {scheduleToDelete?.time}) in room <strong>{scheduleToDelete?.room}</strong>?
             <br />
             <br />
-            <span style={{ fontSize: "0.82rem", color: "#dc2626" }}>
-              ⚠️ The room, instructor timeslot, and section cohort will be immediately freed up.
+            <span style={{ fontSize: "0.82rem", color: "#dc2626", display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <AlertTriangle size={14} style={{ flexShrink: 0 }} /> The room, instructor timeslot, and section cohort will be immediately freed up.
             </span>
           </span>
         }

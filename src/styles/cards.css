@@ -155,6 +155,8 @@
 .stat-card--gold,
 .stat-card--amber  { border-top: 3px solid var(--srcb-gold); }
 .stat-card--slate  { border-top: 3px solid var(--srcb-slate); }
+.stat-card--danger,
+.stat-card--red    { border-top: 3px solid var(--srcb-red, #dc2626); }
 
 .stat-card--royal  .stat-card__icon,
 .stat-card--navy   .stat-card__icon { background: var(--srcb-navy-soft, #eef2f9); color: var(--srcb-navy); }
@@ -163,6 +165,8 @@
 .stat-card--gold   .stat-card__icon,
 .stat-card--amber  .stat-card__icon { background: var(--srcb-amber-bg, #fffbeb); color: var(--srcb-amber-text, #b45309); }
 .stat-card--slate  .stat-card__icon { background: #f1f5f9; color: var(--srcb-slate); }
+.stat-card--danger .stat-card__icon,
+.stat-card--red    .stat-card__icon { background: #fef2f2; color: #dc2626; }
 
 /* EduSched Progress & Metric Cards */
 .progress-metrics-grid {
@@ -350,4 +354,23 @@
 .faculty-units--overload {
   color: var(--srcb-red-text);
 }
+
+.program-logo-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.program-logo-btn:hover {
+  transform: scale(1.05);
+}
+
 

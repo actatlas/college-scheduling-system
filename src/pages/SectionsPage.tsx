@@ -6,7 +6,7 @@ import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
 import { ConfirmModal } from "../components/common/ConfirmModal";
 import { TableSkeleton } from "../components/common/Skeleton";
-import { Plus, Search, Edit2, Trash2, Users } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Users, AlertTriangle } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
 import { getProgramLogo } from "../utils/programLogos";
 import type { SectionItem, ProgramItem, CourseItem } from "../types";
@@ -438,8 +438,8 @@ export function SectionsPage() {
             Are you sure you want to delete section <strong>{sectionToDelete?.section}</strong> ({sectionToDelete?.course} - Year {sectionToDelete?.yearLevel})?
             <br />
             <br />
-            <span style={{ fontSize: "0.82rem", color: "#dc2626" }}>
-              ⚠️ This will remove the student cohort roster and its schedule associations.
+            <span style={{ fontSize: "0.82rem", color: "#dc2626", display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <AlertTriangle size={14} style={{ flexShrink: 0 }} /> This will remove the student cohort roster and its schedule associations.
             </span>
           </span>
         }

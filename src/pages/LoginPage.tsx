@@ -9,6 +9,7 @@ import {
   Sparkles,
   ArrowLeft,
   ShieldAlert,
+  AlertTriangle,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { api } from "../data/apiClient";
@@ -300,7 +301,9 @@ export function LoginPage() {
             </div>
           ) : authError ? (
             <div className="auth-error-box" role="alert">
-              <span>⚠️ {authError}</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <AlertTriangle size={15} style={{ flexShrink: 0 }} /> {authError}
+              </span>
             </div>
           ) : null}
 

@@ -9,9 +9,12 @@
 @import "./buttons.css";
 @import "./modal.css";
 @import "./toast.css";
+@import "./searchable-select.css";
+@import "./schedule-details-modal.css";
 @import "./login.css";
 @import "./landing.css";
 @import "./timetable.css";
 @import "./user-management.css";
 @import "./responsive.css";
 @import "./dark-theme.css";
+

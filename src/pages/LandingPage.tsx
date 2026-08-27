@@ -42,7 +42,7 @@ export function LandingPage() {
             <div>
               <div className="landing-nav-title">
                 <span>SRCB</span>
-                <span style={{ color: "#38bdf8" }}>SCSMS</span>
+                <span style={{ color: "#000000ff" }}>SCSMS</span>
               </div>
               <div className="landing-nav-sub">St. Rita's College of Balingasag</div>
             </div>

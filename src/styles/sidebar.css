@@ -77,6 +77,11 @@
   box-shadow: 0 4px 14px rgba(15, 44, 89, 0.22);
 }
 
+.sidebar__brand-text {
+  display: flex;
+  flex-direction: column;
+}
+
 .sidebar__brand-name {
   margin: 0;
   font-size: 1.05rem;
@@ -154,6 +159,7 @@
   gap: 3px;
 }
 
+.sidebar__group-title,
 .sidebar__section-title {
   margin: 14px 0 6px;
   padding: 0 8px;

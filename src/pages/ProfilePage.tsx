@@ -342,8 +342,8 @@ export function ProfilePage() {
                 required
               />
               {nameError && (
-                <p className="field-error-msg" role="alert" style={{ color: "#dc2626", fontSize: "0.78rem", margin: "2px 0 0" }}>
-                  ⚠️ {nameError}
+                <p className="field-error-msg" role="alert" style={{ color: "#dc2626", fontSize: "0.78rem", margin: "4px 0 0", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <AlertCircle size={13} style={{ flexShrink: 0 }} /> {nameError}
                 </p>
               )}
             </div>
@@ -372,8 +372,8 @@ export function ProfilePage() {
                 placeholder="e.g. 09171234567"
               />
               {phoneError && (
-                <p className="field-error-msg" role="alert" style={{ color: "#dc2626", fontSize: "0.78rem", margin: "2px 0 0" }}>
-                  ⚠️ {phoneError}
+                <p className="field-error-msg" role="alert" style={{ color: "#dc2626", fontSize: "0.78rem", margin: "4px 0 0", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <AlertCircle size={13} style={{ flexShrink: 0 }} /> {phoneError}
                 </p>
               )}
             </div>

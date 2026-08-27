@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { PageHeader } from "../components/common/PageHeader";
 import { useEffect, useState } from "react";
 import { api } from "../data/apiClient";
-import { CheckCircle2, RefreshCw, AlertTriangle } from "lucide-react";
+import { CheckCircle2, RefreshCw, AlertTriangle, Target } from "lucide-react";
 import { CardGridSkeleton } from "../components/common/Skeleton";
 import { Tooltip } from "../components/common/Tooltip";
 
@@ -117,8 +117,8 @@ export function ConflictPage() {
                       conflict.severity === "High"
                         ? "pill--danger"
                         : conflict.severity === "Medium"
-                        ? "pill--online"
-                        : "pill--navy"
+                        ? "pill--warning"
+                        : "pill--slate"
                     }`}
                     style={{ fontSize: "0.72rem" }}
                   >
@@ -130,8 +130,8 @@ export function ConflictPage() {
                   {conflict.detail}
                 </p>
                 <div style={{ marginTop: 10 }}>
-                  <span className="pill" style={{ fontSize: "0.76rem" }}>
-                    🎯 {conflict.suggestion}
+                  <span className="pill" style={{ fontSize: "0.76rem", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <Target size={13} style={{ flexShrink: 0 }} /> {conflict.suggestion}
                   </span>
                 </div>
               </article>

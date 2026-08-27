@@ -1041,3 +1041,58 @@ html[data-theme="dark"] .dossier-field {
     grid-template-columns: 1fr;
   }
 }
+
+/* Empty State Styling */
+.user-mgmt-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+  background: var(--srcb-surface-alt, #f8fafc);
+  border-radius: 12px;
+  margin: 16px 0;
+}
+
+.empty-state-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--srcb-text, #0f172a);
+}
+
+.empty-state-desc {
+  margin: 8px 0 0;
+  font-size: 0.86rem;
+  color: var(--srcb-text-muted, #64748b);
+  max-width: 440px;
+  line-height: 1.5;
+}
+
+.empty-state-reset-btn {
+  margin-top: 16px;
+  padding: 8px 16px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--srcb-navy, #163269);
+  background: #ffffff;
+  border: 1px solid var(--srcb-border, #cbd5e1);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.empty-state-reset-btn:hover {
+  background: var(--srcb-navy-soft, #eef2f9);
+  border-color: var(--srcb-navy, #163269);
+}
+
+.user-mgmt-export-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 100;
+  min-width: 180px;
+}
+

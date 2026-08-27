@@ -16,6 +16,9 @@ import {
   CalendarCheck,
   GraduationCap,
   UserX,
+  CheckCircle2,
+  Lock,
+  Lightbulb,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { StatCard } from "../components/common/StatCard";
@@ -422,10 +425,10 @@ export function DashboardPage() {
                 </div>
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <strong style={{ fontSize: "1rem", color: "#991b1b" }}>
-                      ⚠️ ICT Governance Sign: {suspendedUsersList.length} Account{suspendedUsersList.length === 1 ? "" : "s"} Suspended
+                    <strong style={{ fontSize: "1rem", color: "#991b1b", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <AlertTriangle size={16} /> ICT Governance Sign: {suspendedUsersList.length} Account{suspendedUsersList.length === 1 ? "" : "s"} Suspended
                     </strong>
-                    <span className="pill pill--amber" style={{ fontSize: "0.72rem", fontWeight: 700 }}>
+                    <span className="pill pill--danger" style={{ fontSize: "0.72rem", fontWeight: 700 }}>
                       Access Blocked
                     </span>
                   </div>
@@ -464,7 +467,7 @@ export function DashboardPage() {
                 label="Registered Users"
                 value={metrics.users}
                 detail="Super Admins, Admins, Heads, Teachers"
-                icon="👥"
+                icon={<Users size={20} />}
                 tone="royal"
                 onClick={() => navigate("/users")}
               />
@@ -472,7 +475,7 @@ export function DashboardPage() {
                 label="Active Accounts"
                 value={String(Math.max(0, Number(metrics.users) - suspendedUsersList.length))}
                 detail="Permitted to sign in and access SCSMS"
-                icon="✅"
+                icon={<CheckCircle2 size={20} />}
                 tone="emerald"
                 onClick={() => navigate("/users?status=Active")}
               />
@@ -480,8 +483,8 @@ export function DashboardPage() {
                 label="Suspended Accounts"
                 value={String(suspendedUsersList.length)}
                 detail={suspendedUsersList.length === 0 ? "No accounts currently suspended" : "Sign-in restricted / Locked"}
-                icon="🔒"
-                tone="amber"
+                icon={<Lock size={20} />}
+                tone="danger"
                 onClick={() => navigate("/users?status=Suspended")}
               />
             </section>
@@ -1125,8 +1128,8 @@ export function DashboardPage() {
                   </div>
 
                   <div style={{ marginTop: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: "0.8rem", color: "var(--srcb-text-muted)" }}>
-                      💡 Tip: Click and drag your mouse across hours and days to select multiple slots simultaneously.
+                    <span style={{ fontSize: "0.8rem", color: "var(--srcb-text-muted)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <Lightbulb size={15} /> Tip: Click and drag your mouse across hours and days to select multiple slots simultaneously.
                     </span>
                     <button
                       type="button"

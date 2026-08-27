@@ -6,7 +6,7 @@ import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
 import { ConfirmModal } from "../components/common/ConfirmModal";
 import { CardGridSkeleton } from "../components/common/Skeleton";
-import { Plus, Search, Edit2, Trash2, Building } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Building, AlertTriangle } from "lucide-react";
 import type { RoomItem, BuildingType } from "../types";
 
 export function RoomsPage() {
@@ -390,8 +390,8 @@ export function RoomsPage() {
             Are you sure you want to remove room <strong>{roomToDelete?.number}</strong> ({roomToDelete?.building}) from active campus inventory?
             <br />
             <br />
-            <span style={{ fontSize: "0.82rem", color: "#dc2626" }}>
-              ⚠️ Ensure no classes or examination schedules are actively occupying this venue.
+            <span style={{ fontSize: "0.82rem", color: "#dc2626", display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <AlertTriangle size={14} style={{ flexShrink: 0 }} /> Ensure no classes or examination schedules are actively occupying this venue.
             </span>
           </span>
         }

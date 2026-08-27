@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useState } from "react";
+import { CheckCircle2, AlertCircle, Info } from "lucide-react";
 
 type Toast = {
   id: number;
@@ -48,7 +49,13 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         {toasts.map((t) => (
           <div key={t.id} className={`toast toast-${t.type}`} role="status">
             <span className="toast__icon">
-              {t.type === "success" ? "✓" : t.type === "error" ? "!" : "i"}
+              {t.type === "success" ? (
+                <CheckCircle2 size={16} />
+              ) : t.type === "error" ? (
+                <AlertCircle size={16} />
+              ) : (
+                <Info size={16} />
+              )}
             </span>
             <div
               style={{

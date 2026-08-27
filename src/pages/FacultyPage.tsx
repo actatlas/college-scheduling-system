@@ -26,6 +26,7 @@ import {
   Printer,
   CheckCircle2,
   Building2,
+  AlertCircle,
 } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
 import { formatSystemId } from "../utils/idFormatter";
@@ -1153,7 +1154,9 @@ export function FacultyPage() {
                 aria-required="true"
               />
               {firstNameError && (
-                <p className="field-error-msg" role="alert">⚠️ {firstNameError}</p>
+                <p className="field-error-msg" role="alert" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <AlertCircle size={13} style={{ flexShrink: 0 }} /> {firstNameError}
+                </p>
               )}
             </div>
 
@@ -1170,7 +1173,9 @@ export function FacultyPage() {
                 aria-required="true"
               />
               {lastNameError && (
-                <p className="field-error-msg" role="alert">⚠️ {lastNameError}</p>
+                <p className="field-error-msg" role="alert" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <AlertCircle size={13} style={{ flexShrink: 0 }} /> {lastNameError}
+                </p>
               )}
             </div>
           </div>
@@ -1196,7 +1201,9 @@ export function FacultyPage() {
               placeholder="09171234567"
             />
             {phoneError && (
-              <p className="field-error-msg" role="alert">⚠️ {phoneError}</p>
+              <p className="field-error-msg" role="alert" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <AlertCircle size={13} style={{ flexShrink: 0 }} /> {phoneError}
+              </p>
             )}
           </div>
 

@@ -1,3 +1,4 @@
+import type React from "react";
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
@@ -8,6 +9,22 @@ import {
   Trash2,
   Database,
   ChevronRight,
+  ShieldAlert,
+  Building2,
+  GraduationCap,
+  Users,
+  Clock,
+  User,
+  LayoutDashboard,
+  CalendarDays,
+  CalendarCheck,
+  BookOpen,
+  Tag,
+  DoorOpen,
+  AlertTriangle,
+  FileText,
+  KeyRound,
+  Globe,
 } from "lucide-react";
 import { api } from "../../data/apiClient";
 import { useToast } from "../common/Toast";
@@ -18,7 +35,7 @@ interface PresetAccount {
   email: string;
   pass: string;
   role: string;
-  icon: string;
+  icon: React.ReactNode;
 }
 
 const PRESET_ACCOUNTS: PresetAccount[] = [
@@ -27,42 +44,42 @@ const PRESET_ACCOUNTS: PresetAccount[] = [
     email: "superadmin@srcb.edu.ph",
     pass: "@superadmin123",
     role: "super_admin",
-    icon: "⚡",
+    icon: <ShieldAlert size={16} />,
   },
   {
     label: "College Registrar (Admin)",
     email: "admin@srcb.edu.ph",
     pass: "@admin123",
     role: "admin",
-    icon: "🏛️",
+    icon: <Building2 size={16} />,
   },
   {
     label: "Program Head (IT Head)",
     email: "programhead@srcb.edu.ph",
     pass: "@program123",
     role: "program_head",
-    icon: "🎓",
+    icon: <GraduationCap size={16} />,
   },
   {
     label: "Full-Time Faculty (Teacher)",
     email: "teacher@srcb.edu.ph",
     pass: "@teacher123",
     role: "teacher",
-    icon: "👨‍🏫",
+    icon: <Users size={16} />,
   },
   {
     label: "Part-Time Faculty (Teacher)",
     email: "parttime@srcb.edu.ph",
     pass: "@teacher123",
     role: "teacher",
-    icon: "⏱️",
+    icon: <Clock size={16} />,
   },
   {
     label: "Van Account (Created in DB)",
     email: "achasjovann5@gmail.com",
     pass: "@srcb123",
     role: "admin",
-    icon: "👤",
+    icon: <User size={16} />,
   },
 ];
 
@@ -330,7 +347,7 @@ export function DevFloatingTools() {
                               email: u.email,
                               pass: u.role === "teacher" && u.email.includes("teacher@") ? "@teacher123" : "@srcb123",
                               role: u.role,
-                              icon: "👤",
+                              icon: <User size={16} />,
                             });
                           }}
                         >
@@ -367,21 +384,27 @@ export function DevFloatingTools() {
                   className={`dev-account-btn ${currentRole === "super_admin" ? "active" : ""}`}
                   onClick={() => handleRoleOverride("super_admin")}
                 >
-                  <span>⚡ Super Admin (ICT Office - Full CRUD)</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    <ShieldAlert size={15} /> Super Admin (ICT Office - Full CRUD)
+                  </span>
                 </button>
                 <button
                   type="button"
                   className={`dev-account-btn ${currentRole === "admin" ? "active" : ""}`}
                   onClick={() => handleRoleOverride("admin")}
                 >
-                  <span>🏛️ Administrator (College Registrar)</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    <Building2 size={15} /> Administrator (College Registrar)
+                  </span>
                 </button>
                 <button
                   type="button"
                   className={`dev-account-btn ${currentRole === "program_head" ? "active" : ""}`}
                   onClick={() => handleRoleOverride("program_head")}
                 >
-                  <span>🎓 Program Head (Department Head)</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    <GraduationCap size={15} /> Program Head (Department Head)
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -390,7 +413,9 @@ export function DevFloatingTools() {
                     handleRoleOverride("teacher", { status: "Full-Time", teacherId: "T001" })
                   }
                 >
-                  <span>👨‍🏫 Faculty / Teacher (Full-Time)</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    <Users size={15} /> Faculty / Teacher (Full-Time)
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -399,7 +424,9 @@ export function DevFloatingTools() {
                     handleRoleOverride("teacher", { status: "Part-Time", teacherId: "FAC-003" })
                   }
                 >
-                  <span>⏱️ Faculty / Teacher (Part-Time)</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    <Clock size={15} /> Faculty / Teacher (Part-Time)
+                  </span>
                 </button>
               </div>
             )}
@@ -408,18 +435,18 @@ export function DevFloatingTools() {
             {activeTab === "nav" && (
               <div className="dev-nav-grid">
                 {[
-                  { label: "Dashboard", path: "/dashboard", icon: "📊" },
-                  { label: "Class Schedules", path: "/schedules", icon: "🗓️" },
-                  { label: "Exam Schedules", path: "/exams", icon: "📝" },
-                  { label: "ICT Users", path: "/users", icon: "👥" },
-                  { label: "Faculty", path: "/faculty", icon: "👩‍🏫" },
-                  { label: "Subjects", path: "/subjects", icon: "📘" },
-                  { label: "Sections", path: "/sections", icon: "🏷️" },
-                  { label: "Rooms & Labs", path: "/rooms", icon: "🏫" },
-                  { label: "Conflicts", path: "/conflicts", icon: "⚠️" },
-                  { label: "Reports", path: "/reports", icon: "📄" },
-                  { label: "Login Page", path: "/login", icon: "🔑" },
-                  { label: "Landing Page", path: "/", icon: "🌐" },
+                  { label: "Dashboard", path: "/dashboard", icon: <LayoutDashboard size={16} /> },
+                  { label: "Class Schedules", path: "/schedules", icon: <CalendarDays size={16} /> },
+                  { label: "Exam Schedules", path: "/exams", icon: <CalendarCheck size={16} /> },
+                  { label: "ICT Users", path: "/users", icon: <Users size={16} /> },
+                  { label: "Faculty", path: "/faculty", icon: <Users size={16} /> },
+                  { label: "Subjects", path: "/subjects", icon: <BookOpen size={16} /> },
+                  { label: "Sections", path: "/sections", icon: <Tag size={16} /> },
+                  { label: "Rooms & Labs", path: "/rooms", icon: <DoorOpen size={16} /> },
+                  { label: "Conflicts", path: "/conflicts", icon: <AlertTriangle size={16} /> },
+                  { label: "Reports", path: "/reports", icon: <FileText size={16} /> },
+                  { label: "Login Page", path: "/login", icon: <KeyRound size={16} /> },
+                  { label: "Landing Page", path: "/", icon: <Globe size={16} /> },
                 ].map((item) => (
                   <button
                     key={item.path}
