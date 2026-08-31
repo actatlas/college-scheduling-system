@@ -38,6 +38,13 @@ async function resolveForeignKeys({ instructorId, programCode, program, courseCo
   return { validInstructorId, validProgramCode, validSemesterId };
 }
 
+function isGeneralEducationSubject(code, programCode) {
+  const cleanCode = String(code || '').trim().toUpperCase();
+  const cleanProg = String(programCode || '').trim().toUpperCase();
+  if (cleanProg === 'ALL' || cleanProg === 'GEN' || cleanProg === 'GENERAL EDUCATION') return true;
+  return /^(GE|GEC|NSTP|PE|PATHFIT|RIZAL|MATH|ENG|FIL|SOC|HUM|HIST)\b/i.test(cleanCode);
+}
+
 async function listSubjects(programCode) {
   try {
     let sql = `SELECT s.code, s.name, s.units, s.lecture_hours, s.lab_hours, s.semester_id, sem.name AS semester_name, s.program_code, s.instructor_id,
@@ -47,29 +54,32 @@ async function listSubjects(programCode) {
        LEFT JOIN semesters sem ON sem.id = s.semester_id`;
     const params = [];
     const cleanProgramCode = typeof programCode === 'string' && programCode.trim() ? programCode.trim() : null;
-    if (cleanProgramCode) {
-      sql += ' WHERE (s.program_code = ? OR s.code LIKE ?)';
+    if (cleanProgramCode && cleanProgramCode !== 'ALL') {
+      sql += ' WHERE (s.program_code = ? OR s.program_code = "ALL" OR s.program_code = "GEN" OR s.code LIKE "GE%" OR s.code LIKE "GEC%" OR s.code LIKE "NSTP%" OR s.code LIKE "PE%" OR s.code LIKE "PATHFIT%" OR s.code LIKE ?)';
       params.push(cleanProgramCode, `%${cleanProgramCode}%`);
     }
     sql += ' ORDER BY s.code ASC';
     const rows = await query(sql, params);
     if (!Array.isArray(rows)) return [];
 
-    return rows.map((s) => ({
-      code: s.code || '',
-      name: s.name || '',
-      units: Number(s.units || 0),
-      lectureHours: Number(s.lecture_hours || 0),
-      labHours: Number(s.lab_hours || 0),
-      semester: s.semester_name || String(s.semester_id || '1st Semester'),
-      department: s.program_code || '',
-      programCode: s.program_code || '',
-      program: s.program_code || '',
-      courseCode: s.program_code || '',
-      isMajor: true,
-      instructor: s.instructor || 'Unassigned',
-      instructorId: s.instructor_id || '',
-    }));
+    return rows.map((s) => {
+      const isGE = isGeneralEducationSubject(s.code, s.program_code);
+      return {
+        code: s.code || '',
+        name: s.name || '',
+        units: Number(s.units || 0),
+        lectureHours: Number(s.lecture_hours || 0),
+        labHours: Number(s.lab_hours || 0),
+        semester: s.semester_name || String(s.semester_id || '1st Semester'),
+        department: isGE ? 'General Education' : (s.program_code || ''),
+        programCode: isGE ? 'ALL' : (s.program_code || ''),
+        program: isGE ? 'ALL' : (s.program_code || ''),
+        courseCode: isGE ? 'ALL' : (s.program_code || ''),
+        isMajor: !isGE,
+        instructor: s.instructor || 'Unassigned',
+        instructorId: s.instructor_id || '',
+      };
+    });
   } catch (err) {
     console.error('[backend] listSubjects error:', err);
     return [];

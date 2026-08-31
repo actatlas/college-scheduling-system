@@ -6,7 +6,6 @@ import {
   ArrowRight,
   Eye,
   EyeOff,
-  Sparkles,
   ArrowLeft,
   ShieldAlert,
   AlertTriangle,
@@ -15,45 +14,6 @@ import { motion } from "framer-motion";
 import { api } from "../data/apiClient";
 import { useToast } from "../components/common/Toast";
 import Logo from "../assets/images/Logo.png";
-
-interface RolePreset {
-  role: string;
-  name: string;
-  email: string;
-  pass: string;
-  badge: string;
-}
-
-const PRESETS: RolePreset[] = [
-  {
-    role: "Super Admin",
-    name: "ICT Super Admin",
-    email: "superadmin@srcb.edu.ph",
-    pass: "@superadmin123",
-    badge: "Super Admin",
-  },
-  {
-    role: "Admin",
-    name: "System Administrator",
-    email: "admin@srcb.edu.ph",
-    pass: "@admin123",
-    badge: "Admin",
-  },
-  {
-    role: "Program Head",
-    name: "Dr. Reyes (IT)",
-    email: "programhead@srcb.edu.ph",
-    pass: "@program123",
-    badge: "Program Head",
-  },
-  {
-    role: "Teacher",
-    name: "Maria Santos",
-    email: "teacher@srcb.edu.ph",
-    pass: "@teacher123",
-    badge: "Faculty",
-  },
-];
 
 export function LoginPage() {
   const [searchParams] = useSearchParams();
@@ -156,12 +116,6 @@ export function LoginPage() {
     await handleLoginWithCredentials(email.trim(), password);
   };
 
-  const handleApplyPreset = (preset: RolePreset) => {
-    setEmail(preset.email);
-    setPassword(preset.pass);
-    setAuthError(null);
-    setSuspensionNotice(null);
-  };
 
   const handleForgot = () => {
     const entered = window.prompt("Enter your registered institutional email:");
@@ -178,8 +132,8 @@ export function LoginPage() {
             <img src={Logo} alt="St. Rita's College Logo" className="auth-nav-logo" />
             <div>
               <div className="auth-nav-title">
-                <span style={{ color: "#0d5499" }}>SRCB</span>
-                <span style={{ color: "#0284c7" }}>SCSMS</span>
+                <span style={{ color: "#38bdf8" }}>SRCB</span>
+                <span style={{ color: "#ffffff" }}>SCSMS</span>
               </div>
               <div className="auth-nav-sub">St. Rita's College of Balingasag</div>
             </div>
@@ -338,27 +292,6 @@ export function LoginPage() {
           </button>
         </form>
 
-        {/* Quick Demo Accounts */}
-        <div className="auth-presets-container">
-          <div className="auth-presets-title">
-            <Sparkles size={13} />
-            <span>Institutional Demo Accounts</span>
-          </div>
-          <div className="auth-presets-grid">
-            {PRESETS.map((p) => (
-              <button
-                key={p.email}
-                type="button"
-                className="auth-preset-chip"
-                onClick={() => handleApplyPreset(p)}
-                title={`Click to fill credentials for ${p.role}`}
-              >
-                <strong>{p.badge}</strong>
-                <span>{p.email}</span>
-              </button>
-            ))}
-          </div>
-        </div>
 
         <div className="auth-card-footer">
           College Department • St. Rita's College of Balingasag

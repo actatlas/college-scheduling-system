@@ -46,10 +46,12 @@ async function validateSchedulePayload({
   section_id,
   faculty_id,
   room_number,
+  modality = 'Face-to-Face',
   user = null,
 }) {
   const start = normalizeTime(start_time);
   const end = normalizeTime(end_time);
+  const isOnline = String(modality || '').toLowerCase() === 'online' || String(room_number || '').toLowerCase().includes('virtual');
 
   if (!day || !start || !end || !subject_code) {
     const err = new Error('day, start_time, end_time and subject_code are required');
@@ -106,7 +108,7 @@ async function validateSchedulePayload({
   }
 
   let roomRow = null;
-  if (room_number) {
+  if (!isOnline && room_number) {
     const [r] = await query('SELECT number, capacity, building, type, status FROM rooms WHERE number = ? LIMIT 1', [room_number]);
     if (!r) {
       const err = new Error(`Room with number "${room_number}" does not exist.`);
@@ -264,8 +266,8 @@ async function validateSchedulePayload({
         err.code = 'FACULTY_UNAVAILABLE';
         throw err;
       }
-    } else if (teacherRow.status === 'Full-Time' && availabilityRows.length > 0) {
-      // Full-Time faculty with explicitly configured availability rules by Admin
+    } else if (teacherRow.status === 'Full-Time' && availabilityRows.length > 0 && !isOnline) {
+      // Full-Time faculty with explicitly configured availability rules by Admin (applies to physical classes)
       const dayRows = availabilityRows.filter((entry) => {
         const entryDay = String(entry.day_of_week || '').toLowerCase();
         const targetDay = normalizedDay.toLowerCase();
@@ -320,7 +322,7 @@ async function validateSchedulePayload({
     if (String(row.day).toLowerCase() !== normalizedDay.toLowerCase()) continue;
     if (!timesOverlap(start, end, row.start_time, row.end_time || row.start_time)) continue;
 
-    if (room_number && row.room_number && String(row.room_number) === String(room_number)) {
+    if (!isOnline && room_number && row.room_number && String(row.room_number) === String(room_number)) {
       const err = new Error(`Room ${room_number} is already booked on ${normalizedDay} for an overlapping class (${String(row.start_time).slice(0, 5)}-${String(row.end_time).slice(0, 5)}).`);
       err.statusCode = 409;
       err.code = 'ROOM_CONFLICT';
@@ -483,7 +485,16 @@ async function listSchedules({ user, department, facultyId, program } = {}) {
       yl = `${yl}${yl === '1' ? 'st' : yl === '2' ? 'nd' : yl === '3' ? 'rd' : 'th'} Year`;
     }
 
-    const classMode = (Number(s.lab_hours || 0) > 0 || String(s.room_type || '').toLowerCase().includes('lab')) ? 'Laboratory' : 'Lecture';
+    const defaultClassMode =
+      Number(s.lab_hours || 0) > 0 || String(s.room_type || '').toLowerCase().includes('lab')
+        ? 'Laboratory'
+        : 'Lecture';
+
+    const isOnlineModality =
+      !s.room_number ||
+      String(s.room_number).toLowerCase().includes('virtual') ||
+      String(s.building || '').toLowerCase().includes('virtual');
+    const resolvedModality = isOnlineModality ? 'Online' : 'Face-to-Face';
 
     return {
       id: String(s.id),
@@ -497,17 +508,17 @@ async function listSchedules({ user, department, facultyId, program } = {}) {
       sectionId: s.section_id ? String(s.section_id) : '',
       faculty: s.faculty_name || '',
       facultyId: s.faculty_id || '',
-      room: s.room_number || '',
-      building: s.building || 'College Building',
-      roomType: s.room_type || 'Lecture',
-      classMode,
+      room: isOnlineModality ? (s.room_number || 'Virtual Room') : (s.room_number || ''),
+      building: isOnlineModality ? 'Virtual Classroom' : (s.building || 'College Building'),
+      roomType: isOnlineModality ? 'Online' : (s.room_type || 'Lecture'),
+      classMode: isOnlineModality ? 'Online' : defaultClassMode,
       yearLevel: yl || '1st Year',
-      program: s.program_code || s.section_course_code || 'BSIT',
+      program: s.section_course_code || s.program_code || 'BSIT',
       course: s.section_course_code || s.program_code || 'BSIT',
       semester: s.semester_name || '1st Semester',
       academicYear: s.academic_year_name || '2026-2027',
-      modality: 'Face-to-Face',
-      color: s.color || '#2563eb',
+      modality: resolvedModality,
+      color: isOnlineModality ? '#059669' : (s.color || '#2563eb'),
       status: 'Confirmed'
     };
   });
@@ -530,8 +541,13 @@ async function resolveScheduleFKs({ subjectCode, facultyId, roomNumber, sectionI
 
   let validRoomNumber = null;
   if (roomNumber && typeof roomNumber === 'string' && roomNumber.trim()) {
-    const [rRow] = await query('SELECT number FROM rooms WHERE number = ? LIMIT 1', [roomNumber.trim()]);
-    if (rRow) validRoomNumber = rRow.number;
+    const isVirtual = String(roomNumber).toLowerCase().includes('virtual') || roomNumber === 'Virtual Room';
+    if (isVirtual) {
+      validRoomNumber = 'Virtual Room';
+    } else {
+      const [rRow] = await query('SELECT number FROM rooms WHERE number = ? LIMIT 1', [roomNumber.trim()]);
+      if (rRow) validRoomNumber = rRow.number;
+    }
   }
 
   let validSectionId = sectionId ? Number(sectionId) : null;
@@ -604,6 +620,7 @@ async function createSchedule(payload, user) {
     section_id: validSectionId,
     faculty_id: validFacultyId,
     room_number: validRoomNumber,
+    modality: payload.modality || payload.classMode || (String(rawRoom || '').toLowerCase().includes('virtual') ? 'Online' : 'Face-to-Face'),
     user,
   });
 
@@ -683,6 +700,7 @@ async function updateSchedule(id, payload, user) {
     section_id: validSectionId,
     faculty_id: validFacultyId,
     room_number: validRoomNumber,
+    modality: payload.modality || payload.classMode || (String(rawRoom || '').toLowerCase().includes('virtual') ? 'Online' : 'Face-to-Face'),
     user,
   });
 

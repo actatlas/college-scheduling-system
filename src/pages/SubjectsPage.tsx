@@ -8,6 +8,7 @@ import { ConfirmModal } from "../components/common/ConfirmModal";
 import { TableSkeleton } from "../components/common/Skeleton";
 import { Plus, Search, Edit2, Trash2, AlertTriangle } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
+import { useAcademicPeriod } from "../contexts/AcademicPeriodContext";
 import { getProgramLogo } from "../utils/programLogos";
 import type { SubjectItem, CourseItem, ProgramItem, FacultyMember } from "../types";
 
@@ -26,6 +27,7 @@ export function SubjectsPage() {
   const [editingSubject, setEditingSubject] = useState<SubjectItem | null>(null);
 
   const { selectedProgram, matchesProgram } = useProgramContext();
+  const { activeSemester } = useAcademicPeriod();
   const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
   const isAdmin = role === "super_admin" || role === "admin";
   const isProgramHead = role === "program_head";
@@ -36,13 +38,13 @@ export function SubjectsPage() {
     units: "3",
     lectureHours: "3",
     labHours: "0",
-    semester: "First Semester",
+    semester: activeSemester || "1st Semester",
     department: "Information Technology",
-    program: selectedProgram.key || "BSIT",
-    courseCode: selectedProgram.key || "BSIT",
+    program: selectedProgram.key !== "ALL" ? selectedProgram.key : "BSIT",
+    courseCode: selectedProgram.key !== "ALL" ? selectedProgram.key : "BSIT",
     isMajor: true,
     instructorId: "",
-    instructor: "",
+    instructor: "Unassigned",
   });
 
   const toast = useToast();
@@ -270,19 +272,22 @@ export function SubjectsPage() {
               type="button"
               onClick={() => {
                 setEditingSubject(null);
+                const defaultProg = selectedProgram.key !== "ALL" ? selectedProgram.key : (programsList[0]?.code || "BSIT");
+                const matchingCourses = coursesList.filter((c) => c.programCode === defaultProg || c.code.includes(defaultProg));
+                const defaultCourse = matchingCourses[0]?.code || coursesList[0]?.code || "BSIT";
                 setForm({
                   code: "",
                   name: "",
                   units: "3",
                   lectureHours: "2",
                   labHours: "3",
-                  semester: "1st Semester",
-                  department: "Information Technology",
-                  program: selectedProgram.key || "BSIT",
-                  courseCode: coursesList[0]?.code || "BSIT",
+                  semester: activeSemester || "1st Semester",
+                  department: defaultProg,
+                  program: defaultProg,
+                  courseCode: defaultCourse,
                   isMajor: true,
-                  instructorId: facultyList[0]?.id || "",
-                  instructor: facultyList[0]?.name || "",
+                  instructorId: "",
+                  instructor: "Unassigned",
                 });
                 setIsOpen(true);
               }}
@@ -609,43 +614,113 @@ export function SubjectsPage() {
             <select
               id="subjectIsMajor"
               value={form.isMajor ? "true" : "false"}
-              onChange={(e) => setForm({ ...form, isMajor: e.target.value === "true" })}
+              onChange={(e) => {
+                const isMaj = e.target.value === "true";
+                setForm({
+                  ...form,
+                  isMajor: isMaj,
+                  program: isMaj ? (programsList[0]?.code || "BSIT") : "ALL",
+                  courseCode: isMaj ? (coursesList[0]?.code || "BSIT") : "ALL",
+                  department: isMaj ? "Information Technology" : "General Education",
+                });
+              }}
             >
               <option value="true">Major Subject (Program Specific)</option>
-              <option value="false">General Education / Minor</option>
+              <option value="false">General Education (All Academic Programs)</option>
             </select>
           </div>
 
-          <div className="field-group">
-            <label htmlFor="subjectCourse">Course / Major Degree</label>
-            <select
-              id="subjectCourse"
-              value={form.courseCode}
-              onChange={(e) => setForm({ ...form, courseCode: e.target.value })}
+          {!form.isMajor ? (
+            <div
+              style={{
+                gridColumn: "1 / -1",
+                padding: "12px 14px",
+                background: "rgba(16, 185, 129, 0.08)",
+                border: "1px solid rgba(16, 185, 129, 0.25)",
+                borderRadius: 8,
+                color: "#059669",
+                fontSize: "0.82rem",
+                fontWeight: 600,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
             >
-              <option value="">General / All Courses</option>
-              {coursesList.map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.code} - {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
+              <span>✓ Universal General Education Subject: Automatically available to all collegiate programs (BSIT, BSBA, CRIM, BSHM, EDUC). No manual program-by-program selection required.</span>
+            </div>
+          ) : (
+            <>
+              <div className="field-group">
+                <label htmlFor="subjectProgram">Academic Program <span style={{ color: "#dc2626" }}>*</span></label>
+                <select
+                  id="subjectProgram"
+                  value={form.program}
+                  onChange={(e) => {
+                    const newProg = e.target.value;
+                    const p = newProg.toUpperCase().trim();
+                    const matching = coursesList.filter(
+                      (c) =>
+                        c.programCode?.toUpperCase().trim() === p ||
+                        c.code.toUpperCase().includes(p) ||
+                        p.includes(c.code.toUpperCase())
+                    );
+                    const nextCourse = matching.some((c) => c.code === form.courseCode)
+                      ? form.courseCode
+                      : matching[0]?.code || coursesList[0]?.code || "";
 
-          <div className="field-group">
-            <label htmlFor="subjectProgram">Program</label>
-            <select
-              id="subjectProgram"
-              value={form.program}
-              onChange={(e) => setForm({ ...form, program: e.target.value })}
-            >
-              {programsList.map((p) => (
-                <option key={p.code} value={p.code}>
-                  {p.code} - {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
+                    setForm({
+                      ...form,
+                      program: newProg,
+                      courseCode: nextCourse,
+                      department: newProg,
+                    });
+                  }}
+                >
+                  {programsList.map((p) => (
+                    <option key={p.code} value={p.code}>
+                      {p.code} - {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="field-group">
+                <label htmlFor="subjectCourse">Course / Major Degree <span style={{ color: "#dc2626" }}>*</span></label>
+                <select
+                  id="subjectCourse"
+                  value={form.courseCode}
+                  onChange={(e) => {
+                    const newCourseCode = e.target.value;
+                    const selectedCourse = coursesList.find((c) => c.code === newCourseCode);
+                    const nextProg = selectedCourse?.programCode || form.program;
+                    setForm({
+                      ...form,
+                      courseCode: newCourseCode,
+                      program: nextProg,
+                      department: nextProg,
+                    });
+                  }}
+                >
+                  {(() => {
+                    const p = (form.program || "").toUpperCase().trim();
+                    const filtered = coursesList.filter(
+                      (c) =>
+                        !p ||
+                        c.programCode?.toUpperCase().trim() === p ||
+                        c.code.toUpperCase().includes(p) ||
+                        p.includes(c.code.toUpperCase())
+                    );
+                    const displayList = filtered.length > 0 ? filtered : coursesList;
+                    return displayList.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.code} - {c.name} {c.programCode ? `(${c.programCode})` : ""}
+                      </option>
+                    ));
+                  })()}
+                </select>
+              </div>
+            </>
+          )}
 
           <div className="field-group">
             <label htmlFor="subjectInstructor">Default Instructor</label>

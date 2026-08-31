@@ -109,6 +109,7 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
       return values.some((value) => {
         if (!value) return false;
         const normalized = String(value).toUpperCase().trim();
+        if (normalized === "ALL" || normalized === "UNIVERSAL" || normalized.includes("GENERAL EDUCATION")) return true;
         if (normalized === key || normalized.includes(key) || key.includes(normalized)) return true;
         const valueFamily = getFamily(normalized);
         if (selectedFamily && valueFamily && selectedFamily === valueFamily) return true;

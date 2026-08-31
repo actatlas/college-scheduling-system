@@ -68,12 +68,6 @@ export function ProgramsPage() {
           ) : (
           visiblePrograms.map((program) => {
             const logoSrc = getProgramLogo(program.name || program.focus || "");
-            const rawFocus = (program.focus || "").trim();
-            const cleanFocus = rawFocus
-              ? rawFocus.toLowerCase().endsWith("focus")
-                ? rawFocus
-                : `${rawFocus} Focus`
-              : "Collegiate Focus";
 
             return (
               <article
@@ -102,7 +96,7 @@ export function ProgramsPage() {
                   >
                     <div style={{ flex: 1 }}>
                       <p className="eyebrow" style={{ marginBottom: "6px" }}>
-                        Academic program
+                        Academic Program
                       </p>
                       <h3
                         style={{
@@ -124,7 +118,7 @@ export function ProgramsPage() {
                       onClick={() =>
                         setSelectedPreviewProgram({
                           name: program.name,
-                          focus: cleanFocus,
+                          focus: "Official Collegiate Program",
                           logo: logoSrc,
                         })
                       }
@@ -167,26 +161,14 @@ export function ProgramsPage() {
                       />
                     </button>
                   </div>
-
-                  <p
-                    className="muted"
-                    style={{
-                      margin: "0 0 14px",
-                      fontSize: "0.88rem",
-                      fontWeight: 600,
-                      color: "var(--srcb-text-muted)",
-                    }}
-                  >
-                    {cleanFocus}
-                  </p>
                 </div>
 
-                <div>
+                <div style={{ marginTop: 14 }}>
                   <span
                     className="pill pill--royal"
                     style={{ fontSize: "0.76rem", fontWeight: 700 }}
                   >
-                    Official college offering
+                    Official Collegiate Program
                   </span>
                 </div>
               </article>
@@ -281,7 +263,7 @@ export function ProgramsPage() {
         onClose={() => setIsOpen(false)}
       >
         <div className="form-grid">
-          <div className="field-group">
+          <div className="field-group" style={{ gridColumn: "1 / -1" }}>
             <label htmlFor="programCode">
               Program Code <span style={{ color: "#dc2626" }}>*</span>
             </label>
@@ -296,7 +278,7 @@ export function ProgramsPage() {
               }
             />
           </div>
-          <div className="field-group">
+          <div className="field-group" style={{ gridColumn: "1 / -1" }}>
             <label htmlFor="programName">
               Program Name <span style={{ color: "#dc2626" }}>*</span>
             </label>
@@ -308,16 +290,6 @@ export function ProgramsPage() {
               placeholder="e.g. Bachelor of Science in Information Technology"
               onChange={(event) =>
                 setForm({ ...form, name: event.target.value })
-              }
-            />
-          </div>
-          <div className="field-group" style={{ gridColumn: "1 / -1" }}>
-            <label htmlFor="programFocus">Program Focus</label>
-            <input
-              id="programFocus"
-              value={form.focus}
-              onChange={(event) =>
-                setForm({ ...form, focus: event.target.value })
               }
             />
           </div>

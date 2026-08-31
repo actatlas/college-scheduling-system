@@ -7,6 +7,8 @@ import {
   BookOpen,
   Clock,
   GraduationCap,
+  Info,
+  ShieldCheck,
 } from "lucide-react";
 import Logo from "../assets/images/Logo.png";
 import {
@@ -42,7 +44,7 @@ export function LandingPage() {
             <div>
               <div className="landing-nav-title">
                 <span>SRCB</span>
-                <span style={{ color: "#000000ff" }}>SCSMS</span>
+                <span style={{ color: "#38bdf8" }}>SCSMS</span>
               </div>
               <div className="landing-nav-sub">St. Rita's College of Balingasag</div>
             </div>
@@ -84,7 +86,7 @@ export function LandingPage() {
                 <button
                   type="button"
                   className="landing-nav-link"
-                  onClick={() => handleScrollToSection("governance")}
+                  onClick={() => handleScrollToSection("about")}
                   style={{ background: "none", border: "none", padding: 0 }}
                 >
                   About
@@ -255,6 +257,105 @@ export function LandingPage() {
             <img src={teLogo} alt="Teacher Education Program" className="landing-program-img" />
             <div className="landing-program-badge">TEP</div>
             <div className="landing-program-name">Teacher Education Program</div>
+          </div>
+        </div>
+      </section>
+
+      {/* ===================================================
+          ABOUT THE SYSTEM SECTION
+          =================================================== */}
+      <section className="landing-about-section" id="about">
+        <div className="landing-section-header">
+          <div className="landing-section-tag">
+            <Info size={14} />
+            <span>About The System</span>
+          </div>
+          <h2 className="landing-section-title">Institutional Class &amp; Examination Scheduling</h2>
+          <p className="landing-section-desc">
+            A web-based platform engineered for St. Rita's College of Balingasag to streamline and automate manual academic scheduling operations.
+          </p>
+        </div>
+
+        <div className="landing-about-container">
+          {/* Main Description Card */}
+          <div className="landing-about-main-card">
+            <div className="landing-about-badge">
+              <Sparkles size={15} />
+              <span>Purpose &amp; System Overview</span>
+            </div>
+            <h3 className="landing-about-headline">
+              Modernizing Academic Operations at St. Rita's College of Balingasag
+            </h3>
+            <p className="landing-about-text">
+              The <strong>SRCB Class Scheduling Management System (SCSMS)</strong> is a centralized academic administration platform designed to eliminate timetable friction, optimize institutional resource allocation, and preserve academic integrity. Built to address the real-world complexities of college operations, SCSMS unites programs, courses, curriculum subjects, faculty availability, campus facilities, class timetables, and examination schedules into one responsive, collaborative system.
+            </p>
+            <p className="landing-about-text">
+              From coordinating cross-building room assignments across the <strong>College</strong>, <strong>Senior High School (SHS)</strong>, and <strong>Junior High School (JHS)</strong> buildings, to honoring unique faculty schedules (such as dedicated religious Sister and part-time instructor availability), SCSMS empowers administrators to construct conflict-free timetables with confidence and precision.
+            </p>
+
+            <div className="landing-about-highlights">
+              <div className="landing-about-highlight-item">
+                <div className="landing-about-highlight-dot" />
+                <div>
+                  <strong>Automated Conflict Prevention:</strong> Proactively detects classroom double-bookings, instructor schedule overlaps, section collisions, and faculty availability violations in real time.
+                </div>
+              </div>
+              <div className="landing-about-highlight-item">
+                <div className="landing-about-highlight-dot" />
+                <div>
+                  <strong>Common Examination Scheduling:</strong> Synchronizes examination dates and times across multi-section cohorts for identical subjects (e.g., GE1 - Understanding the Self) to protect testing confidentiality.
+                </div>
+              </div>
+              <div className="landing-about-highlight-item">
+                <div className="landing-about-highlight-dot" />
+                <div>
+                  <strong>Dual Delivery Modality:</strong> Seamlessly differentiates between Face-to-Face classes requiring physical room allocation and Online classes that bypass room constraints.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Role-Based Capabilities Grid */}
+          <div className="landing-about-roles-grid">
+            <div className="landing-about-role-card">
+              <div className="landing-about-role-icon">
+                <ShieldCheck size={22} />
+              </div>
+              <h4>Super Admin (ICT Office)</h4>
+              <p>
+                Oversees institutional user accounts, role delegation, credential security, and instant account suspension controls to safeguard system access.
+              </p>
+            </div>
+
+            <div className="landing-about-role-card">
+              <div className="landing-about-role-icon">
+                <Calendar size={22} />
+              </div>
+              <h4>Admin (Registrar &amp; Scheduler)</h4>
+              <p>
+                Configures active academic terms, manages campus buildings and classrooms, maintains the master faculty directory, and authors conflict-free timetables.
+              </p>
+            </div>
+
+            <div className="landing-about-role-card">
+              <div className="landing-about-role-icon">
+                <GraduationCap size={22} />
+              </div>
+              <h4>Program Head</h4>
+              <p>
+                Administers departmental major subjects, assigns qualified instructors, reviews faculty availability matrices, and monitors section timetables.
+              </p>
+            </div>
+
+            <div className="landing-about-role-card">
+              <div className="landing-about-role-icon">
+                <Users size={22} />
+              </div>
+              <h4>Faculty &amp; Teachers</h4>
+              <p>
+                Access personalized teaching schedules and exam proctoring assignments, with part-time faculty self-registering their available teaching windows.
+              </p>
+            </div>
           </div>
         </div>
       </section>

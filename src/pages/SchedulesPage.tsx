@@ -24,9 +24,14 @@ import {
   GraduationCap,
   DoorOpen,
   UserCheck,
+  ArrowRight,
+  ArrowLeft,
+  BookOpen,
+  Users,
+  Layers,
 } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
-import { validateScheduleSlot, formatGroupedAvailability } from "../utils/scheduling";
+import { validateScheduleSlot, formatGroupedAvailability, isTimeOverlapping, parseTeacherAvailability, parseTimeToMinutes } from "../utils/scheduling";
 import { ScheduleDetailsModal } from "../components/schedule/ScheduleDetailsModal";
 import { TimetableSkeleton, CardGridSkeleton } from "../components/common/Skeleton";
 import { Tooltip } from "../components/common/Tooltip";
@@ -48,12 +53,7 @@ const TIME_SLOTS = [
 
 function slotToMinutes(timeStr: string) {
   if (!timeStr) return 0;
-  const parts = timeStr.trim().split(":");
-  let h = Number(parts[0]) || 0;
-  const m = Number(parts[1]) || 0;
-  // Convert 12-hour afternoon times if needed (01:00 - 07:00 pm in college schedules)
-  if (h >= 1 && h <= 7) h += 12;
-  return h * 60 + m;
+  return parseTimeToMinutes(timeStr);
 }
 
 function isScheduleInSlot(scheduleTime: string, gridSlot: string) {
@@ -192,6 +192,7 @@ export function SchedulesPage() {
   const [selectedFacultyFilter, setSelectedFacultyFilter] = useState<string>("All");
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
+  const [modalStep, setModalStep] = useState<1 | 2>(1);
   const [editingSchedule, setEditingSchedule] = useState<ClassScheduleItem | null>(null);
   const [viewingSchedule, setViewingSchedule] = useState<ClassScheduleItem | null>(null);
   const [scheduleToDelete, setScheduleToDelete] = useState<ClassScheduleItem | null>(null);
@@ -288,6 +289,7 @@ export function SchedulesPage() {
     setIsDraggingGrid(false);
     setDragStart(null);
     setDragCurrent(null);
+    setModalStep(1);
     setIsOpen(true);
   };
 
@@ -354,6 +356,7 @@ export function SchedulesPage() {
           isMajor: Boolean(sub.isMajor),
           program: sub.program || selectedProgram.key || "BSIT",
         });
+        setModalStep(1);
         setIsOpen(true);
       }
     } catch (err: any) {
@@ -457,66 +460,9 @@ export function SchedulesPage() {
     );
   }, [form.section, availableSections]);
 
-  const modalSubjects = useMemo(() => {
-    if (!selectedSectionObj) return availableSubjects;
-    const filtered = availableSubjects.filter((sub) => isSubjectMatchingSection(sub, selectedSectionObj));
-    return filtered.length > 0 ? filtered : availableSubjects;
-  }, [selectedSectionObj, availableSubjects]);
-
-  // Searchable Select Option Mappers for Categories
-  const sectionSelectOptions: SearchableOption[] = useMemo(() => {
-    return availableSections.map((sec, idx) => {
-      const secLabel = sec.section
-        ? sec.course
-          ? `${sec.course} ${sec.yearLevel || ""}-${sec.section}`.trim()
-          : sec.section
-        : `Section ${idx + 1}`;
-      const secValue = sec.section
-        ? sec.course
-          ? `${sec.course} ${sec.yearLevel || ""}-${sec.section}`.trim()
-          : sec.section
-        : secLabel;
-      const studentCount = sec.students || 30;
-
-      return {
-        value: secValue,
-        label: secLabel,
-        sublabel: `${sec.course || sec.program || "Academic Program"} · Year Level ${sec.yearLevel || "1"} · ${studentCount} enrolled students`,
-        badge: `${studentCount} Students`,
-        badgeTone: "blue",
-        searchKeywords: [
-          sec.course || "",
-          sec.program || "",
-          sec.section || "",
-          sec.department || "",
-          `Year ${sec.yearLevel}`,
-        ],
-      };
-    });
-  }, [availableSections]);
-
-  const facultySelectOptions: SearchableOption[] = useMemo(() => {
-    return availableFaculty.map((f) => {
-      const isFullTime = f.status === "Full-Time";
-      return {
-        value: f.id,
-        label: f.name,
-        sublabel: `${f.department || "Academic Faculty"} · Max Load: ${f.maxLoadHours || 24} hrs/wk`,
-        badge: f.status || "Full-Time",
-        badgeTone: isFullTime ? "emerald" : "amber",
-        searchKeywords: [
-          f.name,
-          f.department || "",
-          f.status || "",
-          f.email || "",
-          f.id,
-        ],
-      };
-    });
-  }, [availableFaculty]);
-
-  const subjectSelectOptions: SearchableOption[] = useMemo(() => {
-    return modalSubjects.map((sub) => {
+  // Step 1: Subject options (filtered by Program Head if applicable)
+  const subjectOptionsForStep1: SearchableOption[] = useMemo(() => {
+    return availableSubjects.map((sub) => {
       const isMajor = Boolean(sub.isMajor);
       const isLab = Number(sub.labHours || 0) > 0;
       const units = sub.units || 3;
@@ -536,87 +482,281 @@ export function SchedulesPage() {
         ],
       };
     });
-  }, [modalSubjects]);
+  }, [availableSubjects]);
 
-  const roomSelectOptions: SearchableOption[] = useMemo(() => {
-    return availableRoomsForBuilding.map((r) => {
+  // Requirement 4 & 11: Step 2 - Available Faculty for selected Day & Time
+  const availableFacultyForSlot = useMemo(() => {
+    if (!form.day || !form.time) return availableFaculty;
+
+    return availableFaculty.filter((fac) => {
+      // 1. Exclude if teacher already has another class scheduled on this day at overlapping time
+      const hasClash = scheduleItems.some((s) => {
+        if (editingSchedule && String(s.id) === String(editingSchedule.id)) return false;
+        if (s.day.toLowerCase() !== form.day.toLowerCase()) return false;
+        const isSameTeacher =
+          (s.facultyId && fac.id && String(s.facultyId) === String(fac.id)) ||
+          (s.faculty && fac.name && s.faculty.toLowerCase().trim() === fac.name.toLowerCase().trim());
+        if (!isSameTeacher) return false;
+        return isTimeOverlapping(s.time, form.time);
+      });
+      if (hasClash) return false;
+
+      // 2. Check Part-Time and registered availability rules
+      if (fac.status === "Part-Time" && fac.availability) {
+        const parsedAvail = parseTeacherAvailability(fac.availability);
+        const dayEntry = parsedAvail.find((d) => d.day.toLowerCase() === form.day.toLowerCase());
+        if (!dayEntry || !dayEntry.slots || dayEntry.slots.length === 0) return false;
+
+        const [candStart] = form.time.split("-").map((t) => t.trim());
+        const isSlotListed = dayEntry.slots.some((slot) => {
+          const [sStart] = slot.split("-").map((t) => t.trim());
+          return (
+            slot.includes(form.time) ||
+            form.time.includes(slot) ||
+            (sStart && candStart && sStart.slice(0, 2) === candStart.slice(0, 2))
+          );
+        });
+        if (!isSlotListed) return false;
+      }
+
+      return true;
+    });
+  }, [availableFaculty, scheduleItems, form.day, form.time, editingSchedule]);
+
+  // Requirement 5 & 11: Step 2 - Available Rooms for selected Day & Time
+  const availableRoomsForSlot = useMemo(() => {
+    if (form.modality === "Online") return [];
+    if (!form.day || !form.time) return roomsList;
+
+    const subObj = subjectsList.find((s) => s.code === form.subjectCode);
+    const requiresLab = subObj ? Number(subObj.labHours || 0) > 0 : false;
+
+    return roomsList.filter((rm) => {
+      // Exclude rooms under maintenance or inactive
+      const status = String(rm.status || "").toLowerCase();
+      if (status === "maintenance" || status === "closed" || status === "inactive") return false;
+
+      // Exclude if room is already occupied by a Face-to-Face class on this day at overlapping time
+      const hasClash = scheduleItems.some((s) => {
+        if (editingSchedule && String(s.id) === String(editingSchedule.id)) return false;
+        if (s.modality === "Online") return false;
+        if (s.day.toLowerCase() !== form.day.toLowerCase()) return false;
+        if (!s.room || String(s.room).toLowerCase().trim() !== String(rm.number).toLowerCase().trim()) return false;
+        return isTimeOverlapping(s.time, form.time);
+      });
+      if (hasClash) return false;
+
+      // Room type rules: laboratory subjects require lab room
+      if (requiresLab) {
+        const isLab = /lab/i.test(rm.type || "") || /lab/i.test(rm.building || "");
+        if (!isLab) return false;
+      }
+
+      return true;
+    });
+  }, [roomsList, scheduleItems, form.day, form.time, form.modality, form.subjectCode, subjectsList, editingSchedule]);
+
+  // Requirement 6 & 11: Step 2 - Available Sections for selected Subject, Day & Time
+  const availableSectionsForSlot = useMemo(() => {
+    const subObj = subjectsList.find((s) => s.code === form.subjectCode);
+
+    return availableSections.filter((sec) => {
+      // 1. Check curriculum match (section must match subject's program / course & year level)
+      if (subObj && !isSubjectMatchingSection(subObj, sec)) {
+        return false;
+      }
+
+      // 2. Exclude if section already has another class scheduled on this day at overlapping time
+      if (form.day && form.time) {
+        const hasClash = scheduleItems.some((s) => {
+          if (editingSchedule && String(s.id) === String(editingSchedule.id)) return false;
+          if (s.day.toLowerCase() !== form.day.toLowerCase()) return false;
+          const secLabel = sec.section ? (sec.course ? `${sec.course} ${sec.yearLevel || ''}-${sec.section}`.trim() : sec.section) : '';
+          const sSec = s.section || '';
+          const isSameSection =
+            sSec.toLowerCase().trim() === sec.section.toLowerCase().trim() ||
+            (secLabel && sSec.toLowerCase().trim() === secLabel.toLowerCase().trim()) ||
+            sSec.toLowerCase().includes(sec.section.toLowerCase().trim());
+          if (!isSameSection) return false;
+          return isTimeOverlapping(s.time, form.time);
+        });
+        if (hasClash) return false;
+      }
+
+      return true;
+    });
+  }, [availableSections, subjectsList, form.subjectCode, form.day, form.time, scheduleItems, editingSchedule]);
+
+  // Searchable Select Mappers for Step 2
+  const facultyOptionsForStep2: SearchableOption[] = useMemo(() => {
+    return availableFacultyForSlot.map((f) => {
+      const isFullTime = f.status === "Full-Time";
+      return {
+        value: f.id,
+        label: f.name,
+        sublabel: `${f.department || "Academic Faculty"} · Max Load: ${f.maxLoadHours || 24} hrs/wk`,
+        badge: f.status || "Full-Time",
+        badgeTone: isFullTime ? "emerald" : "amber",
+        searchKeywords: [f.name, f.department || "", f.status || "", f.id],
+      };
+    });
+  }, [availableFacultyForSlot]);
+
+  // Selected Section Headcount for Proactive Room Capacity Verification
+  const selectedSectionHeadcount = useMemo(() => {
+    if (!form.section) return 0;
+    const sec = availableSections.find(
+      (s) =>
+        s.section === form.section ||
+        (s.course && `${s.course} ${s.yearLevel || ""}-${s.section}`.trim() === form.section) ||
+        form.section.includes(s.section)
+    );
+    return Number(sec?.students || 35);
+  }, [form.section, availableSections]);
+
+  const selectedRoomObj = useMemo(() => {
+    if (!form.room) return null;
+    return roomsList.find((r) => String(r.number).toLowerCase().trim() === String(form.room).toLowerCase().trim()) || null;
+  }, [form.room, roomsList]);
+
+  const isRoomTooSmall = useMemo(() => {
+    if (form.modality === "Online" || !selectedRoomObj || !selectedSectionHeadcount) return false;
+    return Number(selectedRoomObj.capacity) < selectedSectionHeadcount;
+  }, [form.modality, selectedRoomObj, selectedSectionHeadcount]);
+
+  const roomOptionsForStep2: SearchableOption[] = useMemo(() => {
+    return availableRoomsForSlot.map((r) => {
       const isLab = /lab/i.test(r.type || "") || /lab/i.test(r.building || "");
+      const isTooSmall = selectedSectionHeadcount > 0 && Number(r.capacity) < selectedSectionHeadcount;
       return {
         value: r.number,
         label: `${r.number} - ${r.building || "Campus"}`,
-        sublabel: `${r.type || "Classroom"} · Max Capacity: ${r.capacity} students · Status: ${r.status || "Available"}`,
-        badge: isLab ? "Lab" : `Cap: ${r.capacity}`,
-        badgeTone: isLab ? "purple" : "slate",
-        searchKeywords: [
-          r.number,
-          r.building || "",
-          r.type || "",
-          String(r.capacity),
-          r.status || "",
-        ],
+        sublabel: isTooSmall
+          ? `⚠ Capacity: ${r.capacity} — Section requires ${selectedSectionHeadcount} seats`
+          : `${r.type || "Classroom"} · Capacity: ${r.capacity} students · Status: Suitable & Available`,
+        badge: isTooSmall ? `Too Small (${r.capacity} seats)` : isLab ? "Lab" : `Cap: ${r.capacity}`,
+        badgeTone: isTooSmall ? "danger" : isLab ? "purple" : "slate",
+        searchKeywords: [r.number, r.building || "", r.type || "", String(r.capacity)],
       };
     });
-  }, [availableRoomsForBuilding]);
+  }, [availableRoomsForSlot, selectedSectionHeadcount]);
 
-  const handleSectionChange = (sectionVal: string) => {
-    const chosenSec = availableSections.find((s) => {
-      const secLabel = s.section ? (s.course ? `${s.course} ${s.yearLevel || ''}-${s.section}`.trim() : s.section) : '';
-      return (
-        s.id === sectionVal ||
-        s.section === sectionVal ||
-        secLabel === sectionVal ||
-        (secLabel && sectionVal.includes(secLabel)) ||
-        (s.section && sectionVal.includes(s.section))
-      );
+  const sectionOptionsForStep2: SearchableOption[] = useMemo(() => {
+    return availableSectionsForSlot.map((sec, idx) => {
+      const secLabel = sec.section
+        ? sec.course
+          ? `${sec.course} ${sec.yearLevel || ""}-${sec.section}`.trim()
+          : sec.section
+        : `Section ${idx + 1}`;
+      const studentCount = sec.students || 30;
+      return {
+        value: secLabel,
+        label: secLabel,
+        sublabel: `${sec.course || sec.program || "Academic Program"} · Year Level ${sec.yearLevel || "1"} · ${studentCount} enrolled students`,
+        badge: `${studentCount} Students`,
+        badgeTone: "blue",
+        searchKeywords: [sec.course || "", sec.program || "", sec.section || "", `Year ${sec.yearLevel}`],
+      };
     });
+  }, [availableSectionsForSlot]);
 
-    const filteredForSec = availableSubjects.filter((sub) => isSubjectMatchingSection(sub, chosenSec));
-    const isCurrentValid = filteredForSec.some((s) => s.code === form.subjectCode);
-    const targetSub = isCurrentValid
-      ? filteredForSec.find((s) => s.code === form.subjectCode)
-      : (filteredForSec[0] || null);
+  const isStep1ResourcesAvailable = useMemo(() => {
+    if (!form.subjectCode || !form.day || !form.time) return false;
+    const hasFaculty = availableFacultyForSlot.length > 0;
+    const hasRoom = form.modality === "Online" || availableRoomsForSlot.length > 0;
+    const hasSection = availableSectionsForSlot.length > 0;
+    return hasFaculty && hasRoom && hasSection;
+  }, [form.subjectCode, form.day, form.time, form.modality, availableFacultyForSlot, availableRoomsForSlot, availableSectionsForSlot]);
 
-    const defInstructor = targetSub
-      ? availableFaculty.find((f) => f.id === targetSub.instructorId || f.name === targetSub.instructor)
-      : null;
+  const selectedFacultyMember = useMemo(() => {
+    return (
+      availableFaculty.find(
+        (f) => f.id === form.facultyId || (form.faculty && f.name.toLowerCase() === form.faculty.toLowerCase())
+      ) || null
+    );
+  }, [form.facultyId, form.faculty, availableFaculty]);
 
-    setForm((prev) => ({
-      ...prev,
-      section: sectionVal,
-      program: chosenSec?.program || chosenSec?.course || prev.program,
-      subjectCode: targetSub ? targetSub.code : "",
-      subject: targetSub ? targetSub.name : "",
-      isMajor: targetSub ? Boolean(targetSub.isMajor) : prev.isMajor,
-      facultyId: defInstructor ? defInstructor.id : (targetSub ? "" : prev.facultyId),
-      faculty: defInstructor ? defInstructor.name : (targetSub ? "" : prev.faculty),
-    }));
+  const handleContinueToStep2 = () => {
+    if (!form.subjectCode) {
+      toast.push("Please select an Academic Subject to continue", "error");
+      return;
+    }
+    if (!form.day || !form.time) {
+      toast.push("Please select Teaching Day and Time Slot to continue", "error");
+      return;
+    }
+
+    // Strict Proactive Availability Verification before advancing to Step 2
+    if (availableSectionsForSlot.length === 0) {
+      toast.push(`No available sections taking ${form.subjectCode} at this time.`, "error");
+      return;
+    }
+
+    if (availableFacultyForSlot.length === 0) {
+      toast.push("No available faculty for this schedule.", "error");
+      return;
+    }
+
+    if (form.modality === "Face-to-Face" && availableRoomsForSlot.length === 0) {
+      toast.push("No available rooms for this schedule.", "error");
+      return;
+    }
+
+    // Adapt / validate faculty selection for the new slot
+    if (!availableFacultyForSlot.some((f) => f.id === form.facultyId || f.name === form.faculty)) {
+      const firstFac = availableFacultyForSlot[0];
+      if (firstFac) {
+        setForm((prev) => ({ ...prev, facultyId: firstFac.id, faculty: firstFac.name }));
+      } else {
+        setForm((prev) => ({ ...prev, facultyId: "", faculty: "" }));
+      }
+    }
+
+    // Adapt / validate room selection for the new slot
+    if (form.modality === "Face-to-Face") {
+      if (!availableRoomsForSlot.some((r) => r.number === form.room)) {
+        const firstRoom = availableRoomsForSlot[0];
+        if (firstRoom) {
+          setForm((prev) => ({ ...prev, room: firstRoom.number, building: (firstRoom.building as BuildingType) || prev.building }));
+        } else {
+          setForm((prev) => ({ ...prev, room: "" }));
+        }
+      }
+    }
+
+    // Adapt / validate section selection for the new slot & subject
+    if (!availableSectionsForSlot.some((s) => s.section === form.section || (s.course && `${s.course} ${s.yearLevel || ''}-${s.section}`.trim() === form.section))) {
+      const firstSec = availableSectionsForSlot[0];
+      if (firstSec) {
+        const secVal = firstSec.course ? `${firstSec.course} ${firstSec.yearLevel || ''}-${firstSec.section}`.trim() : firstSec.section;
+        setForm((prev) => ({ ...prev, section: secVal }));
+      } else {
+        setForm((prev) => ({ ...prev, section: "" }));
+      }
+    }
+
+    setModalStep(2);
   };
 
   const handleScheduleUnscheduledSubject = (sub: any) => {
     if (!canCreate) return;
     setEditingSchedule(null);
-    const defFac = availableFaculty.find((f) => f.id === sub.instructorId || f.name === sub.instructor) || availableFaculty[0] || facultyList[0];
-    const defSec = availableSections.find((s) => isSubjectMatchingSection(sub, s)) || availableSections[0] || sectionsList[0];
-    const defSecVal = defSec ? (defSec.course && defSec.section ? `${defSec.course} ${defSec.yearLevel || ''}-${defSec.section}`.trim() : defSec.section) : "BSIT 1-A";
-    const isLab = Number(sub.labHours || 0) > 0;
-    const defRoom = roomsList.find((r) => isLab ? (/lab/i.test(r.type || '') || /lab/i.test(r.building || '')) : true)?.number || roomsList[0]?.number || "COL-101";
-    const defBuilding = roomsList[0]?.building || "College Building";
-
     setForm({
       day: "Monday",
       time: "08:00-09:30",
       subjectCode: sub.code || "",
       subject: sub.name || "",
-      section: defSecVal,
-      facultyId: defFac?.id || "",
-      faculty: defFac?.name || "",
-      room: defRoom,
-      building: defBuilding as BuildingType,
+      section: "",
+      facultyId: "",
+      faculty: "",
+      room: "COL-101",
+      building: "College Building" as BuildingType,
       modality: "Face-to-Face",
       onlineLink: "",
       isMajor: Boolean(sub.isMajor),
       program: sub.program || selectedProgram.key || "BSIT",
     });
+    setModalStep(1);
     setIsOpen(true);
   };
 
@@ -624,24 +764,12 @@ export function SchedulesPage() {
     const sub = subjectsList.find((s) => s.code === code);
     if (!sub) return;
 
-    const defInstructor = availableFaculty.find((f) => f.id === sub.instructorId || f.name === sub.instructor);
-    const isCurrentSecValid = selectedSectionObj && isSubjectMatchingSection(sub, selectedSectionObj);
-
-    let nextSection = form.section;
-    if (!isCurrentSecValid) {
-      const matchingSection = availableSections.find((sec) => isSubjectMatchingSection(sub, sec)) || availableSections[0] || sectionsList[0];
-      nextSection = matchingSection ? (matchingSection.course && matchingSection.section ? `${matchingSection.course} ${matchingSection.yearLevel || ''}-${matchingSection.section}`.trim() : matchingSection.section) : form.section;
-    }
-
     setForm((prev) => ({
       ...prev,
       subjectCode: sub.code,
       subject: sub.name,
       isMajor: Boolean(sub.isMajor),
       program: sub.program || prev.program,
-      facultyId: defInstructor ? defInstructor.id : prev.facultyId,
-      faculty: defInstructor ? defInstructor.name : prev.faculty,
-      section: nextSection,
     }));
   };
 
@@ -673,17 +801,6 @@ export function SchedulesPage() {
       building: (selectedRoomObj?.building as BuildingType) || prev.building,
     }));
   };
-
-  // Keep form.room synchronized with available rooms when building or modality changes
-  useEffect(() => {
-    if (!isOpen || form.modality !== "Face-to-Face") return;
-    if (availableRoomsForBuilding.length > 0 && !availableRoomsForBuilding.some((r) => r.number === form.room)) {
-      setForm((prev) => ({
-        ...prev,
-        room: availableRoomsForBuilding[0].number,
-      }));
-    }
-  }, [form.building, form.modality, isOpen, availableRoomsForBuilding, form.room]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -726,6 +843,7 @@ export function SchedulesPage() {
       isMajor: Boolean(item.isMajor),
       program: item.program || selectedProgram.key || "BSIT",
     });
+    setModalStep(1);
     setIsOpen(true);
   };
 
@@ -766,14 +884,14 @@ export function SchedulesPage() {
       const isRoomInFiltered = availableRoomsForBuilding.some((r) => r.number === form.room);
       const resolvedRoom =
         form.modality === "Online"
-          ? (form.room || "Virtual Room")
+          ? "Virtual Room"
           : isRoomInFiltered
             ? form.room
             : (availableRoomsForBuilding[0]?.number || form.room || roomsList[0]?.number || "R-101");
 
       const resolvedBuilding =
         form.modality === "Online"
-          ? form.building
+          ? "Virtual Classroom"
           : (roomsList.find((r) => r.number === resolvedRoom)?.building as BuildingType) || form.building;
 
       const payload: Omit<ClassScheduleItem, "id"> & { id?: string } = {
@@ -822,6 +940,7 @@ export function SchedulesPage() {
 
       setIsOpen(false);
       setEditingSchedule(null);
+      setModalStep(1);
       fetchSchedules();
     } catch (err: any) {
       const errMsg = err?.response?.data?.message || err?.response?.data?.error || err?.message || "Failed to save schedule";
@@ -857,8 +976,11 @@ export function SchedulesPage() {
       }
 
       if (role === "program_head" || (selectedProgram.key && selectedProgram.key !== "ALL")) {
-        if (!matchesProgram(item.program || selectedProgram.shortLabel)) {
-          return false;
+        const itemProg = String(item.program || "").toUpperCase().trim();
+        if (itemProg !== "ALL" && itemProg !== "UNIVERSAL" && !itemProg.includes("GENERAL EDUCATION")) {
+          if (!matchesProgram(item.program || selectedProgram.shortLabel)) {
+            return false;
+          }
         }
       }
 
@@ -894,11 +1016,6 @@ export function SchedulesPage() {
     matchesProgram,
     query,
   ]);
-
-  // Selected faculty info for part-time availability view in modal
-  const selectedFacultyMember = useMemo(() => {
-    return facultyList.find((f) => f.id === form.facultyId);
-  }, [facultyList, form.facultyId]);
 
   return (
     <motion.div
@@ -959,11 +1076,12 @@ export function SchedulesPage() {
                   isMajor: Boolean(firstSub?.isMajor),
                   program: firstSub?.program || firstSec?.program || selectedProgram.key || "BSIT",
                 });
+                setModalStep(1);
                 setIsOpen(true);
               }}
             >
               <Plus size={16} />
-              Manual Schedule Entry
+              Schedule Class
             </button>
           ) : undefined
         }
@@ -1707,32 +1825,86 @@ export function SchedulesPage() {
         )}
       </section>
 
-      {/* Manual Class Schedule Modal */}
+      {/* ===================================================
+          TWO-STEP MANUAL CLASS SCHEDULE MODAL
+          =================================================== */}
       <Modal
         isOpen={isOpen && canCreate}
-        title={editingSchedule ? "Edit Class Schedule Block" : "Manual Class Schedule Entry"}
-        description="Allocate day, time, subject, section, room, instructor, and modality (Face-to-Face vs Online)."
+        title={
+          modalStep === 1
+            ? (editingSchedule ? "Edit Class Schedule - Step 1: Basic Information" : "Create Class Schedule - Step 1: Basic Information")
+            : (editingSchedule ? "Edit Class Schedule - Step 2: Resource Assignment" : "Create Class Schedule - Step 2: Resource Assignment")
+        }
+        description={
+          modalStep === 1
+            ? "Define the academic subject, teaching day, time slot, and instructional delivery mode."
+            : "Assign an available instructor, room, and student section for this schedule slot."
+        }
         onClose={() => {
           setIsOpen(false);
           setEditingSchedule(null);
+          setModalStep(1);
         }}
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-          {/* Section 1: Timetable & Day Allocation */}
+        {/* Step Indicator */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
           <div
             style={{
-              padding: 14,
-              background: "var(--srcb-surface)",
-              border: "1px solid var(--srcb-border)",
-              borderRadius: 8,
+              flex: 1,
+              padding: "8px 12px",
+              borderRadius: 6,
+              background: modalStep === 1 ? "var(--srcb-navy)" : "rgba(148, 163, 184, 0.15)",
+              color: modalStep === 1 ? "#ffffff" : "var(--srcb-text-muted)",
+              fontSize: "0.78rem",
+              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
             }}
           >
-            <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--srcb-navy)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>
-              1. Day & Time Allocation
+            <span>1. Basic Schedule Information</span>
+          </div>
+          <div
+            style={{
+              flex: 1,
+              padding: "8px 12px",
+              borderRadius: 6,
+              background: modalStep === 2 ? "var(--srcb-navy)" : "rgba(148, 163, 184, 0.15)",
+              color: modalStep === 2 ? "#ffffff" : "var(--srcb-text-muted)",
+              fontSize: "0.78rem",
+              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <span>2. Resource Assignment</span>
+          </div>
+        </div>
+
+        {/* STEP 1: Basic Schedule Information (WHAT & WHEN) */}
+        {modalStep === 1 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div className="field-group">
+              <label htmlFor="schedSubject">
+                Academic Subject <span style={{ color: "#dc2626" }}>*</span>
+              </label>
+              <SearchableSelect
+                id="schedSubject"
+                value={form.subjectCode}
+                onChange={(val) => handleSubjectChange(val)}
+                options={subjectOptionsForStep1}
+                placeholder="Search & select curriculum subject..."
+                searchPlaceholder="Search by subject code, title, program..."
+                emptyText="No matching academic subjects found"
+              />
             </div>
+
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
               <div className="field-group">
-                <label htmlFor="schedDay">Teaching Day</label>
+                <label htmlFor="schedDay">
+                  Teaching Day <span style={{ color: "#dc2626" }}>*</span>
+                </label>
                 <select
                   id="schedDay"
                   value={form.day}
@@ -1747,7 +1919,9 @@ export function SchedulesPage() {
               </div>
 
               <div className="field-group">
-                <label htmlFor="schedTime">Time Slot</label>
+                <label htmlFor="schedTime">
+                  Time Slot <span style={{ color: "#dc2626" }}>*</span>
+                </label>
                 <select
                   id="schedTime"
                   value={form.time}
@@ -1766,95 +1940,7 @@ export function SchedulesPage() {
                 </select>
               </div>
             </div>
-          </div>
 
-          {/* Section 2: Subject & Section Assignment */}
-          <div
-            style={{
-              padding: 14,
-              background: "var(--srcb-surface)",
-              border: "1px solid var(--srcb-border)",
-              borderRadius: 8,
-            }}
-          >
-            <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--srcb-navy)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>
-              2. Curriculum & Section Assignment
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
-              <div className="field-group">
-                <label htmlFor="schedSection">
-                  Student Section <span style={{ color: "#dc2626" }}>*</span>
-                </label>
-                <SearchableSelect
-                  id="schedSection"
-                  value={form.section}
-                  onChange={(val) => handleSectionChange(val)}
-                  options={sectionSelectOptions}
-                  placeholder="Search & select student section..."
-                  searchPlaceholder="Search sections (e.g. BSIT 1-A, Year 2, BSBA)..."
-                  emptyText="No matching student sections found"
-                />
-              </div>
-
-              <div className="field-group">
-                <label htmlFor="schedFaculty">
-                  Instructor <span style={{ color: "#dc2626" }}>*</span>
-                </label>
-                <SearchableSelect
-                  id="schedFaculty"
-                  value={form.facultyId}
-                  onChange={(val) => {
-                    const fac = availableFaculty.find((f) => f.id === val);
-                    setForm({
-                      ...form,
-                      facultyId: val,
-                      faculty: fac ? fac.name : "",
-                    });
-                  }}
-                  options={facultySelectOptions}
-                  placeholder="Search & select instructor..."
-                  searchPlaceholder="Search instructors by name, department, status..."
-                  emptyText="No matching instructors found"
-                />
-              </div>
-
-              <div className="field-group" style={{ gridColumn: "1 / -1" }}>
-                <label htmlFor="schedSubject" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span>
-                    Academic Subject <span style={{ color: "#dc2626" }}>*</span>
-                  </span>
-                  {selectedSectionObj && (
-                    <span style={{ fontSize: "0.75rem", fontWeight: 500, color: "var(--srcb-navy)" }}>
-                      Showing {modalSubjects.length} subject{modalSubjects.length === 1 ? "" : "s"} for {selectedSectionObj.course || selectedSectionObj.program}
-                    </span>
-                  )}
-                </label>
-                <SearchableSelect
-                  id="schedSubject"
-                  value={form.subjectCode}
-                  onChange={(val) => handleSubjectChange(val)}
-                  options={subjectSelectOptions}
-                  placeholder={modalSubjects.length === 0 ? "No curriculum subjects found for this section" : "Search & select academic subject..."}
-                  searchPlaceholder="Search subjects by code, title, program, or type..."
-                  emptyText="No matching curriculum subjects found"
-                  disabled={modalSubjects.length === 0}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Section 3: Modality & Facility Location */}
-          <div
-            style={{
-              padding: 14,
-              background: "var(--srcb-surface)",
-              border: "1px solid var(--srcb-border)",
-              borderRadius: 8,
-            }}
-          >
-            <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--srcb-navy)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 12 }}>
-              3. Modality & Classroom Allocation
-            </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
               <div className="field-group">
                 <label htmlFor="schedModality">Teaching Modality</label>
@@ -1868,218 +1954,508 @@ export function SchedulesPage() {
                 </select>
               </div>
 
-              <div className="field-group">
-                <label htmlFor="schedBuilding">Campus Building</label>
-                <select
-                  id="schedBuilding"
-                  value={form.building}
-                  onChange={(e) => handleBuildingChange(e.target.value as BuildingType)}
-                >
-                  {buildingOptions.map((b) => (
-                    <option key={b} value={b}>
-                      {b}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {form.modality === "Face-to-Face" ? (
-                <div className="field-group" style={{ gridColumn: "1 / -1" }}>
-                  <label htmlFor="schedRoom">
-                    Assigned Classroom / Lab <span style={{ color: "#dc2626" }}>*</span>
-                  </label>
-                  <SearchableSelect
-                    id="schedRoom"
-                    value={form.room}
-                    onChange={(val) => handleRoomChange(val)}
-                    options={roomSelectOptions}
-                    placeholder="Search & select classroom or laboratory..."
-                    searchPlaceholder="Search rooms by number, building, type, capacity..."
-                    emptyText="No matching classrooms or labs found"
-                  />
-                </div>
-              ) : (
-                <div className="field-group" style={{ gridColumn: "1 / -1" }}>
-                  <label htmlFor="schedOnlineLink">Virtual Meeting Link / Meeting Room Info</label>
+              {form.modality === "Online" ? (
+                <div className="field-group">
+                  <label htmlFor="schedOnlineLink">Virtual Meeting Link</label>
                   <input
                     id="schedOnlineLink"
-                    placeholder="https://meet.google.com/xxx-xxxx-xxx or Zoom Link"
+                    placeholder="https://meet.google.com/xxx or Zoom"
                     value={form.onlineLink}
                     onChange={(e) => setForm({ ...form, onlineLink: e.target.value })}
                   />
                 </div>
+              ) : (
+                <div className="field-group">
+                  <label htmlFor="schedBuilding">Preferred Campus Building</label>
+                  <select
+                    id="schedBuilding"
+                    value={form.building}
+                    onChange={(e) => handleBuildingChange(e.target.value as BuildingType)}
+                  >
+                    {buildingOptions.map((b) => (
+                      <option key={b} value={b}>
+                        {b}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               )}
             </div>
-          </div>
 
-          {/* Section 4: Organized Diagnostics & Real-time Feedback Container */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {/* Part-Time Instructor Availability Window */}
-            {selectedFacultyMember && selectedFacultyMember.status === "Part-Time" && (
+            {/* Proactive Availability Assessment (Real-time pre-check) */}
+            {form.subjectCode && form.day && form.time && (
               <div
                 style={{
-                  padding: "12px 14px",
                   background: "var(--srcb-surface)",
-                  borderRadius: 8,
                   border: "1px solid var(--srcb-border)",
-                  borderLeft: "4px solid #f59e0b",
+                  borderRadius: 8,
+                  padding: 12,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, color: "#d97706", fontSize: "0.84rem" }}>
-                    <Clock size={15} />
-                    <span>Part-Time Instructor Confirmed Teaching Hours:</span>
-                  </div>
-                  <span className="pill pill--online" style={{ fontSize: "0.72rem" }}>Part-Time</span>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--srcb-navy)" }}>
+                    Proactive Resource Availability Assessment:
+                  </span>
+                  <span style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)" }}>
+                    Analyzed for {form.day} • {form.time}
+                  </span>
                 </div>
 
-                {(() => {
-                  const grouped = formatGroupedAvailability(selectedFacultyMember.availability);
-                  if (grouped.length === 0) {
-                    return (
-                      <p style={{ margin: 0, color: "var(--srcb-text-muted)", fontSize: "0.8rem" }}>
-                        Standard Mon-Fri working hours.
-                      </p>
-                    );
-                  }
-                  return (
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 6 }}>
-                      {grouped.map(({ day, formattedRange }) => {
-                        const isMatchingDay = day.toLowerCase() === form.day.toLowerCase();
-                        return (
-                          <div
-                            key={day}
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              padding: "5px 10px",
-                              background: isMatchingDay ? "rgba(245, 158, 11, 0.15)" : "rgba(148, 163, 184, 0.08)",
-                              border: `1px solid ${isMatchingDay ? "rgba(245, 158, 11, 0.4)" : "var(--srcb-border)"}`,
-                              borderRadius: 6,
-                              fontSize: "0.78rem",
-                            }}
-                          >
-                            <strong style={{ color: isMatchingDay ? "#d97706" : "var(--srcb-text)" }}>{day}:</strong>
-                            <span style={{ color: isMatchingDay ? "var(--srcb-text)" : "var(--srcb-text-muted)", fontSize: "0.75rem", fontWeight: isMatchingDay ? 600 : 400 }}>
-                              {formattedRange}
-                            </span>
-                          </div>
-                        );
-                      })}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {/* Faculty Badge */}
+                  <span
+                    className={`pill ${availableFacultyForSlot.length > 0 ? "pill--emerald" : "pill--danger"}`}
+                    style={{ fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: 4 }}
+                  >
+                    {availableFacultyForSlot.length > 0 ? (
+                      <>
+                        <CheckCircle2 size={12} />
+                        {availableFacultyForSlot.length} Faculty Available
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle size={12} />
+                        No available faculty for this schedule.
+                      </>
+                    )}
+                  </span>
+
+                  {/* Room Badge */}
+                  <span
+                    className={`pill ${
+                      form.modality === "Online" || availableRoomsForSlot.length > 0 ? "pill--emerald" : "pill--danger"
+                    }`}
+                    style={{ fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: 4 }}
+                  >
+                    {form.modality === "Online" ? (
+                      <>
+                        <CheckCircle2 size={12} />
+                        Online Virtual Room
+                      </>
+                    ) : availableRoomsForSlot.length > 0 ? (
+                      <>
+                        <CheckCircle2 size={12} />
+                        {availableRoomsForSlot.length} Rooms Available
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle size={12} />
+                        No available rooms for this schedule.
+                      </>
+                    )}
+                  </span>
+
+                  {/* Section Badge */}
+                  <span
+                    className={`pill ${availableSectionsForSlot.length > 0 ? "pill--emerald" : "pill--danger"}`}
+                    style={{ fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: 4 }}
+                  >
+                    {availableSectionsForSlot.length > 0 ? (
+                      <>
+                        <CheckCircle2 size={12} />
+                        {availableSectionsForSlot.length} Section(s) Taking {form.subjectCode} Available
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle size={12} />
+                        No available sections taking {form.subjectCode} at this time.
+                      </>
+                    )}
+                  </span>
+                </div>
+
+                {/* Explicit Proactive Problem Warning if blocked */}
+                {!isStep1ResourcesAvailable && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 8,
+                      padding: "8px 12px",
+                      background: "rgba(239, 68, 68, 0.08)",
+                      border: "1px solid rgba(239, 68, 68, 0.25)",
+                      borderRadius: 6,
+                      color: "#dc2626",
+                      fontSize: "0.8rem",
+                      fontWeight: 600,
+                    }}
+                  >
+                    <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 2 }} />
+                    <div>
+                      {availableSectionsForSlot.length === 0 && (
+                        <div>No available sections taking {form.subjectCode} at this time. All matching sections have overlapping schedules.</div>
+                      )}
+                      {availableFacultyForSlot.length === 0 && (
+                        <div>No available faculty for this schedule. All qualified instructors are occupied or outside their availability.</div>
+                      )}
+                      {form.modality === "Face-to-Face" && availableRoomsForSlot.length === 0 && (
+                        <div>No available rooms for this schedule. All classrooms/labs are currently occupied at {form.day} {form.time}.</div>
+                      )}
+                      <div style={{ fontSize: "0.74rem", fontWeight: 400, marginTop: 4, color: "var(--srcb-text-muted)" }}>
+                        Please adjust the Teaching Day or Time Slot to proceed to resource assignment.
+                      </div>
                     </div>
-                  );
-                })()}
+                  </div>
+                )}
               </div>
             )}
 
-            {/* Real-time Conflict Errors Box */}
-            {validationFeedback.errors.length > 0 ? (
-              <div
-                style={{
-                  padding: 14,
-                  background: "rgba(239, 68, 68, 0.08)",
-                  borderRadius: 8,
-                  border: "1px solid rgba(239, 68, 68, 0.3)",
-                  borderLeft: "4px solid #dc2626",
+            <div className="table-actions" style={{ marginTop: 20 }}>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  setIsOpen(false);
+                  setEditingSchedule(null);
+                  setModalStep(1);
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, color: "#dc2626", fontSize: "0.88rem" }}>
-                  <AlertTriangle size={17} />
-                  <span>Scheduling Conflicts Detected ({validationFeedback.errors.length})</span>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="action-button"
+                disabled={!isStep1ResourcesAvailable}
+                style={{
+                  opacity: isStep1ResourcesAvailable ? 1 : 0.5,
+                  cursor: isStep1ResourcesAvailable ? "pointer" : "not-allowed",
+                }}
+                onClick={handleContinueToStep2}
+                title={
+                  !isStep1ResourcesAvailable
+                    ? "Cannot continue: Required resources (Faculty, Room, or Sections) are unavailable for this slot."
+                    : "Proceed to assign Faculty, Room, and Section"
+                }
+              >
+                <span>Continue to Resource Assignment</span>
+                <ArrowRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 2: Resource Assignment ONLY (WHO, WHERE, FOR WHOM) */}
+        {modalStep === 2 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Step 1 Context Summary Bar (Read-only summary of Step 1) */}
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                flexWrap: "wrap",
+                background: "var(--srcb-surface)",
+                border: "1px solid var(--srcb-border)",
+                borderRadius: 8,
+                padding: "10px 14px",
+                fontSize: "0.82rem",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <BookOpen size={14} color="var(--srcb-navy)" />
+                <strong>Subject:</strong> <span>{form.subjectCode} - {form.subject}</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <Calendar size={14} color="var(--srcb-navy)" />
+                <strong>Slot:</strong> <span>{form.day} • {form.time}</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <DoorOpen size={14} color="var(--srcb-navy)" />
+                <strong>Modality:</strong> <span>{form.modality}</span>
+              </div>
+            </div>
+
+            {/* Resource 1: Available Faculty */}
+            <div className="field-group">
+              <label htmlFor="schedFaculty">
+                Available Faculty / Instructor <span style={{ color: "#dc2626" }}>*</span>
+              </label>
+              {availableFacultyForSlot.length === 0 ? (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "10px 14px",
+                    background: "rgba(239, 68, 68, 0.08)",
+                    border: "1px solid rgba(239, 68, 68, 0.25)",
+                    borderRadius: 6,
+                    color: "#dc2626",
+                    fontSize: "0.82rem",
+                    fontWeight: 600,
+                  }}
+                >
+                  <AlertTriangle size={15} />
+                  <span>No available faculty for this time.</span>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
-                  {validationFeedback.errors.map((err, i) => (
+              ) : (
+                <SearchableSelect
+                  id="schedFaculty"
+                  value={form.facultyId}
+                  onChange={(val) => {
+                    const fac = availableFaculty.find((f) => f.id === val);
+                    setForm({
+                      ...form,
+                      facultyId: val,
+                      faculty: fac ? fac.name : "",
+                    });
+                  }}
+                  options={facultyOptionsForStep2}
+                  placeholder="Search & select available instructor..."
+                  searchPlaceholder="Search instructors by name, department, status..."
+                  emptyText="No matching available instructors found"
+                />
+              )}
+            </div>
+
+            {/* Resource 2: Available Room */}
+            <div className="field-group">
+              <label htmlFor="schedRoom">
+                Available Room / Classroom <span style={{ color: "#dc2626" }}>*</span>
+              </label>
+              {form.modality === "Online" ? (
+                <div
+                  style={{
+                    padding: "10px 14px",
+                    background: "rgba(16, 185, 129, 0.08)",
+                    border: "1px solid rgba(16, 185, 129, 0.25)",
+                    borderRadius: 6,
+                    color: "#059669",
+                    fontSize: "0.84rem",
+                    fontWeight: 600,
+                  }}
+                >
+                  Virtual Classroom (Online Mode - No physical room required)
+                </div>
+              ) : availableRoomsForSlot.length === 0 ? (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "10px 14px",
+                    background: "rgba(239, 68, 68, 0.08)",
+                    border: "1px solid rgba(239, 68, 68, 0.25)",
+                    borderRadius: 6,
+                    color: "#dc2626",
+                    fontSize: "0.82rem",
+                    fontWeight: 600,
+                  }}
+                >
+                  <AlertTriangle size={15} />
+                  <span>No available rooms for this time.</span>
+                </div>
+              ) : (
+                <>
+                  <SearchableSelect
+                    id="schedRoom"
+                    value={form.room}
+                    onChange={(val) => handleRoomChange(val)}
+                    options={roomOptionsForStep2}
+                    placeholder="Search & select available classroom or lab..."
+                    searchPlaceholder="Search rooms by number, building, type..."
+                    emptyText="No matching available rooms found"
+                  />
+                  {isRoomTooSmall && (
                     <div
-                      key={i}
                       style={{
                         display: "flex",
-                        alignItems: "flex-start",
-                        gap: 6,
-                        fontSize: "0.8rem",
-                        color: "var(--srcb-text)",
-                        background: "rgba(239, 68, 68, 0.06)",
-                        padding: "6px 10px",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "10px 14px",
+                        background: "rgba(239, 68, 68, 0.08)",
+                        border: "1px solid rgba(239, 68, 68, 0.25)",
                         borderRadius: 6,
+                        color: "#dc2626",
+                        fontSize: "0.82rem",
+                        fontWeight: 600,
+                        marginTop: 6,
                       }}
                     >
-                      <span style={{ color: "#dc2626", fontWeight: 700 }}>•</span>
-                      <span>{err}</span>
+                      <AlertTriangle size={15} style={{ flexShrink: 0 }} />
+                      <span>
+                        ⚠ Room {form.room} capacity ({selectedRoomObj?.capacity}) is smaller than the section student headcount ({selectedSectionHeadcount}). Please select a room with at least {selectedSectionHeadcount} seats.
+                      </span>
                     </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
+                  )}
+                </>
+              )}
+            </div>
 
-            {/* Advisory Warnings Box */}
-            {validationFeedback.warnings.length > 0 ? (
-              <div
-                style={{
-                  padding: 12,
-                  background: "rgba(245, 158, 11, 0.08)",
-                  borderRadius: 8,
-                  border: "1px solid rgba(245, 158, 11, 0.3)",
-                  borderLeft: "4px solid #f59e0b",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, color: "#d97706", fontSize: "0.85rem" }}>
+            {/* Resource 3: Available Section(s) */}
+            <div className="field-group">
+              <label htmlFor="schedSection">
+                Available Student Section <span style={{ color: "#dc2626" }}>*</span>
+              </label>
+              {availableSectionsForSlot.length === 0 ? (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "10px 14px",
+                    background: "rgba(239, 68, 68, 0.08)",
+                    border: "1px solid rgba(239, 68, 68, 0.25)",
+                    borderRadius: 6,
+                    color: "#dc2626",
+                    fontSize: "0.82rem",
+                    fontWeight: 600,
+                  }}
+                >
                   <AlertTriangle size={15} />
-                  <span>Advisory Notices ({validationFeedback.warnings.length})</span>
+                  <span>No available sections for this time.</span>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
-                  {validationFeedback.warnings.map((w, i) => (
-                    <div key={i} style={{ fontSize: "0.78rem", color: "var(--srcb-text-muted)", paddingLeft: 6 }}>
-                      • {w}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
+              ) : (
+                <SearchableSelect
+                  id="schedSection"
+                  value={form.section}
+                  onChange={(val) => {
+                    const sec = availableSections.find((s) => s.section === val || (s.course && `${s.course} ${s.yearLevel || ''}-${s.section}`.trim() === val));
+                    setForm({
+                      ...form,
+                      section: val,
+                      program: sec?.program || sec?.course || form.program,
+                    });
+                  }}
+                  options={sectionOptionsForStep2}
+                  placeholder="Search & select available student section..."
+                  searchPlaceholder="Search sections (e.g. BSIT 1-A, Year 1)..."
+                  emptyText="No matching available student sections found"
+                />
+              )}
+            </div>
 
-            {/* Clean Conflict-Free Verification Notice */}
-            {validationFeedback.valid && validationFeedback.errors.length === 0 && validationFeedback.warnings.length === 0 && form.subjectCode && form.section && form.faculty && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "10px 14px",
-                  background: "rgba(52, 211, 153, 0.1)",
-                  borderRadius: 8,
-                  border: "1px solid rgba(52, 211, 153, 0.3)",
-                  fontSize: "0.82rem",
-                  color: "#059669",
-                  fontWeight: 600,
-                }}
+            {/* Diagnostics and Conflict Warnings Box */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>
+              {/* Part-Time Instructor Availability Window */}
+              {selectedFacultyMember && selectedFacultyMember.status === "Part-Time" && (
+                <div
+                  style={{
+                    padding: "10px 14px",
+                    background: "var(--srcb-surface)",
+                    borderRadius: 8,
+                    border: "1px solid var(--srcb-border)",
+                    borderLeft: "4px solid #f59e0b",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, color: "#d97706", fontSize: "0.82rem" }}>
+                      <Clock size={14} />
+                      <span>Part-Time Instructor Confirmed Availability:</span>
+                    </div>
+                    <span className="pill pill--online" style={{ fontSize: "0.7rem" }}>Part-Time</span>
+                  </div>
+                  {(() => {
+                    const grouped = formatGroupedAvailability(selectedFacultyMember.availability);
+                    if (grouped.length === 0) {
+                      return <p style={{ margin: 0, color: "var(--srcb-text-muted)", fontSize: "0.78rem" }}>Standard working hours.</p>;
+                    }
+                    return (
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 6 }}>
+                        {grouped.map(({ day, formattedRange }) => {
+                          const isMatchingDay = day.toLowerCase() === form.day.toLowerCase();
+                          return (
+                            <div
+                              key={day}
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                padding: "4px 8px",
+                                background: isMatchingDay ? "rgba(245, 158, 11, 0.15)" : "rgba(148, 163, 184, 0.08)",
+                                border: `1px solid ${isMatchingDay ? "rgba(245, 158, 11, 0.4)" : "var(--srcb-border)"}`,
+                                borderRadius: 6,
+                                fontSize: "0.76rem",
+                              }}
+                            >
+                              <strong style={{ color: isMatchingDay ? "#d97706" : "var(--srcb-text)" }}>{day}:</strong>
+                              <span style={{ color: isMatchingDay ? "var(--srcb-text)" : "var(--srcb-text-muted)" }}>{formattedRange}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* Conflict Errors Box */}
+              {validationFeedback.errors.length > 0 && (
+                <div
+                  style={{
+                    padding: 12,
+                    background: "rgba(239, 68, 68, 0.08)",
+                    borderRadius: 8,
+                    border: "1px solid rgba(239, 68, 68, 0.3)",
+                    borderLeft: "4px solid #dc2626",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, color: "#dc2626", fontSize: "0.85rem" }}>
+                    <AlertTriangle size={16} />
+                    <span>Scheduling Conflicts Detected ({validationFeedback.errors.length})</span>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
+                    {validationFeedback.errors.map((err, i) => (
+                      <div key={i} style={{ fontSize: "0.78rem", color: "var(--srcb-text)" }}>
+                        • {err}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Conflict-Free Notice */}
+              {validationFeedback.valid && validationFeedback.errors.length === 0 && form.subjectCode && form.section && form.faculty && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "8px 12px",
+                    background: "rgba(52, 211, 153, 0.1)",
+                    borderRadius: 6,
+                    border: "1px solid rgba(52, 211, 153, 0.3)",
+                    fontSize: "0.8rem",
+                    color: "#059669",
+                    fontWeight: 600,
+                  }}
+                >
+                  <CheckCircle2 size={15} />
+                  <span>Selected timetable slot, room, section, and instructor are conflict-free.</span>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="table-actions" style={{ marginTop: 20 }}>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setModalStep(1)}
+              >
+                <ArrowLeft size={16} />
+                <span>Back to Basic Info</span>
+              </button>
+              <button
+                type="button"
+                className="action-button"
+                disabled={
+                  loading ||
+                  !form.subjectCode ||
+                  !form.section ||
+                  !form.faculty ||
+                  (form.modality === "Face-to-Face" && (!form.room || isRoomTooSmall)) ||
+                  (!validationFeedback.valid && validationFeedback.errors.length > 0)
+                }
+                onClick={handleSave}
               >
                 <CheckCircle2 size={16} />
-                <span>Selected timetable slot, room, section, and instructor are conflict-free.</span>
-              </div>
-            )}
+                <span>{loading ? "Saving…" : "Confirm Schedule Block"}</span>
+              </button>
+            </div>
           </div>
-        </div>
-
-        <div className="table-actions" style={{ marginTop: 20 }}>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => {
-              setIsOpen(false);
-              setEditingSchedule(null);
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="action-button"
-            disabled={loading || (!validationFeedback.valid && validationFeedback.errors.length > 0)}
-            onClick={handleSave}
-          >
-            <CheckCircle2 size={16} />
-            {loading ? "Saving…" : "Confirm Schedule Block"}
-          </button>
-        </div>
+        )}
       </Modal>
 
       {/* Read-Only Assigned Schedule Details Modal */}

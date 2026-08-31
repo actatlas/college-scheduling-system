@@ -40,6 +40,9 @@ export function CoursesPage() {
   const [editingCourse, setEditingCourse] = useState<CourseRow | null>(null);
   const [courseToDelete, setCourseToDelete] = useState<CourseRow | null>(null);
 
+  const [durationMode, setDurationMode] = useState<string>("4");
+  const [customDuration, setCustomDuration] = useState<string>("");
+
   const [form, setForm] = useState({
     code: "",
     name: "",
@@ -106,6 +109,8 @@ export function CoursesPage() {
 
   const handleOpenAdd = () => {
     setEditingCourse(null);
+    setDurationMode("4");
+    setCustomDuration("");
     setForm({
       code: "",
       name: "",
@@ -117,10 +122,18 @@ export function CoursesPage() {
 
   const handleOpenEdit = (course: CourseRow) => {
     setEditingCourse(course);
+    const yrStr = String(course.year || 4);
+    if (["2", "3", "4", "5"].includes(yrStr)) {
+      setDurationMode(yrStr);
+      setCustomDuration("");
+    } else {
+      setDurationMode("other");
+      setCustomDuration(yrStr);
+    }
     setForm({
       code: course.code,
       name: course.name,
-      year: String(course.year || 4),
+      year: yrStr,
       programCode: course.programCode || programs[0]?.code || "ITP",
     });
     setIsModalOpen(true);
@@ -132,12 +145,18 @@ export function CoursesPage() {
       return;
     }
 
+    const finalYear = durationMode === "other" ? Number(customDuration) : Number(durationMode);
+    if (!finalYear || isNaN(finalYear) || finalYear < 1 || finalYear > 10) {
+      toast.push("Please enter a valid course duration between 1 and 10 years.", "error");
+      return;
+    }
+
     setLoading(true);
     try {
       if (editingCourse) {
         await api.put(`/courses/${encodeURIComponent(editingCourse.code)}`, {
           name: form.name,
-          year: Number(form.year) || 4,
+          year: finalYear,
           programCode: form.programCode,
         });
         toast.push("Degree course updated successfully", "success");
@@ -145,7 +164,7 @@ export function CoursesPage() {
         await api.post("/courses", {
           code: form.code.toUpperCase().trim(),
           name: form.name.trim(),
-          year: Number(form.year) || 4,
+          year: finalYear,
           programCode: form.programCode,
         });
         toast.push("New degree course registered successfully", "success");
@@ -380,18 +399,44 @@ export function CoursesPage() {
 
             <div>
               <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, marginBottom: 4 }}>
-                Duration (Years)
+                Degree Duration (Years) <span style={{ color: "#dc2626" }}>*</span>
               </label>
               <select
-                value={form.year}
-                onChange={(e) => setForm({ ...form, year: e.target.value })}
+                value={durationMode}
+                onChange={(e) => {
+                  setDurationMode(e.target.value);
+                  if (e.target.value !== "other") {
+                    setForm({ ...form, year: e.target.value });
+                  }
+                }}
                 style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)" }}
               >
-                <option value="2">2 Years (Associate)</option>
-                <option value="3">3 Years</option>
                 <option value="4">4 Years (Standard Baccalaureate)</option>
+                <option value="3">3 Years</option>
                 <option value="5">5 Years</option>
+                <option value="2">2 Years (Associate)</option>
+                <option value="other">Other (Custom Duration)</option>
               </select>
+              {durationMode === "other" && (
+                <div style={{ marginTop: 8 }}>
+                  <label style={{ display: "block", fontSize: "0.76rem", fontWeight: 600, marginBottom: 3, color: "var(--srcb-navy)" }}>
+                    Enter Custom Duration (Years) *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    placeholder="e.g. 6"
+                    value={customDuration}
+                    onChange={(e) => {
+                      setCustomDuration(e.target.value);
+                      setForm({ ...form, year: e.target.value });
+                    }}
+                    style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--srcb-border)" }}
+                    required
+                  />
+                </div>
+              )}
             </div>
           </div>
 

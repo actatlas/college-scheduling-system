@@ -8,6 +8,7 @@ import { ConfirmModal } from "../components/common/ConfirmModal";
 import { TableSkeleton } from "../components/common/Skeleton";
 import { Plus, Search, Edit2, Trash2, Users, AlertTriangle } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
+import { useAcademicPeriod } from "../contexts/AcademicPeriodContext";
 import { getProgramLogo } from "../utils/programLogos";
 import type { SectionItem, ProgramItem, CourseItem } from "../types";
 
@@ -23,18 +24,19 @@ export function SectionsPage() {
   const [editingSection, setEditingSection] = useState<SectionItem | null>(null);
 
   const { selectedProgram, matchesProgram } = useProgramContext();
+  const { activeSchoolYear, activeSemester } = useAcademicPeriod();
   const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
   const isAdmin = role === "super_admin" || role === "admin";
   const canEdit = isAdmin;
 
   const [form, setForm] = useState({
-    course: selectedProgram.key || "BSIT",
-    program: selectedProgram.key || "BSIT",
+    course: selectedProgram.key !== "ALL" ? selectedProgram.key : "BSIT",
+    program: selectedProgram.key !== "ALL" ? selectedProgram.key : "BSIT",
     yearLevel: "1",
-    section: `${selectedProgram.key || "BSIT"} 1-A`,
+    section: `${selectedProgram.key !== "ALL" ? selectedProgram.key : "BSIT"} 1-A`,
     students: "35",
-    semester: "First Semester",
-    schoolYear: "2026-2027",
+    semester: activeSemester || "1st Semester",
+    schoolYear: activeSchoolYear || "2026-2027",
   });
 
   const toast = useToast();
@@ -173,14 +175,15 @@ export function SectionsPage() {
               type="button"
               onClick={() => {
                 setEditingSection(null);
+                const progKey = selectedProgram.key !== "ALL" ? selectedProgram.key : (programsList[0]?.code || "BSIT");
                 setForm({
-                  course: selectedProgram.key || "BSIT",
-                  program: selectedProgram.key || "BSIT",
+                  course: progKey,
+                  program: progKey,
                   yearLevel: "1",
-                  section: `${selectedProgram.shortLabel || "BSIT"} 1-A`,
+                  section: `${progKey} 1-A`,
                   students: "35",
-                  semester: "1st Semester",
-                  schoolYear: "2026-2027",
+                  semester: activeSemester,
+                  schoolYear: activeSchoolYear,
                 });
                 setIsOpen(true);
               }}

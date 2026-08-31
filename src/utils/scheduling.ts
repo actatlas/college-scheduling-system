@@ -63,6 +63,39 @@ export function formatGroupedAvailability(raw?: string | null): Array<{ day: str
   }))
 }
 
+export function parseTimeToMinutes(tStr: string): number {
+  if (!tStr) return 0
+  const clean = tStr.trim()
+  const isPM = /pm/i.test(clean)
+  const isAM = /am/i.test(clean)
+  const raw = clean.replace(/am|pm/i, '').trim()
+  const parts = raw.split(':')
+  let h = Number(parts[0]) || 0
+  const m = Number(parts[1]) || 0
+  if (isPM && h < 12) h += 12
+  if (isAM && h === 12) h = 0
+  if (!isPM && !isAM && h >= 1 && h <= 7) h += 12
+  return h * 60 + m
+}
+
+export function isTimeOverlapping(rangeA: string, rangeB: string): boolean {
+  if (!rangeA || !rangeB) return false
+  if (rangeA.trim().toLowerCase() === rangeB.trim().toLowerCase()) return true
+
+  const partsA = rangeA.split('-').map((s) => s.trim())
+  const partsB = rangeB.split('-').map((s) => s.trim())
+  if (partsA.length < 2 || partsB.length < 2) {
+    return rangeA.trim() === rangeB.trim()
+  }
+
+  const startA = parseTimeToMinutes(partsA[0])
+  const endA = parseTimeToMinutes(partsA[1])
+  const startB = parseTimeToMinutes(partsB[0])
+  const endB = parseTimeToMinutes(partsB[1])
+
+  return startA < endB && startB < endA
+}
+
 export interface SlotValidationResult {
   valid: boolean
   errors: string[]
@@ -94,7 +127,7 @@ export function validateScheduleSlot(
   const facultyClash = schedules.find(
     (s) =>
       s.day.toLowerCase() === candidate.day.toLowerCase() &&
-      s.time === candidate.time &&
+      isTimeOverlapping(s.time, candidate.time) &&
       (s.facultyId === candidate.facultyId || s.faculty.toLowerCase() === candidate.faculty.toLowerCase())
   )
   if (facultyClash) {
@@ -109,7 +142,7 @@ export function validateScheduleSlot(
       (s) =>
         s.modality === 'Face-to-Face' &&
         s.day.toLowerCase() === candidate.day.toLowerCase() &&
-        s.time === candidate.time &&
+        isTimeOverlapping(s.time, candidate.time) &&
         s.room &&
         candidate.room &&
         s.room.toLowerCase().trim() === candidate.room.toLowerCase().trim()
@@ -125,7 +158,7 @@ export function validateScheduleSlot(
   const sectionClash = schedules.find(
     (s) =>
       s.day.toLowerCase() === candidate.day.toLowerCase() &&
-      s.time === candidate.time &&
+      isTimeOverlapping(s.time, candidate.time) &&
       s.section.toLowerCase() === candidate.section.toLowerCase()
   )
   if (sectionClash) {
@@ -160,6 +193,25 @@ export function validateScheduleSlot(
           `Instructor availability mismatch: ${teacher.name} is available on ${candidate.day} at [${dayEntry.slots.map(formatAvailabilitySlotRange).join(', ')}], but this slot is ${candidate.time}.`
         )
       }
+    }
+  }
+
+  // 5. Check Room Capacity vs Section Headcount
+  if (candidate.modality === 'Face-to-Face' && candidate.room && candidate.section) {
+    const allRooms = storage.getRooms()
+    const roomObj = allRooms.find((r: any) => String(r.number).toLowerCase().trim() === String(candidate.room).toLowerCase().trim())
+    const allSections = storage.getSections()
+    const secObj = allSections.find((s: any) => {
+      const sName = String(s.section || '').toLowerCase().trim()
+      const sFull = s.course ? `${s.course} ${s.yearLevel || ''}-${s.section}`.toLowerCase().trim() : ''
+      const candSec = candidate.section.toLowerCase().trim()
+      return sName === candSec || sFull === candSec || candSec.includes(sName)
+    })
+
+    if (roomObj && secObj && secObj.students && Number(roomObj.capacity) < Number(secObj.students)) {
+      errors.push(
+        `Room capacity exceeded: Room ${candidate.room} capacity (${roomObj.capacity}) is smaller than the section student headcount (${secObj.students}).`
+      )
     }
   }
 

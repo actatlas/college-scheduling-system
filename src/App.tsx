@@ -6,16 +6,19 @@ import { ProgramProvider } from "./contexts/ProgramContext";
 import { DevFloatingTools } from "./components/dev/DevFloatingTools";
 
 import { NotificationProvider } from "./contexts/NotificationContext";
+import { AcademicPeriodProvider } from "./contexts/AcademicPeriodContext";
 
 function App() {
   return (
     <BrowserRouter>
       <ToastProvider>
         <NotificationProvider>
-          <ProgramProvider>
-            <AppRoutes />
-            <DevFloatingTools />
-          </ProgramProvider>
+          <AcademicPeriodProvider>
+            <ProgramProvider>
+              <AppRoutes />
+              <DevFloatingTools />
+            </ProgramProvider>
+          </AcademicPeriodProvider>
         </NotificationProvider>
       </ToastProvider>
     </BrowserRouter>

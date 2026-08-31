@@ -72,6 +72,7 @@ export function DashboardPage() {
   const [teacherStatus, setTeacherStatus] = useState<string>("Full-Time");
   const [schedules, setSchedules] = useState<ClassScheduleItem[]>([]);
   const [teacherExams, setTeacherExams] = useState<ExamScheduleItem[]>([]);
+  const [allExamsList, setAllExamsList] = useState<any[]>([]);
   const [facultyList, setFacultyList] = useState<any[]>([]);
   const [headTeachingSchedules, setHeadTeachingSchedules] = useState<ClassScheduleItem[]>([]);
   const [suspendedUsersList, setSuspendedUsersList] = useState<any[]>([]);
@@ -118,6 +119,7 @@ export function DashboardPage() {
 
       setFacultyList(facs);
       setSubjectsList(subs);
+      setAllExamsList(exms);
 
       const suspended = usrs.filter(
         (u: any) => String(u.status || "").trim().toLowerCase() === "suspended"
@@ -336,6 +338,31 @@ export function DashboardPage() {
       path: "/schedules?view=unscheduled",
     },
   ];
+
+  // Proactive Examination Period Status & Sequence Tracking (Prelim -> Midterm -> Semi-Final -> Final)
+  const examPeriodStatus = (() => {
+    const terms = ["Prelim", "Midterm", "Semi-Final", "Final"] as const;
+    const termStats = terms.map((term) => {
+      const examsForTerm = allExamsList.filter(
+        (e: any) => String(e.term || "").toLowerCase() === term.toLowerCase()
+      );
+      const isScheduled = examsForTerm.length > 0;
+      return {
+        term,
+        isScheduled,
+        count: examsForTerm.length,
+        firstDate: examsForTerm[0]?.examDate || null,
+      };
+    });
+
+    const nextUnscheduled = termStats.find((t) => !t.isScheduled);
+
+    return {
+      termStats,
+      nextUnscheduled: nextUnscheduled || null,
+      allScheduled: termStats.every((t) => t.isScheduled),
+    };
+  })();
 
   const scopedFaculty = facultyList.filter((f: any) => matchesProgram(f.programs || f.department));
 
@@ -880,6 +907,173 @@ export function DashboardPage() {
               </article>
             </div>
           )}
+
+          {/* Proactive Examination Period Status & Sequence Tracking Card */}
+          <div style={{ marginTop: 24 }}>
+            <article
+              className="card"
+              style={{
+                padding: "20px 24px",
+                border: "1px solid rgba(13, 84, 153, 0.18)",
+                background: "#ffffff",
+                boxShadow: "0 4px 12px rgba(15, 23, 42, 0.04)",
+              }}
+            >
+              <div className="card__header" style={{ marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ padding: 8, borderRadius: 8, background: "rgba(13, 84, 153, 0.1)", color: "var(--srcb-navy)" }}>
+                    <CalendarCheck size={20} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: "1.05rem", color: "var(--srcb-navy)", fontWeight: 700 }}>
+                      Examination Schedule Period Tracking
+                    </h3>
+                    <p style={{ margin: "2px 0 0", fontSize: "0.8rem", color: "var(--srcb-text-muted)" }}>
+                      Proactive examination period progression and scheduling status across academic terms
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  style={{ fontSize: "0.8rem", padding: "6px 12px" }}
+                  onClick={() => navigate("/exams")}
+                >
+                  <span>Open Exam Hub</span>
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+
+              {/* 4 Term Indicators (Prelim, Midterm, Semi-Final, Final) */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+                {examPeriodStatus.termStats.map((item) => {
+                  const isNext = examPeriodStatus.nextUnscheduled?.term === item.term;
+                  return (
+                    <div
+                      key={item.term}
+                      style={{
+                        padding: "14px 16px",
+                        borderRadius: 8,
+                        border: `1px solid ${
+                          item.isScheduled
+                            ? "rgba(16, 185, 129, 0.3)"
+                            : isNext
+                              ? "rgba(245, 158, 11, 0.4)"
+                              : "var(--srcb-border)"
+                        }`,
+                        background: item.isScheduled
+                          ? "rgba(16, 185, 129, 0.04)"
+                          : isNext
+                            ? "rgba(245, 158, 11, 0.05)"
+                            : "var(--srcb-surface)",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 6,
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontSize: "0.88rem", fontWeight: 700, color: "var(--srcb-navy)" }}>
+                          {item.term}
+                        </span>
+                        {item.isScheduled ? (
+                          <span
+                            style={{
+                              fontSize: "0.72rem",
+                              fontWeight: 700,
+                              color: "#059669",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                              background: "rgba(16, 185, 129, 0.12)",
+                              padding: "2px 8px",
+                              borderRadius: 12,
+                            }}
+                          >
+                            <CheckCircle2 size={12} /> Scheduled
+                          </span>
+                        ) : isNext ? (
+                          <span
+                            style={{
+                              fontSize: "0.72rem",
+                              fontWeight: 700,
+                              color: "#d97706",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                              background: "rgba(245, 158, 11, 0.12)",
+                              padding: "2px 8px",
+                              borderRadius: 12,
+                            }}
+                          >
+                            <AlertTriangle size={12} /> Schedule Not Set
+                          </span>
+                        ) : (
+                          <span
+                            style={{
+                              fontSize: "0.72rem",
+                              fontWeight: 600,
+                              color: "var(--srcb-text-muted)",
+                              background: "rgba(148, 163, 184, 0.1)",
+                              padding: "2px 8px",
+                              borderRadius: 12,
+                            }}
+                          >
+                            Upcoming
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: "0.78rem", color: "var(--srcb-text-muted)" }}>
+                        {item.isScheduled
+                          ? `${item.count} scheduled session${item.count > 1 ? "s" : ""}${item.firstDate ? ` • ${item.firstDate}` : ""}`
+                          : isNext
+                            ? "Pending proctor & room assignments"
+                            : "Scheduled in academic progression"}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Proactive Reminder Banner if Next Term is Not Scheduled */}
+              {examPeriodStatus.nextUnscheduled && (
+                <div
+                  style={{
+                    marginTop: 16,
+                    padding: "12px 16px",
+                    borderRadius: 8,
+                    background: "rgba(245, 158, 11, 0.08)",
+                    border: "1px solid rgba(245, 158, 11, 0.25)",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: 12,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <AlertTriangle size={18} style={{ color: "#d97706", flexShrink: 0 }} />
+                    <div>
+                      <strong style={{ fontSize: "0.85rem", color: "#b45309" }}>
+                        Action Reminder: {examPeriodStatus.nextUnscheduled.term} examination schedule has not been set yet.
+                      </strong>
+                      <div style={{ fontSize: "0.78rem", color: "var(--srcb-text)", marginTop: 2 }}>
+                        Please prepare examination dates, proctors, and multi-program room assignments for {examPeriodStatus.nextUnscheduled.term}.
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="action-button"
+                    style={{ fontSize: "0.8rem", padding: "6px 14px" }}
+                    onClick={() => navigate(`/exams?term=${examPeriodStatus.nextUnscheduled?.term}`)}
+                  >
+                    <CalendarRange size={14} />
+                    <span>Set {examPeriodStatus.nextUnscheduled.term} Schedule</span>
+                  </button>
+                </div>
+              )}
+            </article>
+          </div>
         </>
       )}
 
@@ -1294,7 +1488,7 @@ export function DashboardPage() {
                     <CalendarCheck size={38} style={{ color: "var(--srcb-text-muted)", marginBottom: 8, opacity: 0.6 }} />
                     <p style={{ margin: 0, fontWeight: 600 }}>No examination schedules assigned yet.</p>
                     <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "var(--srcb-text-muted)" }}>
-                      When administrators schedule synchronized exams and assign you as proctor, your assigned sessions will appear here.
+                      When administrators schedule exams and assign you as proctor, your assigned sessions will appear here.
                     </p>
                   </div>
                 ) : (
@@ -1305,7 +1499,7 @@ export function DashboardPage() {
                         <th>Term</th>
                         <th>Exam Date & Time</th>
                         <th>Venue & Building</th>
-                        <th>Synchronized Sections</th>
+                        <th>Assigned Sections</th>
                         <th>Role / Assignment</th>
                       </tr>
                     </thead>
