@@ -219,6 +219,9 @@ export function FacultyPage() {
         message: `${facultyToDelete.name} was removed from the academic faculty roster.`,
         type: "warning",
         link: "/faculty",
+        targetRole: "admin,program_head",
+        targetProgram: facultyToDelete.department,
+        targetTeacherId: facultyToDelete.id,
       });
       fetchFaculty();
     } catch (err: any) {
@@ -271,6 +274,9 @@ export function FacultyPage() {
         message: `Teaching availability timesheet updated for ${selectedFacultyForAvail.name}.`,
         type: "info",
         link: "/faculty",
+        targetRole: "admin,program_head,teacher",
+        targetProgram: selectedFacultyForAvail.department,
+        targetTeacherId: selectedFacultyForAvail.id,
       });
       setAvailabilityModalOpen(false);
       fetchFaculty();
@@ -342,6 +348,9 @@ export function FacultyPage() {
           message: `Faculty record for ${fullName} (${form.department}) updated.`,
           type: "success",
           link: "/faculty",
+          targetRole: "admin,program_head",
+          targetProgram: form.department,
+          targetTeacherId: editingFaculty.id,
         });
       } else {
         await api.post("/faculty", payload);
@@ -351,6 +360,9 @@ export function FacultyPage() {
           message: `${fullName} registered to ${form.department} faculty roster.`,
           type: "success",
           link: "/faculty",
+          targetRole: "admin,program_head",
+          targetProgram: form.department,
+          targetTeacherId: form.id,
         });
       }
       fetchFaculty();
@@ -728,19 +740,6 @@ export function FacultyPage() {
                 </div>
               )}
             </div>
-
-            {/* Add Faculty Primary Action Button */}
-            {canEdit && (
-              <button
-                type="button"
-                className="user-mgmt-primary-btn"
-                onClick={handleOpenAdd}
-                aria-label="Add new faculty member"
-              >
-                <Plus size={16} />
-                <span>Add Faculty</span>
-              </button>
-            )}
           </div>
         </div>
 
@@ -1281,7 +1280,7 @@ export function FacultyPage() {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem" }}>
             <thead>
               <tr>
-                <th style={{ padding: "8px 12px", textAlign: "left", background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                <th style={{ padding: "8px 12px", textAlign: "left", background: "var(--srcb-surface-alt, #f8fafc)", border: "1px solid var(--srcb-border, #e2e8f0)", color: "var(--srcb-text-muted)" }}>
                   Time Slot
                 </th>
                 {DAYS.map((day) => (
@@ -1290,9 +1289,10 @@ export function FacultyPage() {
                     style={{
                       padding: "8px 12px",
                       textAlign: "center",
-                      background: "#f8fafc",
-                      border: "1px solid #e2e8f0",
+                      background: "var(--srcb-surface-alt, #f8fafc)",
+                      border: "1px solid var(--srcb-border, #e2e8f0)",
                       fontWeight: 700,
+                      color: "var(--srcb-text)",
                     }}
                   >
                     {day}
@@ -1308,7 +1308,7 @@ export function FacultyPage() {
                       padding: "6px 10px",
                       fontWeight: 600,
                       color: "var(--srcb-navy)",
-                      border: "1px solid #e2e8f0",
+                      border: "1px solid var(--srcb-border, #e2e8f0)",
                       whiteSpace: "nowrap",
                     }}
                   >

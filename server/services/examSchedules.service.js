@@ -23,6 +23,65 @@ function timesOverlap(startA, endA, startB, endB) {
   return aStart < bEnd && bStart < aEnd;
 }
 
+const DEFAULT_EXAM_PERIOD_DATES = {
+  Prelim: '2026-08-19',
+  Midterm: '2026-10-15',
+  'Semi-Final': '2026-12-10',
+  Final: '2027-03-05',
+};
+
+async function getExamPeriodSettings() {
+  try {
+    await query(`
+      CREATE TABLE IF NOT EXISTS system_settings (
+        setting_key VARCHAR(100) NOT NULL,
+        setting_value TEXT NOT NULL,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (setting_key)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    const [row] = await query('SELECT setting_value FROM system_settings WHERE setting_key = ? LIMIT 1', ['exam_period_dates']);
+    if (row && row.setting_value) {
+      try {
+        const parsed = JSON.parse(row.setting_value);
+        return { ...DEFAULT_EXAM_PERIOD_DATES, ...parsed };
+      } catch {
+        return DEFAULT_EXAM_PERIOD_DATES;
+      }
+    }
+  } catch {
+    // Return default if offline/table not ready
+  }
+  return DEFAULT_EXAM_PERIOD_DATES;
+}
+
+async function updateExamPeriodSettings(payload, user) {
+  if (user && !['admin', 'super_admin'].includes(String(user.role).toLowerCase())) {
+    const err = new Error('Forbidden. Only Administrators can configure official examination dates.');
+    err.statusCode = 403;
+    err.code = 'UNAUTHORIZED_ROLE';
+    throw err;
+  }
+
+  const current = await getExamPeriodSettings();
+  const updated = {
+    Prelim: payload.Prelim || current.Prelim || '',
+    Midterm: payload.Midterm || current.Midterm || '',
+    'Semi-Final': payload['Semi-Final'] || payload.SemiFinal || current['Semi-Final'] || '',
+    Final: payload.Final || current.Final || '',
+  };
+
+  const valStr = JSON.stringify(updated);
+  await query(
+    `INSERT INTO system_settings (setting_key, setting_value)
+     VALUES (?, ?)
+     ON DUPLICATE KEY UPDATE setting_value = ?`,
+    ['exam_period_dates', valStr, valStr]
+  );
+
+  return updated;
+}
+
 async function validateExamPayload({
   id = null,
   term = 'Midterm',
@@ -44,6 +103,39 @@ async function validateExamPayload({
     err.statusCode = 400;
     err.code = 'INVALID_PAYLOAD';
     throw err;
+  }
+
+  // Official Examination Date Validation
+  const officialDates = await getExamPeriodSettings();
+  const officialDate = officialDates[term];
+  let formattedExamDate = '';
+  if (examDate) {
+    if (typeof examDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(examDate.trim())) {
+      formattedExamDate = examDate.trim();
+    } else {
+      const parsedDate = new Date(examDate);
+      const y = parsedDate.getFullYear();
+      const m = String(parsedDate.getMonth() + 1).padStart(2, '0');
+      const d = String(parsedDate.getDate()).padStart(2, '0');
+      formattedExamDate = `${y}-${m}-${d}`;
+    }
+  }
+
+  const isProgramHead = user && String(user.role).toLowerCase() === 'program_head';
+
+  if (isProgramHead) {
+    if (!officialDate) {
+      const err = new Error(`${term} examination date has not yet been configured by the Admin.`);
+      err.statusCode = 400;
+      err.code = 'EXAM_DATE_NOT_SET';
+      throw err;
+    }
+    if (formattedExamDate !== officialDate) {
+      const err = new Error(`${term} examinations are officially scheduled for ${officialDate}.`);
+      err.statusCode = 400;
+      err.code = 'INVALID_EXAM_DATE';
+      throw err;
+    }
   }
 
   // 1. Time range check
@@ -112,7 +204,6 @@ async function validateExamPayload({
     [id || 0],
   );
 
-  const formattedExamDate = new Date(examDate).toISOString().split('T')[0];
   const newSections = Array.isArray(synchronizedSections) ? synchronizedSections : [synchronizedSections].filter(Boolean);
 
   for (const existing of existingExams) {
@@ -244,11 +335,11 @@ async function listExamSchedules({ user, program } = {}) {
 
     if (progCodes.length > 0) {
       const placeholders = progCodes.map(() => '?').join(',');
-      conditions.push(`es.program_code IN (${placeholders})`);
+      conditions.push(`(es.program_code IN (${placeholders}) OR es.program_code = 'ALL' OR sub.program_code = 'ALL' OR es.program_code IS NULL OR es.program_code = '')`);
       params.push(...progCodes);
     }
   } else if (program) {
-    conditions.push('es.program_code = ?');
+    conditions.push('(es.program_code = ? OR es.program_code = \'ALL\' OR sub.program_code = \'ALL\')');
     params.push(program);
   }
 
@@ -260,7 +351,19 @@ async function listExamSchedules({ user, program } = {}) {
   const rows = await query(sql, params);
 
   return rows.map((e) => {
-    const formattedDate = e.exam_date ? new Date(e.exam_date).toISOString().split('T')[0] : '';
+    let formattedDate = '';
+    if (e.exam_date) {
+      if (typeof e.exam_date === 'string') {
+        formattedDate = e.exam_date.slice(0, 10);
+      } else if (e.exam_date instanceof Date) {
+        const y = e.exam_date.getFullYear();
+        const m = String(e.exam_date.getMonth() + 1).padStart(2, '0');
+        const d = String(e.exam_date.getDate()).padStart(2, '0');
+        formattedDate = `${y}-${m}-${d}`;
+      } else {
+        formattedDate = String(e.exam_date).slice(0, 10);
+      }
+    }
     const startTimeStr = String(e.start_time || '').slice(0, 5);
     const endTimeStr = String(e.end_time || '').slice(0, 5);
     const timeRange = startTimeStr && endTimeStr ? `${startTimeStr}-${endTimeStr}` : (startTimeStr || '08:00-10:00');
@@ -543,5 +646,7 @@ module.exports = {
     updateExamSchedule,
     deleteExamSchedule,
     validateExamPayload,
+    getExamPeriodSettings,
+    updateExamPeriodSettings,
   },
 };

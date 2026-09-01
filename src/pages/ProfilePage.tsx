@@ -176,7 +176,7 @@ export function ProfilePage() {
       case "super_admin":
         return "ICT Super Administrator";
       case "admin":
-        return "College Administrator (Registrar)";
+        return "Dean of Student Affairs (Admin)";
       case "program_head":
         return `Program Head ${userProgram ? `(${userProgram})` : ""}`;
       case "teacher":

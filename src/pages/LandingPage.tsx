@@ -134,7 +134,7 @@ export function LandingPage() {
             </h1>
 
             <p className="landing-hero-desc">
-              An intelligent institutional platform engineered for Super Admins, College Registrars,
+              An intelligent institutional platform engineered for Super Admins, Deans of Student Affairs (Admin),
               Program Heads, and Faculty members to seamlessly coordinate programs, faculty workloads,
               lecture &amp; lab rooms, curricula, and conflict-free class &amp; examination timetables with robust manual scheduling.
             </p>

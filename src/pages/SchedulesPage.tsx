@@ -27,8 +27,6 @@ import {
   ArrowRight,
   ArrowLeft,
   BookOpen,
-  Users,
-  Layers,
 } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
 import { validateScheduleSlot, formatGroupedAvailability, isTimeOverlapping, parseTeacherAvailability, parseTimeToMinutes } from "../utils/scheduling";
@@ -442,24 +440,6 @@ export function SchedulesPage() {
     );
   }, [unscheduledSubjects, query]);
 
-  const selectedSectionObj = useMemo(() => {
-    if (!form.section) return availableSections[0] || null;
-    return (
-      availableSections.find((s) => {
-        const secLabel = s.section ? (s.course ? `${s.course} ${s.yearLevel || ''}-${s.section}`.trim() : s.section) : '';
-        return (
-          s.id === form.section ||
-          s.section === form.section ||
-          secLabel === form.section ||
-          (secLabel && form.section.includes(secLabel)) ||
-          (s.section && form.section.includes(s.section))
-        );
-      }) ||
-      availableSections[0] ||
-      null
-    );
-  }, [form.section, availableSections]);
-
   // Step 1: Subject options (filtered by Program Head if applicable)
   const subjectOptionsForStep1: SearchableOption[] = useMemo(() => {
     return availableSubjects.map((sub) => {
@@ -858,6 +838,9 @@ export function SchedulesPage() {
         message: `Schedule session for ${scheduleToDelete.subjectCode} (${scheduleToDelete.section}) was removed.`,
         type: "warning",
         link: "/schedules",
+        targetRole: "admin,program_head,teacher",
+        targetProgram: scheduleToDelete.program,
+        targetTeacherId: scheduleToDelete.facultyId,
       });
       fetchSchedules();
     } catch (err: any) {
@@ -926,6 +909,9 @@ export function SchedulesPage() {
           message: `${form.subjectCode} for ${form.section} (${form.day} ${form.time}) updated.`,
           type: "success",
           link: "/schedules",
+          targetRole: "admin,program_head,teacher",
+          targetProgram: form.program,
+          targetTeacherId: form.facultyId,
         });
       } else {
         await api.post("/schedules", payload);
@@ -935,6 +921,9 @@ export function SchedulesPage() {
           message: `${form.subjectCode} assigned to ${form.faculty} on ${form.day} ${form.time}.`,
           type: "success",
           link: "/schedules",
+          targetRole: "admin,program_head,teacher",
+          targetProgram: form.program,
+          targetTeacherId: form.facultyId,
         });
       }
 
@@ -1349,7 +1338,7 @@ export function SchedulesPage() {
 
                   return TIME_SLOTS.map((slot, slotIdx) => (
                     <tr key={slot}>
-                      <td style={{ fontWeight: 700, fontSize: "0.8rem", color: "var(--srcb-navy)", background: "#f8fafc" }}>
+                      <td style={{ fontWeight: 700, fontSize: "0.8rem", color: "var(--srcb-navy)", background: "var(--srcb-surface-alt, #f8fafc)" }}>
                         {slot}
                       </td>
                       {DAYS.map((day) => {

@@ -451,10 +451,26 @@ async function listSchedules({ user, department, facultyId, program } = {}) {
     }
     progCodes = [...new Set(progCodes)];
 
+    const orConds = [];
     if (progCodes.length > 0) {
       const placeholders = progCodes.map(() => '?').join(',');
-      conditions.push(`(sub.program_code IN (${placeholders}) OR sec.course_code IN (SELECT code FROM courses WHERE program_code IN (${placeholders})) OR sec.course_code IN (${placeholders}))`);
+      orConds.push(`(sub.program_code IN (${placeholders}) OR sec.course_code IN (SELECT code FROM courses WHERE program_code IN (${placeholders})) OR sec.course_code IN (${placeholders}))`);
       params.push(...progCodes, ...progCodes, ...progCodes);
+    }
+
+    const teacherId = user?.teacherId || null;
+    const teacherName = user?.name || null;
+    if (teacherId) {
+      orConds.push('sc.faculty_id = ?');
+      params.push(teacherId);
+    }
+    if (teacherName) {
+      orConds.push('LOWER(TRIM(t.name)) = ?');
+      params.push(teacherName.trim().toLowerCase());
+    }
+
+    if (orConds.length > 0) {
+      conditions.push(`(${orConds.join(' OR ')})`);
     }
   } else {
     if (facultyId) {

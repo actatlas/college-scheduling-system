@@ -53,10 +53,10 @@ export function Topbar({ title, onToggleMobileSidebar }: TopbarProps) {
     (role === "super_admin"
       ? "Super Admin (ICT)"
       : role === "program_head"
-        ? "Dr. Alan Turing (IT Head)"
+        ? "Dr. Alan Turing"
         : role === "teacher"
           ? "Mr. Juan Dela Cruz"
-          : "Registrar Admin");
+          : "Dean of Student Affairs (Admin)");
 
   useEffect(() => {
     const saved = localStorage.getItem("theme");

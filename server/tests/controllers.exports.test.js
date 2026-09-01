@@ -47,6 +47,8 @@ describe('controllers exports', () => {
     expect(typeof examSchedules.createExamSchedule).toBe('function');
     expect(typeof examSchedules.updateExamSchedule).toBe('function');
     expect(typeof examSchedules.deleteExamSchedule).toBe('function');
+    expect(typeof examSchedules.getExamPeriodSettings).toBe('function');
+    expect(typeof examSchedules.updateExamPeriodSettings).toBe('function');
 
     const faculty = await import('../controllers/faculty.controller.js');
     expect(typeof faculty.listFaculty).toBe('function');

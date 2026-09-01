@@ -100,6 +100,15 @@ export const api = {
     return handleResponse(response);
   },
 
+  async patch(url: string, body?: any) {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return handleResponse(response);
+  },
+
   async delete(url: string) {
     const response = await fetch(`${API_BASE_URL}${url}`, {
       method: 'DELETE',

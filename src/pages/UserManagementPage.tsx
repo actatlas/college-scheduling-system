@@ -312,6 +312,7 @@ export function UserManagementPage() {
         message: `Account for ${userToSuspend.name} (${userToSuspend.email}) was suspended. Existing schedules and records remain intact.`,
         type: "warning",
         link: "/users",
+        targetRole: "super_admin",
       });
       setUserToSuspend(null);
       fetchUsers();
@@ -343,6 +344,7 @@ export function UserManagementPage() {
         message: `Account for ${userToActivate.name} (${userToActivate.email}) was unsuspended. Login access is restored.`,
         type: "success",
         link: "/users",
+        targetRole: "super_admin",
       });
       setUserToActivate(null);
       fetchUsers();
@@ -400,6 +402,7 @@ export function UserManagementPage() {
         message: `${validTargets.length} user accounts were set to ${targetStatus}.`,
         type: targetStatus === "Active" ? "success" : "warning",
         link: "/users",
+        targetRole: "super_admin",
       });
       clearSelection();
       setBulkActionType(null);
@@ -537,6 +540,7 @@ export function UserManagementPage() {
         message: `Account for ${userToDelete.name} (${userToDelete.email}) was removed from the system.`,
         type: "warning",
         link: "/users",
+        targetRole: "super_admin",
       });
       selectedIds.delete(userToDelete.id);
       setSelectedIds(new Set(selectedIds));
@@ -570,6 +574,7 @@ export function UserManagementPage() {
         message: `Password reset successfully for ${resettingUser.name} (${resettingUser.email}).`,
         type: "info",
         link: "/users",
+        targetRole: "super_admin",
       });
       setResettingUser(null);
       setResetPasswordVal("");
@@ -735,6 +740,7 @@ export function UserManagementPage() {
           message: `${fullName} (${form.role}) profile updated.`,
           type: "success",
           link: "/users",
+          targetRole: "super_admin",
         });
       } else {
         await api.post("/users", {
@@ -752,6 +758,7 @@ export function UserManagementPage() {
           message: `${fullName} (${form.email}) was registered as ${form.role}.`,
           type: "success",
           link: "/users",
+          targetRole: "super_admin",
         });
       }
 
@@ -833,7 +840,7 @@ export function UserManagementPage() {
               <button
                 type="button"
                 className="secondary-button"
-                style={{ fontSize: "0.8rem", padding: "6px 12px", background: "#ffffff", color: "#b91c1c", borderColor: "#fca5a5" }}
+                style={{ fontSize: "0.8rem", padding: "6px 12px", background: "var(--srcb-surface-elevated, #ffffff)", color: "var(--srcb-red-text, #b91c1c)", borderColor: "var(--srcb-red-border, #fca5a5)" }}
                 onClick={() => setStatusFilter("Suspended")}
               >
                 <span>Filter Suspended Accounts ({totalSuspendedCount})</span>
@@ -843,7 +850,7 @@ export function UserManagementPage() {
               <button
                 type="button"
                 className="secondary-button"
-                style={{ fontSize: "0.8rem", padding: "6px 12px", background: "#ffffff" }}
+                style={{ fontSize: "0.8rem", padding: "6px 12px" }}
                 onClick={() => setStatusFilter("all")}
               >
                 <span>Show All Accounts</span>
@@ -1013,17 +1020,6 @@ export function UserManagementPage() {
                 </div>
               )}
             </div>
-
-            {/* Add User Primary Action Button */}
-            <button
-              type="button"
-              className="user-mgmt-primary-btn"
-              onClick={handleOpenAdd}
-              aria-label="Add new user account"
-            >
-              <Plus size={16} />
-              <span>Add User</span>
-            </button>
           </div>
         </div>
 
@@ -1860,7 +1856,7 @@ export function UserManagementPage() {
               onChange={(e) => setForm({ ...form, role: e.target.value as UserRole })}
             >
               <option value="super_admin">Super Admin (ICT Office)</option>
-              <option value="admin">Administrator (College Registrar)</option>
+              <option value="admin">Dean of Student Affairs (Admin)</option>
               <option value="program_head">Program Head</option>
               <option value="teacher">Faculty Member / Teacher</option>
             </select>

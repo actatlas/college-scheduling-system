@@ -344,8 +344,9 @@ export function SubjectsPage() {
                   style={{
                     padding: "6px 12px",
                     borderRadius: 6,
-                    border: "1px solid #cbd5e1",
-                    background: "#ffffff",
+                    border: "1px solid var(--srcb-border)",
+                    background: "var(--srcb-surface-elevated, #ffffff)",
+                    color: "var(--srcb-text)",
                     fontWeight: 500,
                     cursor: "pointer",
                   }}
@@ -378,8 +379,9 @@ export function SubjectsPage() {
                 style={{
                   padding: "6px 12px",
                   borderRadius: 6,
-                  border: "1px solid #cbd5e1",
-                  background: "#ffffff",
+                  border: "1px solid var(--srcb-border)",
+                  background: "var(--srcb-surface-elevated, #ffffff)",
+                  color: "var(--srcb-text)",
                   fontWeight: 500,
                   cursor: "pointer",
                 }}

@@ -18,6 +18,7 @@ const examSchedulesRoutes = require('./examSchedules.routes');
 const conflictsRoutes = require('./conflicts.routes');
 const reportsRoutes = require('./reports.routes');
 const academicTermsRoutes = require('./academicTerms.routes');
+const notificationsRoutes = require('./notifications.routes');
 
 const router = express.Router();
 
@@ -40,6 +41,7 @@ router.use('/year-levels', yearLevelsRoutes);
 router.use('/users', userRoutes);
 router.use('/terms', academicTermsRoutes);
 router.use('/system-settings', academicTermsRoutes);
+router.use('/notifications', notificationsRoutes);
 
 module.exports = router;
 

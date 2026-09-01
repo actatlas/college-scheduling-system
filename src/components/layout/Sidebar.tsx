@@ -41,7 +41,7 @@ function getRoleLabel(role: string) {
     case "super_admin":
       return "Super Admin (ICT)";
     case "admin":
-      return "College Administrator";
+      return "Dean of Student Affairs (Admin)";
     case "program_head":
       return "Program Head";
     case "teacher":

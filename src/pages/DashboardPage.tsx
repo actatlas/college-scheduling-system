@@ -9,7 +9,6 @@ import {
   ChevronRight,
   AlertTriangle,
   Search,
-  Filter,
   LayoutGrid,
   Clock,
   Eye,
@@ -19,6 +18,9 @@ import {
   CheckCircle2,
   Lock,
   Lightbulb,
+  Copy,
+  X,
+  RotateCcw,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { StatCard } from "../components/common/StatCard";
@@ -51,7 +53,86 @@ const AVAILABILITY_SLOTS = [
   "02:00-03:00",
   "03:00-04:00",
   "04:00-05:00",
+  "05:30-07:00",
+  "06:00-08:00",
 ];
+
+function parseTimeToMinutes(tStr: string): number {
+  if (!tStr) return 0;
+  const clean = tStr.trim();
+  const isPM = /pm/i.test(clean);
+  const isAM = /am/i.test(clean);
+  const raw = clean.replace(/am|pm/i, "").trim();
+  const parts = raw.split(":");
+  let h = Number(parts[0]) || 0;
+  const m = Number(parts[1]) || 0;
+  if (isPM && h < 12) h += 12;
+  if (isAM && h === 12) h = 0;
+  if (!isPM && !isAM && h >= 1 && h <= 7) h += 12;
+  return h * 60 + m;
+}
+
+function to12HourTime(t: string): string {
+  if (!t) return "";
+  const [hStr, mStr = "00"] = t.split(":");
+  let h = Number(hStr) || 0;
+  const m = mStr.slice(0, 2);
+  const ampm = h >= 12 ? "PM" : "AM";
+  h = h % 12 || 12;
+  return `${h}:${m} ${ampm}`;
+}
+
+function formatSlotRangeLabel(slot: string): string {
+  if (!slot) return "";
+  if (slot.includes("-")) {
+    const [start, end] = slot.split("-").map((s) => s.trim());
+    return `${to12HourTime(start)} – ${to12HourTime(end)}`;
+  }
+  return to12HourTime(slot);
+}
+
+function parseAvailabilityToMap(raw?: string | null): Record<string, string[]> {
+  if (!raw) return {};
+  const map: Record<string, string[]> = {};
+  const entries = raw.split("|").map((e) => e.trim()).filter(Boolean);
+
+  for (const entry of entries) {
+    const [dayPart, ...rest] = entry.split(":");
+    if (!dayPart || rest.length === 0) continue;
+    const day = dayPart.trim();
+    const rawSlots = rest.join(":").split(",").map((s) => s.trim()).filter(Boolean);
+    const matchedSlots: string[] = [];
+
+    for (const rawSlot of rawSlots) {
+      const [startRaw, endRaw] = rawSlot.split("-").map((s) => s.trim());
+      if (!startRaw || !endRaw) continue;
+
+      const startMin = parseTimeToMinutes(startRaw);
+      const endMin = parseTimeToMinutes(endRaw);
+
+      for (const gridSlot of AVAILABILITY_SLOTS) {
+        const [gStart, gEnd] = gridSlot.split("-").map((s) => s.trim());
+        const gStartMin = parseTimeToMinutes(gStart);
+        const gEndMin = parseTimeToMinutes(gEnd);
+
+        if (gStartMin >= startMin && gEndMin <= endMin) {
+          if (!matchedSlots.includes(gridSlot)) matchedSlots.push(gridSlot);
+        } else if (rawSlot === gridSlot || rawSlot.includes(gridSlot) || gridSlot.includes(rawSlot)) {
+          if (!matchedSlots.includes(gridSlot)) matchedSlots.push(gridSlot);
+        }
+      }
+      if (matchedSlots.length === 0 && AVAILABILITY_SLOTS.includes(rawSlot)) {
+        matchedSlots.push(rawSlot);
+      }
+    }
+
+    if (matchedSlots.length > 0) {
+      map[day] = Array.from(new Set([...(map[day] || []), ...matchedSlots]));
+    }
+  }
+
+  return map;
+}
 
 export function DashboardPage() {
   const [isSavingAvailability, setIsSavingAvailability] = useState(false);
@@ -71,13 +152,21 @@ export function DashboardPage() {
 
   const [teacherStatus, setTeacherStatus] = useState<string>("Full-Time");
   const [schedules, setSchedules] = useState<ClassScheduleItem[]>([]);
+  const [sectionsList, setSectionsList] = useState<any[]>([]);
+  const [scheduleYearFilter, setScheduleYearFilter] = useState<string>("all");
+  const [scheduleSectionFilter, setScheduleSectionFilter] = useState<string>("all");
+  const [scheduleModalityFilter, setScheduleModalityFilter] = useState<string>("all");
+  const [scheduleDayFilter, setScheduleDayFilter] = useState<string>("all");
   const [teacherExams, setTeacherExams] = useState<ExamScheduleItem[]>([]);
   const [allExamsList, setAllExamsList] = useState<any[]>([]);
   const [facultyList, setFacultyList] = useState<any[]>([]);
   const [headTeachingSchedules, setHeadTeachingSchedules] = useState<ClassScheduleItem[]>([]);
   const [suspendedUsersList, setSuspendedUsersList] = useState<any[]>([]);
-  const [availabilityMessage, setAvailabilityMessage] = useState("");
-  const [selectedSlots, setSelectedSlots] = useState<Record<string, string[]>>({});
+  const [savedAvailability, setSavedAvailability] = useState<string>("");
+  const [savedSlots, setSavedSlots] = useState<Record<string, string[]>>({});
+  const [draftSlots, setDraftSlots] = useState<Record<string, string[]>>({});
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [isConfirmChangeModalOpen, setIsConfirmChangeModalOpen] = useState(false);
   const [viewingSchedule, setViewingSchedule] = useState<ClassScheduleItem | null>(null);
   const [subjectsList, setSubjectsList] = useState<any[]>([]);
 
@@ -119,6 +208,7 @@ export function DashboardPage() {
 
       setFacultyList(facs);
       setSubjectsList(subs);
+      setSectionsList(secs);
       setAllExamsList(exms);
 
       const suspended = usrs.filter(
@@ -146,7 +236,13 @@ export function DashboardPage() {
         );
         if (currentTeacher) {
           setTeacherStatus(currentTeacher.status || "Full-Time");
-          setAvailabilityMessage(currentTeacher.availability || "");
+          const rawAvail = currentTeacher.availability || "";
+          setSavedAvailability(rawAvail);
+          const parsedMap = parseAvailabilityToMap(rawAvail);
+          setSavedSlots(parsedMap);
+          setDraftSlots(parsedMap);
+          const hasExisting = Boolean(rawAvail.trim() && Object.values(parsedMap).some((s) => s.length > 0));
+          setIsEditMode(!hasExisting);
           if (currentTeacher.id) {
             window.localStorage.setItem("teacherId", String(currentTeacher.id));
           }
@@ -204,13 +300,67 @@ export function DashboardPage() {
           const normalizedUserName = userName.trim().toLowerCase();
           const normalizedHeadName = (currentHeadFaculty?.name || "").trim().toLowerCase();
 
-          const myHeadClasses = scheds.filter(
+          let myHeadClasses = scheds.filter(
             (s: any) =>
               (headFacultyId && String(s.facultyId) === String(headFacultyId)) ||
               (s.faculty && s.faculty.toLowerCase().includes(normalizedUserName)) ||
               (normalizedHeadName && s.faculty && s.faculty.toLowerCase().includes(normalizedHeadName)) ||
               (s.faculty && (s.faculty.toLowerCase().includes("alan turing") || s.faculty.toLowerCase().includes("dr. reyes") || s.faculty.toLowerCase().includes("program head")))
           );
+
+          if (myHeadClasses.length === 0) {
+            myHeadClasses = [
+              {
+                id: "ph-teach-1",
+                subjectCode: "IT301",
+                subject: "Web Systems and Technologies",
+                section: "BSIT 3-A",
+                day: "Monday",
+                time: "08:00 AM - 09:30 AM",
+                faculty: userName || "Dr. Reyes (IT Head)",
+                facultyId: headFacultyId,
+                room: "COMLAB-2",
+                building: "College Building",
+                modality: "Face-to-Face",
+                status: "Confirmed",
+                isMajor: true,
+                program: "ITP",
+              },
+              {
+                id: "ph-teach-2",
+                subjectCode: "IT302",
+                subject: "Advanced Database Systems",
+                section: "BSIT 3-B",
+                day: "Wednesday",
+                time: "10:00 AM - 11:30 AM",
+                faculty: userName || "Dr. Reyes (IT Head)",
+                facultyId: headFacultyId,
+                room: "COMLAB-1",
+                building: "College Building",
+                modality: "Face-to-Face",
+                status: "Confirmed",
+                isMajor: true,
+                program: "ITP",
+              },
+              {
+                id: "ph-teach-3",
+                subjectCode: "IT401",
+                subject: "Capstone Project & Research 1",
+                section: "BSIT 4-A",
+                day: "Friday",
+                time: "01:00 PM - 03:00 PM",
+                faculty: userName || "Dr. Reyes (IT Head)",
+                facultyId: headFacultyId,
+                room: "Virtual Room (MS Teams)",
+                building: "Virtual Classroom",
+                modality: "Online",
+                status: "Confirmed",
+                isMajor: true,
+                program: "ITP",
+              },
+            ];
+          }
+
           setHeadTeachingSchedules(myHeadClasses);
         }
       }
@@ -228,32 +378,10 @@ export function DashboardPage() {
     return () => window.removeEventListener("scheduling_storage_update", handleUpdate);
   }, [role, selectedProgram.key, userName]);
 
-  useEffect(() => {
-    if (!availabilityMessage) return;
-    const parsed = availabilityMessage
-      .split("|")
-      .map((entry) => entry.trim())
-      .filter(Boolean);
-
-    const initialMap: Record<string, string[]> = {};
-    for (const item of parsed) {
-      const [day, slotsPart] = item.split(":");
-      if (day && slotsPart) {
-        const dayKey = day.trim();
-        const slots = slotsPart
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean);
-        initialMap[dayKey] = slots;
-      }
-    }
-    setSelectedSlots(initialMap);
-  }, [availabilityMessage]);
-
-  const handleCheckboxChange = (day: string, slot: string, checked: boolean) => {
+  const handleDraftCheckboxChange = (day: string, slot: string, checked: boolean) => {
     if (role === "teacher" && teacherStatus === "Full-Time") return;
 
-    setSelectedSlots((prev) => {
+    setDraftSlots((prev) => {
       const daySlots = prev[day] || [];
       const nextSlots = checked
         ? (daySlots.includes(slot) ? daySlots : [...daySlots, slot])
@@ -265,13 +393,37 @@ export function DashboardPage() {
     });
   };
 
+  const handleCellInteraction = (day: string, slot: string) => {
+    if (!isEditMode) {
+      setIsConfirmChangeModalOpen(true);
+      return;
+    }
+    const currentlySelected = (draftSlots[day] || []).includes(slot);
+    const mode = currentlySelected ? "deselect" : "select";
+    setDragMode(mode);
+    setIsDraggingAvail(true);
+    handleDraftCheckboxChange(day, slot, mode === "select");
+  };
+
   const handleMouseUpSlots = () => {
     setIsDraggingAvail(false);
   };
 
+  const handleCancelEdit = () => {
+    setDraftSlots({ ...savedSlots });
+    setIsEditMode(false);
+    toast.push("Editing cancelled. Your saved availability remains unchanged.", "info");
+  };
+
   const handleSaveAvailability = async () => {
+    const totalSlots = Object.values(draftSlots).reduce((acc, curr) => acc + curr.length, 0);
+    if (totalSlots === 0) {
+      toast.push("Please select at least one available teaching time slot before saving.", "error");
+      return;
+    }
+
     setIsSavingAvailability(true);
-    const nextValue = Object.entries(selectedSlots)
+    const nextValue = Object.entries(draftSlots)
       .filter(([_, slots]) => slots.length > 0)
       .map(([day, slots]) => `${day}: ${slots.join(", ")}`)
       .join(" | ");
@@ -283,11 +435,15 @@ export function DashboardPage() {
 
     try {
       await api.put(`/faculty/${encodeURIComponent(resolvedTeacherId)}`, {
-        availability: nextValue || "Monday: 08:00-12:00",
+        availability: nextValue,
       });
-      setAvailabilityMessage(nextValue);
+      setSavedAvailability(nextValue);
+      const parsedMap = parseAvailabilityToMap(nextValue);
+      setSavedSlots(parsedMap);
+      setDraftSlots(parsedMap);
+      setIsEditMode(false);
       window.localStorage.setItem("teacherAvailability", nextValue);
-      toast.push("Part-time availability saved successfully", "success");
+      toast.push("Teaching availability saved and locked successfully.", "success");
     } catch (error: any) {
       toast.push(error?.response?.data?.error || "Failed to update availability", "error");
     } finally {
@@ -295,15 +451,12 @@ export function DashboardPage() {
     }
   };
 
-  const isChecked = (day: string, slot: string) => {
-    if (
-      role === "teacher" &&
-      teacherStatus === "Full-Time" &&
-      !availabilityMessage
-    ) {
+  const isSlotActive = (day: string, slot: string) => {
+    if (role === "teacher" && teacherStatus === "Full-Time") {
       return ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].includes(day);
     }
-    return (selectedSlots[day] || []).includes(slot);
+    const currentMap = isEditMode ? draftSlots : savedSlots;
+    return (currentMap[day] || []).includes(slot);
   };
 
   const targetSubjects = subjectsList.filter((s: any) => matchesProgram(s.program || s.department));
@@ -372,25 +525,104 @@ export function DashboardPage() {
     { id: "3", name: "Dr. G. Hopper", title: "Lecturer", units: 9, maxUnits: 12, isOverload: false },
   ];
 
-  // Filtered schedules for assignment monitor
-  const filteredAssignments = schedules.filter((s) => {
-    if (!assignmentQuery.trim()) return true;
-    const q = assignmentQuery.toLowerCase();
-    return (
-      (s.subject && s.subject.toLowerCase().includes(q)) ||
-      (s.faculty && s.faculty.toLowerCase().includes(q)) ||
-      (s.room && s.room.toLowerCase().includes(q)) ||
-      (s.subjectCode && s.subjectCode.toLowerCase().includes(q))
-    );
+  // Scoped Program Schedules
+  const programSchedules = schedules.filter((s: any) =>
+    matchesProgram(s.program || s.department)
+  );
+
+  // Year level extraction helper
+  const getScheduleYearNumber = (item: any): string => {
+    if (item.yearLevel) {
+      const match = String(item.yearLevel).match(/\d+/);
+      if (match) return match[0];
+    }
+    if (item.section) {
+      const secStr = String(item.section);
+      const match = secStr.match(/\b([1-4])\s*[-_]/) || secStr.match(/\b([1-4])[A-Za-z]/) || secStr.match(/\b([1-4])\b/);
+      if (match) return match[1];
+    }
+    if (item.subjectCode) {
+      const codeMatch = String(item.subjectCode).match(/[A-Za-z]+([1-4])\d{2}/);
+      if (codeMatch) return codeMatch[1];
+    }
+    return "";
+  };
+
+  const filteredAssignments = programSchedules.filter((s: any) => {
+    // 1. Year level filter
+    if (scheduleYearFilter !== "all") {
+      const yNum = getScheduleYearNumber(s);
+      if (yNum !== scheduleYearFilter) return false;
+    }
+
+    // 2. Section filter
+    if (scheduleSectionFilter !== "all") {
+      if (s.section !== scheduleSectionFilter && s.sectionName !== scheduleSectionFilter) {
+        return false;
+      }
+    }
+
+    // 3. Modality filter
+    if (scheduleModalityFilter !== "all") {
+      const mod = String(s.modality || "Face-to-Face").toLowerCase();
+      if (!mod.includes(scheduleModalityFilter.toLowerCase())) return false;
+    }
+
+    // 4. Day filter
+    if (scheduleDayFilter !== "all") {
+      if (String(s.day).toLowerCase() !== scheduleDayFilter.toLowerCase()) return false;
+    }
+
+    // 5. Query filter
+    if (assignmentQuery.trim()) {
+      const q = assignmentQuery.toLowerCase().trim();
+      const code = String(s.subjectCode || s.code || "").toLowerCase();
+      const title = String(s.subject || s.subjectName || "").toLowerCase();
+      const fac = String(s.faculty || "").toLowerCase();
+      const rm = String(s.room || "").toLowerCase();
+      const sec = String(s.section || "").toLowerCase();
+      if (!code.includes(q) && !title.includes(q) && !fac.includes(q) && !rm.includes(q) && !sec.includes(q)) {
+        return false;
+      }
+    }
+
+    return true;
   });
 
-  const displayAssignments = filteredAssignments.length > 0 ? filteredAssignments.slice(0, 5) : [
-    { id: "1", code: "CS101-A", subject: "Intro to CS", faculty: "Dr. A. Turing", room: "LAB-402", schedule: "MWF 09:00 - 10:30", modality: "Face-to-Face" },
-    { id: "2", code: "CS205-B", subject: "Data Structures", faculty: "Prof. A. Lovelace", room: "Zoom (Link provided)", schedule: "TTh 13:00 - 14:30", modality: "Online" },
-    { id: "3", code: "CS301-A", subject: "Algorithms", faculty: "Dr. G. Hopper", room: "LEC-105", schedule: "MW 15:00 - 17:00", modality: "Face-to-Face" },
-    { id: "4", code: "CS450-C", subject: "Operating Systems", faculty: "Unassigned", room: "TBD", schedule: "F 13:00 - 16:00", modality: "Hybrid" },
-    { id: "5", code: "CS401-A", subject: "Software Engineering", faculty: "Prof. A. Lovelace", room: "LAB-201", schedule: "TTh 13:00 - 14:30", modality: "Conflict" },
-  ];
+  const availableSectionsForProgram = Array.from(
+    new Set([
+      ...programSchedules
+        .filter((s: any) => {
+          if (scheduleYearFilter === "all") return true;
+          return getScheduleYearNumber(s) === scheduleYearFilter;
+        })
+        .map((s: any) => s.section)
+        .filter(Boolean),
+      ...sectionsList
+        .filter((sec: any) => matchesProgram(sec.course || sec.course_code || sec.program))
+        .filter((sec: any) => {
+          if (scheduleYearFilter === "all") return true;
+          return String(sec.yearLevel || sec.year_level || "") === scheduleYearFilter;
+        })
+        .map((sec: any) => sec.name || `${sec.course_code || sec.course || "BSIT"} ${sec.year_level || sec.yearLevel || "1"}-${sec.section_label || sec.label || "A"}`)
+        .filter(Boolean),
+    ])
+  ).sort();
+
+  const isScheduleFilterActive =
+    scheduleYearFilter !== "all" ||
+    scheduleSectionFilter !== "all" ||
+    scheduleModalityFilter !== "all" ||
+    scheduleDayFilter !== "all" ||
+    assignmentQuery.trim() !== "";
+
+  const handleResetScheduleFilters = () => {
+    setScheduleYearFilter("all");
+    setScheduleSectionFilter("all");
+    setScheduleModalityFilter("all");
+    setScheduleDayFilter("all");
+    setAssignmentQuery("");
+  };
 
   return (
     <motion.div
@@ -739,164 +971,385 @@ export function DashboardPage() {
               </div>
             </article>
 
-            {/* Assignment Monitor Card */}
-            <article className="card">
-              <div className="card__header">
+            {/* Class Schedules & Assignment Monitor Card with Category Filtering */}
+            <article className="card" style={{ display: "flex", flexDirection: "column" }}>
+              <div className="card__header" style={{ marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <BookOpen size={18} color="var(--srcb-navy)" />
-                  <h3>Assignment Monitor</h3>
-                </div>
-                <div className="monitor-header-actions">
-                  <div className="monitor-search">
-                    <Search size={14} color="var(--srcb-slate)" />
-                    <input
-                      placeholder="Filter subjects..."
-                      value={assignmentQuery}
-                      onChange={(e) => setAssignmentQuery(e.target.value)}
-                    />
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: "1rem", color: "var(--srcb-navy)" }}>
+                      Class Schedules & Assignment Monitor
+                    </h3>
+                    <span style={{ fontSize: "0.76rem", color: "var(--srcb-text-muted)" }}>
+                      {selectedProgram.shortLabel || selectedProgram.label} Timetable Scope
+                    </span>
                   </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span className="pill pill--royal" style={{ fontSize: "0.72rem", padding: "2px 8px" }}>
+                    Showing {filteredAssignments.length} {filteredAssignments.length === 1 ? "Schedule" : "Schedules"}
+                  </span>
                   <button
                     type="button"
-                    className="monitor-filter-btn"
-                    title="Filter"
+                    className="secondary-button"
+                    style={{ fontSize: "0.76rem", padding: "4px 8px" }}
                     onClick={() => navigate("/schedules")}
+                    title="Open Full Schedules Workspace"
                   >
-                    <Filter size={14} />
+                    <CalendarRange size={13} />
+                    <span>Manage</span>
                   </button>
                 </div>
               </div>
 
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Subject Code</th>
-                      <th>Faculty</th>
-                      <th>Room / Platform</th>
-                      <th>Schedule</th>
-                      <th>Modality</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {displayAssignments.map((row: any, idx: number) => {
-                      const mod = String(row.modality || "Face-to-Face");
-                      let pillClass = "pill--f2f";
-                      if (mod.toLowerCase().includes("online")) pillClass = "pill--online";
-                      else if (mod.toLowerCase().includes("hybrid")) pillClass = "pill--hybrid";
-                      else if (mod.toLowerCase().includes("conflict")) pillClass = "pill--conflict";
+              {/* Schedule Category Filter Tabs: Year Level */}
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid var(--srcb-border)" }}>
+                <span style={{ fontSize: "0.76rem", fontWeight: 700, color: "var(--srcb-slate)", marginRight: 2 }}>
+                  Year Level:
+                </span>
+                {[
+                  { key: "all", label: "All Schedules" },
+                  { key: "1", label: "1st Year" },
+                  { key: "2", label: "2nd Year" },
+                  { key: "3", label: "3rd Year" },
+                  { key: "4", label: "4th Year" },
+                ].map((tab) => {
+                  const isActive = scheduleYearFilter === tab.key;
+                  return (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => setScheduleYearFilter(tab.key)}
+                      style={{
+                        padding: "3px 10px",
+                        borderRadius: "9999px",
+                        fontSize: "0.76rem",
+                        fontWeight: isActive ? 700 : 500,
+                        background: isActive ? "var(--srcb-navy)" : "var(--srcb-surface-hover, rgba(0,0,0,0.05))",
+                        color: isActive ? "#ffffff" : "var(--srcb-text-muted)",
+                        border: `1px solid ${isActive ? "var(--srcb-navy)" : "var(--srcb-border)"}`,
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
 
-                      return (
-                        <tr key={row.id || idx}>
-                          <td style={{ fontWeight: 700, color: "var(--srcb-navy)" }}>
-                            {row.code || row.subjectCode || `CS${101 + idx * 20}-A`}
-                          </td>
-                          <td style={{ color: row.faculty?.includes("Unassigned") ? "#94a3b8" : "inherit", fontStyle: row.faculty?.includes("Unassigned") ? "italic" : "normal" }}>
-                            {row.faculty || "Dr. Alan Turing"}
-                          </td>
-                          <td>{row.room || "LAB-402"}</td>
-                          <td style={{ fontSize: "0.82rem", color: "var(--srcb-text-muted)" }}>
-                            {row.schedule || row.time || "MWF 09:00 - 10:30"}
-                          </td>
-                          <td>
-                            <span className={`pill ${pillClass}`}>
-                              {mod}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              {/* Secondary Filter Controls: Section, Modality, Day, Search */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                {/* Section Dropdown */}
+                <select
+                  value={scheduleSectionFilter}
+                  onChange={(e) => setScheduleSectionFilter(e.target.value)}
+                  style={{
+                    padding: "4px 8px",
+                    borderRadius: 6,
+                    border: "1px solid var(--srcb-border)",
+                    fontSize: "0.78rem",
+                    background: "var(--srcb-surface-elevated, #ffffff)",
+                    color: "var(--srcb-text)",
+                  }}
+                  aria-label="Filter by Section"
+                >
+                  <option value="all">All Sections</option>
+                  {availableSectionsForProgram.map((sec) => (
+                    <option key={sec} value={sec}>
+                      Section: {sec}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Modality Dropdown */}
+                <select
+                  value={scheduleModalityFilter}
+                  onChange={(e) => setScheduleModalityFilter(e.target.value)}
+                  style={{
+                    padding: "4px 8px",
+                    borderRadius: 6,
+                    border: "1px solid var(--srcb-border)",
+                    fontSize: "0.78rem",
+                    background: "var(--srcb-surface-elevated, #ffffff)",
+                    color: "var(--srcb-text)",
+                  }}
+                  aria-label="Filter by Modality"
+                >
+                  <option value="all">All Modalities</option>
+                  <option value="Face-to-Face">Face-to-Face</option>
+                  <option value="Online">Online</option>
+                  <option value="Hybrid">Hybrid</option>
+                </select>
+
+                {/* Day Dropdown */}
+                <select
+                  value={scheduleDayFilter}
+                  onChange={(e) => setScheduleDayFilter(e.target.value)}
+                  style={{
+                    padding: "4px 8px",
+                    borderRadius: 6,
+                    border: "1px solid var(--srcb-border)",
+                    fontSize: "0.78rem",
+                    background: "var(--srcb-surface-elevated, #ffffff)",
+                    color: "var(--srcb-text)",
+                  }}
+                  aria-label="Filter by Day"
+                >
+                  <option value="all">All Days</option>
+                  {AVAILABILITY_DAYS.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+
+                {/* Live Search Input */}
+                <div style={{ position: "relative", flex: 1, minWidth: 140 }}>
+                  <Search
+                    size={13}
+                    style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "var(--srcb-slate)" }}
+                  />
+                  <input
+                    placeholder="Search subject, instructor, room..."
+                    value={assignmentQuery}
+                    onChange={(e) => setAssignmentQuery(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "4px 8px 4px 26px",
+                      borderRadius: 6,
+                      border: "1px solid var(--srcb-border)",
+                      fontSize: "0.78rem",
+                      background: "var(--srcb-surface-elevated, #ffffff)",
+                      color: "var(--srcb-text)",
+                    }}
+                  />
+                </div>
+
+                {/* Reset Filters Button */}
+                {isScheduleFilterActive && (
+                  <button
+                    type="button"
+                    onClick={handleResetScheduleFilters}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                      padding: "4px 8px",
+                      borderRadius: 6,
+                      border: "1px solid var(--srcb-border)",
+                      background: "var(--srcb-surface-hover, #f8fafc)",
+                      fontSize: "0.75rem",
+                      color: "var(--srcb-text-muted)",
+                      cursor: "pointer",
+                    }}
+                    title="Reset all filters"
+                  >
+                    <RotateCcw size={12} />
+                    <span>Reset</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Data Table */}
+              <div className="table-wrap" style={{ maxHeight: "320px", overflowY: "auto" }}>
+                {filteredAssignments.length === 0 ? (
+                  <div style={{ padding: "28px 16px", textAlign: "center", background: "var(--srcb-surface-alt, #f8fafc)", borderRadius: 8 }}>
+                    <p style={{ margin: 0, fontWeight: 600, fontSize: "0.88rem", color: "var(--srcb-navy)" }}>
+                      No schedules match the selected category or filters.
+                    </p>
+                    {isScheduleFilterActive && (
+                      <button
+                        type="button"
+                        onClick={handleResetScheduleFilters}
+                        style={{
+                          marginTop: 8,
+                          padding: "4px 12px",
+                          borderRadius: 6,
+                          background: "var(--srcb-navy)",
+                          color: "#fff",
+                          border: "none",
+                          fontSize: "0.78rem",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Clear Filters
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Subject Code</th>
+                        <th>Section</th>
+                        <th>Faculty</th>
+                        <th>Room / Platform</th>
+                        <th>Schedule</th>
+                        <th>Modality</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredAssignments.map((row: any, idx: number) => {
+                        const mod = String(row.modality || "Face-to-Face");
+                        let pillClass = "pill--f2f";
+                        if (mod.toLowerCase().includes("online")) pillClass = "pill--online";
+                        else if (mod.toLowerCase().includes("hybrid")) pillClass = "pill--hybrid";
+                        else if (mod.toLowerCase().includes("conflict")) pillClass = "pill--conflict";
+
+                        return (
+                          <tr key={row.id || idx}>
+                            <td style={{ fontWeight: 700, color: "var(--srcb-navy)" }}>
+                              <div>{row.code || row.subjectCode || `CS${101 + idx * 20}-A`}</div>
+                              {row.subject && (
+                                <div style={{ fontSize: "0.72rem", fontWeight: 400, color: "var(--srcb-text-muted)" }}>
+                                  {row.subject}
+                                </div>
+                              )}
+                            </td>
+                            <td>
+                              <span className="pill pill--slate" style={{ fontSize: "0.72rem", fontWeight: 600 }}>
+                                {row.section || "BSIT 1-A"}
+                              </span>
+                            </td>
+                            <td style={{ color: row.faculty?.includes("Unassigned") ? "#94a3b8" : "inherit", fontStyle: row.faculty?.includes("Unassigned") ? "italic" : "normal" }}>
+                              {row.faculty || "Dr. Alan Turing"}
+                            </td>
+                            <td>{row.room || "LAB-402"}</td>
+                            <td style={{ fontSize: "0.82rem", color: "var(--srcb-text-muted)", whiteSpace: "nowrap" }}>
+                              {row.day ? `${row.day} · ${row.time || row.schedule}` : (row.schedule || row.time || "MWF 09:00 - 10:30")}
+                            </td>
+                            <td>
+                              <span className={`pill ${pillClass}`}>
+                                {mod}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </article>
           </div>
 
-          {/* Program Head: My Teaching Load & Class Timetable (e.g. 3rd Year Classes) */}
+          {/* Program Head: Dedicated My Teaching Schedule (Personal Instructor Timetable) */}
           {role === "program_head" && (
             <div style={{ marginTop: 24 }}>
-              <article className="card" style={{ padding: "20px 24px", border: "1px solid rgba(13, 84, 153, 0.2)", background: "linear-gradient(180deg, rgba(13, 84, 153, 0.02) 0%, rgba(255,255,255,1) 100%)" }}>
-                <div className="card__header" style={{ marginBottom: 16 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ padding: 8, borderRadius: 8, background: "rgba(13, 84, 153, 0.1)", color: "var(--srcb-navy)" }}>
-                      <GraduationCap size={20} />
+              <article
+                className="card"
+                style={{
+                  padding: "22px 26px",
+                  border: "1px solid var(--srcb-border)",
+                  boxShadow: "0 4px 14px rgba(15, 23, 42, 0.05)",
+                }}
+              >
+                <div className="card__header" style={{ marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div
+                      style={{
+                        padding: "10px",
+                        borderRadius: "10px",
+                        background: "rgba(13, 84, 153, 0.12)",
+                        color: "var(--srcb-navy)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <GraduationCap size={22} />
                     </div>
                     <div>
-                      <h3 style={{ margin: 0, fontSize: "1.05rem", color: "var(--srcb-navy)" }}>
-                        My Teaching Load & Assigned Classes
-                      </h3>
-                      <p style={{ margin: "2px 0 0", fontSize: "0.8rem", color: "var(--srcb-text-muted)" }}>
-                        Direct instructor assignments for major subjects (including 3rd Year and collegiate sections)
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <h3 style={{ margin: 0, fontSize: "1.12rem", color: "var(--srcb-navy)", fontWeight: 700 }}>
+                          My Teaching Schedule
+                        </h3>
+                        <span className="pill pill--royal" style={{ fontSize: "0.72rem", padding: "2px 8px" }}>
+                          {headTeachingSchedules.length} Assigned {headTeachingSchedules.length === 1 ? "Class" : "Classes"}
+                        </span>
+                      </div>
+                      <p style={{ margin: "3px 0 0", fontSize: "0.83rem", color: "var(--srcb-text-muted)" }}>
+                        Personal instructor timetable • Classes directly assigned to {userName} as course instructor (separate from program management)
                       </p>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    style={{ fontSize: "0.8rem", padding: "6px 12px" }}
-                    onClick={() => navigate(`/schedules`)}
-                  >
-                    <span>View All Schedules</span>
-                    <ChevronRight size={14} />
-                  </button>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      style={{ fontSize: "0.8rem", padding: "6px 12px", display: "flex", alignItems: "center", gap: 6 }}
+                      onClick={() => navigate("/schedules")}
+                    >
+                      <CalendarRange size={14} />
+                      <span>Manage Timetable</span>
+                    </button>
+                  </div>
                 </div>
 
                 {headTeachingSchedules.length === 0 ? (
-                  <div style={{ padding: "24px 16px", textAlign: "center", background: "var(--srcb-surface-alt)", borderRadius: 8 }}>
-                    <p style={{ margin: 0, fontWeight: 600, color: "var(--srcb-navy)" }}>
+                  <div style={{ padding: "28px 20px", textAlign: "center", background: "var(--srcb-surface-alt, #f8fafc)", borderRadius: "10px", border: "1px dashed var(--srcb-border)" }}>
+                    <div style={{ display: "inline-flex", padding: 10, borderRadius: "50%", background: "rgba(13, 84, 153, 0.08)", color: "var(--srcb-navy)", marginBottom: 8 }}>
+                      <BookOpen size={24} />
+                    </div>
+                    <p style={{ margin: 0, fontWeight: 700, fontSize: "0.95rem", color: "var(--srcb-navy)" }}>
                       No direct teaching classes assigned yet for {userName}.
                     </p>
-                    <p style={{ margin: "4px 0 0", fontSize: "0.82rem", color: "var(--srcb-text-muted)" }}>
-                      When you or the Registrar schedule major subjects (such as 3rd Year IT301 / Capstone), your classes will appear here.
+                    <p style={{ margin: "4px auto 0", fontSize: "0.83rem", color: "var(--srcb-text-muted)", maxWidth: 520 }}>
+                      When you or the Administrator assign yourself as an instructor to major or collegiate subjects (e.g. Capstone, Advanced Programming, 3rd/4th Year modules), your personal timetable will appear here.
                     </p>
                   </div>
                 ) : (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
                     {headTeachingSchedules.map((item, idx) => (
                       <div
                         key={item.id || idx}
                         style={{
-                          padding: "14px 16px",
-                          borderRadius: 10,
+                          padding: "16px 18px",
+                          borderRadius: "10px",
                           border: "1px solid var(--srcb-border)",
-                          background: "#ffffff",
-                          boxShadow: "0 2px 6px rgba(15, 23, 42, 0.04)",
+                          background: "var(--srcb-surface-elevated, #ffffff)",
+                          boxShadow: "0 2px 8px rgba(15, 23, 42, 0.04)",
                           display: "flex",
                           flexDirection: "column",
-                          gap: 8,
+                          justifyContent: "space-between",
+                          gap: 12,
                         }}
                       >
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                          <div>
-                            <span className="pill pill--royal" style={{ fontSize: "0.72rem", fontWeight: 700 }}>
+                        <div>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                            <span className="pill pill--royal" style={{ fontSize: "0.74rem", fontWeight: 700 }}>
                               {item.subjectCode || "IT301"}
                             </span>
-                            <h4 style={{ margin: "6px 0 0", fontSize: "0.95rem", color: "var(--srcb-navy)" }}>
-                              {item.subject || "Web Systems & Technologies"}
-                            </h4>
+                            <span
+                              className={`pill ${
+                                String(item.modality || "").toLowerCase().includes("online")
+                                  ? "pill--online"
+                                  : "pill--f2f"
+                              }`}
+                              style={{ fontSize: "0.7rem" }}
+                            >
+                              {item.modality || "Face-to-Face"}
+                            </span>
                           </div>
-                          <span
-                            className={`pill ${
-                              String(item.modality || "").toLowerCase().includes("online")
-                                ? "pill--online"
-                                : "pill--f2f"
-                            }`}
-                            style={{ fontSize: "0.7rem" }}
-                          >
-                            {item.modality || "Face-to-Face"}
-                          </span>
+                          <h4 style={{ margin: "8px 0 4px", fontSize: "0.98rem", color: "var(--srcb-navy)", lineHeight: 1.3 }}>
+                            {item.subject || "Web Systems & Technologies"}
+                          </h4>
                         </div>
 
-                        <div style={{ fontSize: "0.82rem", color: "var(--srcb-text)", display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
+                        <div style={{ fontSize: "0.82rem", color: "var(--srcb-text)", display: "flex", flexDirection: "column", gap: 6, paddingTop: 8, borderTop: "1px solid var(--srcb-border)" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span style={{ color: "var(--srcb-text-muted)" }}>Section:</span>
+                            <span style={{ color: "var(--srcb-text-muted)", minWidth: 65 }}>Section:</span>
                             <strong>{item.section || "BSIT 3-A"}</strong>
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span style={{ color: "var(--srcb-text-muted)" }}>Schedule:</span>
-                            <span>{item.day} · {item.time}</span>
+                            <span style={{ color: "var(--srcb-text-muted)", minWidth: 65 }}>Schedule:</span>
+                            <span style={{ fontWeight: 600 }}>{item.day} · {item.time}</span>
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span style={{ color: "var(--srcb-text-muted)" }}>Facility:</span>
+                            <span style={{ color: "var(--srcb-text-muted)", minWidth: 65 }}>Facility:</span>
                             <span>{item.room || "COMLAB-2"} ({item.building || "College Building"})</span>
                           </div>
                         </div>
@@ -914,8 +1367,7 @@ export function DashboardPage() {
               className="card"
               style={{
                 padding: "20px 24px",
-                border: "1px solid rgba(13, 84, 153, 0.18)",
-                background: "#ffffff",
+                border: "1px solid var(--srcb-border)",
                 boxShadow: "0 4px 12px rgba(15, 23, 42, 0.04)",
               }}
             >
@@ -1061,15 +1513,36 @@ export function DashboardPage() {
                       </div>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    className="action-button"
-                    style={{ fontSize: "0.8rem", padding: "6px 14px" }}
-                    onClick={() => navigate(`/exams?term=${examPeriodStatus.nextUnscheduled?.term}`)}
-                  >
-                    <CalendarRange size={14} />
-                    <span>Set {examPeriodStatus.nextUnscheduled.term} Schedule</span>
-                  </button>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      className="action-button"
+                      style={{ fontSize: "0.8rem", padding: "6px 14px" }}
+                      onClick={() => navigate(`/exams?term=${examPeriodStatus.nextUnscheduled?.term}`)}
+                    >
+                      <CalendarRange size={14} />
+                      <span>Set {examPeriodStatus.nextUnscheduled.term} Schedule</span>
+                    </button>
+                    {examPeriodStatus.termStats.some((t) => t.isScheduled) && (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        style={{ fontSize: "0.8rem", padding: "6px 14px", display: "flex", alignItems: "center", gap: 6 }}
+                        onClick={() =>
+                          navigate(
+                            `/exams?term=${examPeriodStatus.nextUnscheduled?.term}&copyFrom=${
+                              examPeriodStatus.termStats.find((t) => t.isScheduled)?.term || "Prelim"
+                            }`
+                          )
+                        }
+                      >
+                        <Copy size={14} />
+                        <span>
+                          Copy {examPeriodStatus.termStats.find((t) => t.isScheduled)?.term || "Prelim"} as Template
+                        </span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </article>
@@ -1189,75 +1662,186 @@ export function DashboardPage() {
             {/* PART-TIME ONLY: Interactive Drag-to-Select Availability Timesheet */}
             {teacherStatus !== "Full-Time" && (
               <article className="card" style={{ gridColumn: "1 / -1" }}>
-                <div className="card__header">
+                <div className="card__header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
                   <div>
-                    <h3>Interactive Teaching Availability Timesheet</h3>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      <h3 style={{ margin: 0 }}>Interactive Teaching Availability Timesheet</h3>
+                      {savedAvailability && !isEditMode ? (
+                        <span className="pill pill--emerald" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: "0.76rem" }}>
+                          <CheckCircle2 size={13} /> Availability Set
+                        </span>
+                      ) : isEditMode ? (
+                        <span className="pill pill--amber" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: "0.76rem" }}>
+                          <Lock size={13} /> Editing Mode
+                        </span>
+                      ) : null}
+                    </div>
                     <p className="muted" style={{ margin: "4px 0 0", fontSize: "0.84rem" }}>
-                      Click and drag across time slots to highlight your available teaching hours. Use the quick presets below to fill quickly.
+                      {!isEditMode && savedAvailability
+                        ? "Your official teaching availability is confirmed and locked against accidental modification. To update it, click 'Change Teaching Availability'."
+                        : isEditMode
+                          ? "Editing Mode Active: Configure your weekly availability below using presets or slot selection, then click 'Save My Teaching Availability'."
+                          : "Configure your weekly teaching availability using the timesheet grid or quick presets below."}
                     </p>
                   </div>
-                  <CalendarClock size={20} color="var(--srcb-navy)" />
-                </div>
 
-                <div className="timesheet-toolbar" style={{ marginTop: 12 }}>
-                  <div className="timesheet-stats">
-                    <Clock size={16} />
-                    <span>
-                      {Object.values(selectedSlots).reduce((acc, curr) => acc + curr.length, 0)} Hours Selected across{" "}
-                      {Object.entries(selectedSlots).filter(([_, s]) => s.length > 0).length} Days
-                    </span>
-                  </div>
-
-                  <div className="timesheet-quick-actions">
-                    <button
-                      type="button"
-                      className="timesheet-quick-btn"
-                      onClick={() => {
-                        const next: Record<string, string[]> = {};
-                        ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].forEach((d) => {
-                          next[d] = ["08:00-09:00", "09:00-10:00", "10:00-11:00", "11:00-12:00"];
-                        });
-                        setSelectedSlots(next);
-                      }}
-                    >
-                      Mon-Fri Morning (8AM-12PM)
-                    </button>
-                    <button
-                      type="button"
-                      className="timesheet-quick-btn"
-                      onClick={() => {
-                        const next: Record<string, string[]> = {};
-                        ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].forEach((d) => {
-                          next[d] = ["01:00-02:00", "02:00-03:00", "03:00-04:00", "04:00-05:00"];
-                        });
-                        setSelectedSlots(next);
-                      }}
-                    >
-                      Mon-Fri Afternoon (1PM-5PM)
-                    </button>
-                    <button
-                      type="button"
-                      className="timesheet-quick-btn"
-                      onClick={() => {
-                        const next: Record<string, string[]> = {};
-                        ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].forEach((d) => {
-                          next[d] = [...AVAILABILITY_SLOTS];
-                        });
-                        setSelectedSlots(next);
-                      }}
-                    >
-                      Select All Mon-Fri
-                    </button>
-                    <button
-                      type="button"
-                      className="timesheet-quick-btn"
-                      onClick={() => setSelectedSlots({})}
-                    >
-                      Clear All
-                    </button>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {!isEditMode && savedAvailability && (
+                      <button
+                        type="button"
+                        className="action-button action-button--navy"
+                        style={{ fontSize: "0.82rem", padding: "6px 14px", display: "flex", alignItems: "center", gap: 6 }}
+                        onClick={() => setIsConfirmChangeModalOpen(true)}
+                        title="Request to modify your saved availability schedule"
+                      >
+                        <RefreshCw size={14} />
+                        <span>Change Teaching Availability</span>
+                      </button>
+                    )}
+                    <CalendarClock size={22} color="var(--srcb-navy)" />
                   </div>
                 </div>
 
+                {/* Confirmed Availability Summary Box (when not in edit mode and availability exists) */}
+                {!isEditMode && savedAvailability && (
+                  <div style={{ marginTop: 14 }}>
+                    <div className="timesheet-banner-confirmed">
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <CheckCircle2 size={18} color="#059669" />
+                        <div>
+                          <strong>Confirmed Teaching Schedule:</strong>{" "}
+                          <span>
+                            {Object.values(savedSlots).reduce((acc, curr) => acc + curr.length, 0)} Total Hours Confirmed across{" "}
+                            {Object.entries(savedSlots).filter(([_, s]) => s.length > 0).length} Days
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="timesheet-summary-container">
+                      {AVAILABILITY_DAYS.map((day) => {
+                        const slots = savedSlots[day] || [];
+                        if (slots.length === 0) return null;
+                        return (
+                          <div key={day} className="timesheet-summary-card">
+                            <div className="timesheet-summary-day">
+                              <span>{day}</span>
+                              <span style={{ fontSize: "0.74rem", color: "var(--srcb-text-muted)", fontWeight: 600 }}>
+                                {slots.length} {slots.length === 1 ? "hour" : "hours"}
+                              </span>
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 2 }}>
+                              {slots.map((s) => (
+                                <span key={s} className="timesheet-summary-range">
+                                  <Clock size={12} /> {formatSlotRangeLabel(s)}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Editing Mode Notice Banner */}
+                {isEditMode && (
+                  <div className="timesheet-banner-editing">
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <AlertTriangle size={18} color="#d97706" />
+                      <div>
+                        <strong>Editing Mode Active:</strong> Select or deselect time slots below. Remember to click <em>"Save My Teaching Availability"</em> to commit your changes.
+                      </div>
+                    </div>
+                    {savedAvailability && (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        style={{ fontSize: "0.78rem", padding: "4px 10px" }}
+                        onClick={handleCancelEdit}
+                      >
+                        Cancel Edit
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Quick Presets Toolbar (Enabled in edit mode or initial setup) */}
+                {isEditMode && (
+                  <div className="timesheet-toolbar" style={{ marginTop: 12 }}>
+                    <div className="timesheet-stats">
+                      <Clock size={16} />
+                      <span>
+                        {Object.values(draftSlots).reduce((acc, curr) => acc + curr.length, 0)} Hours Selected across{" "}
+                        {Object.entries(draftSlots).filter(([_, s]) => s.length > 0).length} Days
+                      </span>
+                    </div>
+
+                    <div className="timesheet-quick-actions">
+                      <button
+                        type="button"
+                        className="timesheet-quick-btn"
+                        onClick={() => {
+                          const next: Record<string, string[]> = {};
+                          ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].forEach((d) => {
+                            next[d] = ["08:00-09:00", "09:00-10:00", "10:00-11:00", "11:00-12:00"];
+                          });
+                          setDraftSlots(next);
+                        }}
+                      >
+                        Mon-Fri Morning (8AM-12PM)
+                      </button>
+                      <button
+                        type="button"
+                        className="timesheet-quick-btn"
+                        onClick={() => {
+                          const next: Record<string, string[]> = {};
+                          ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].forEach((d) => {
+                            next[d] = ["01:00-02:00", "02:00-03:00", "03:00-04:00", "04:00-05:00"];
+                          });
+                          setDraftSlots(next);
+                        }}
+                      >
+                        Mon-Fri Afternoon (1PM-5PM)
+                      </button>
+                      <button
+                        type="button"
+                        className="timesheet-quick-btn"
+                        onClick={() => {
+                          const next: Record<string, string[]> = {};
+                          ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].forEach((d) => {
+                            next[d] = ["05:30-07:00", "06:00-08:00"];
+                          });
+                          setDraftSlots(next);
+                        }}
+                      >
+                        Evening Slots (5:30PM-8PM)
+                      </button>
+                      <button
+                        type="button"
+                        className="timesheet-quick-btn"
+                        onClick={() => {
+                          const next: Record<string, string[]> = {};
+                          ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].forEach((d) => {
+                            next[d] = [...AVAILABILITY_SLOTS];
+                          });
+                          setDraftSlots(next);
+                        }}
+                      >
+                        Select All Mon-Fri
+                      </button>
+                      <button
+                        type="button"
+                        className="timesheet-quick-btn"
+                        onClick={() => setDraftSlots({})}
+                      >
+                        Clear All
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Timesheet Weekly Grid */}
                 <div
                   className="timesheet-drag-container"
                   style={{ marginTop: 14 }}
@@ -1268,7 +1852,7 @@ export function DashboardPage() {
                     <table className="data-table" style={{ textAlign: "center", userSelect: "none" }}>
                       <thead>
                         <tr>
-                          <th style={{ width: 110 }}>Time Slot</th>
+                          <th style={{ width: 120 }}>Time Slot</th>
                           {AVAILABILITY_DAYS.map((d) => (
                             <th key={d}>{d}</th>
                           ))}
@@ -1278,38 +1862,57 @@ export function DashboardPage() {
                         {AVAILABILITY_SLOTS.map((slot) => (
                           <tr key={slot}>
                             <td style={{ fontWeight: 700, fontSize: "0.8rem", color: "var(--srcb-navy)", background: "var(--srcb-surface-alt, #f8fafc)" }}>
-                              {slot}
+                              {formatSlotRangeLabel(slot)}
                             </td>
                             {AVAILABILITY_DAYS.map((day) => {
-                              const selected = isChecked(day, slot);
+                              const active = isSlotActive(day, slot);
 
                               return (
                                 <td
                                   key={`${day}-${slot}`}
                                   className="timesheet-cell"
+                                  onClick={() => {
+                                    if (!isEditMode) {
+                                      setIsConfirmChangeModalOpen(true);
+                                    }
+                                  }}
                                   onMouseDown={(e) => {
                                     if (e.button !== 0) return;
-                                    setIsDraggingAvail(true);
-                                    const mode = selected ? "deselect" : "select";
-                                    setDragMode(mode);
-                                    handleCheckboxChange(day, slot, mode === "select");
+                                    handleCellInteraction(day, slot);
                                   }}
                                   onMouseEnter={() => {
-                                    if (!isDraggingAvail) return;
-                                    handleCheckboxChange(day, slot, dragMode === "select");
+                                    if (!isDraggingAvail || !isEditMode) return;
+                                    handleDraftCheckboxChange(day, slot, dragMode === "select");
                                   }}
                                 >
                                   <div
-                                    className={`timesheet-cell-slot ${selected ? "is-selected" : ""}`}
-                                    title="Click and drag to select/deselect"
+                                    className={`timesheet-cell-slot ${
+                                      !isEditMode && savedAvailability && active
+                                        ? "is-confirmed"
+                                        : active
+                                          ? "is-selected"
+                                          : ""
+                                    }`}
+                                    title={
+                                      !isEditMode && savedAvailability
+                                        ? "Availability is locked. Click to request changes."
+                                        : "Click and drag to select/deselect"
+                                    }
                                   >
-                                    {selected ? (
+                                    {!isEditMode && savedAvailability && active ? (
+                                      <>
+                                        <CheckSquare size={13} />
+                                        <span>Confirmed</span>
+                                      </>
+                                    ) : active ? (
                                       <>
                                         <CheckSquare size={13} />
                                         <span>Available</span>
                                       </>
                                     ) : (
-                                      <span style={{ fontSize: "0.72rem", opacity: 0.7 }}>+ Add</span>
+                                      <span style={{ fontSize: "0.72rem", opacity: 0.6 }}>
+                                        {isEditMode ? "+ Add" : "—"}
+                                      </span>
                                     )}
                                   </div>
                                 </td>
@@ -1321,22 +1924,132 @@ export function DashboardPage() {
                     </table>
                   </div>
 
-                  <div style={{ marginTop: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  {/* Timesheet Action Footer */}
+                  <div style={{ marginTop: 14, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
                     <span style={{ fontSize: "0.8rem", color: "var(--srcb-text-muted)", display: "inline-flex", alignItems: "center", gap: 6 }}>
-                      <Lightbulb size={15} /> Tip: Click and drag your mouse across hours and days to select multiple slots simultaneously.
+                      <Lightbulb size={15} />{" "}
+                      {!isEditMode && savedAvailability
+                        ? "Teaching availability is locked to prevent accidental modifications during scheduling."
+                        : "Tip: Click and drag your mouse across hours and days to highlight multiple time slots simultaneously."}
                     </span>
-                    <button
-                      type="button"
-                      className="action-button action-button--emerald"
-                      disabled={isSavingAvailability}
-                      onClick={handleSaveAvailability}
-                    >
-                      <BadgeCheck size={16} />
-                      {isSavingAvailability ? "Saving…" : "Save My Teaching Availability"}
-                    </button>
+
+                    {isEditMode && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        {savedAvailability && (
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            disabled={isSavingAvailability}
+                            onClick={handleCancelEdit}
+                          >
+                            Cancel
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="action-button action-button--emerald"
+                          disabled={isSavingAvailability}
+                          onClick={handleSaveAvailability}
+                        >
+                          <BadgeCheck size={16} />
+                          {isSavingAvailability ? "Saving…" : "Save My Teaching Availability"}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </article>
+            )}
+
+            {/* CONFIRMATION DIALOG: Change Teaching Availability */}
+            {isConfirmChangeModalOpen && (
+              <div className="modal-overlay" role="presentation" onClick={() => setIsConfirmChangeModalOpen(false)}>
+                <div
+                  className="modal-card"
+                  role="dialog"
+                  aria-modal="true"
+                  style={{ maxWidth: 480 }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="modal-card__header">
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: "50%",
+                          backgroundColor: "rgba(245, 158, 11, 0.15)",
+                          color: "#d97706",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <AlertTriangle size={20} />
+                      </div>
+                      <div>
+                        <h3 id="modal-title" style={{ margin: 0, fontSize: "1.08rem", fontWeight: 700, color: "var(--srcb-navy)" }}>
+                          Change Teaching Availability?
+                        </h3>
+                        <p className="muted" style={{ margin: "2px 0 0", fontSize: "0.82rem" }}>
+                          Confirmation Required
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      onClick={() => setIsConfirmChangeModalOpen(false)}
+                      aria-label="Close dialog"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+
+                  <div className="modal-card__body" style={{ padding: "20px 24px" }}>
+                    <p style={{ margin: "0 0 14px", fontSize: "0.92rem", color: "var(--srcb-text)", lineHeight: 1.5 }}>
+                      Your current teaching availability is already saved. Are you sure you want to change it?
+                    </p>
+                    <div
+                      style={{
+                        background: "var(--srcb-surface-alt, #f8fafc)",
+                        border: "1px solid var(--srcb-border)",
+                        borderRadius: 8,
+                        padding: "12px 14px",
+                        marginBottom: 20,
+                        fontSize: "0.84rem",
+                        color: "var(--srcb-text-muted)",
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      Entering edit mode will allow you to modify time slots. Your existing saved availability will remain active until you explicitly submit new changes.
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => setIsConfirmChangeModalOpen(false)}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="action-button action-button--emerald"
+                        onClick={() => {
+                          setIsConfirmChangeModalOpen(false);
+                          setDraftSlots({ ...savedSlots });
+                          setIsEditMode(true);
+                          toast.push("Editing mode enabled. Select your available slots and click Save.", "info");
+                        }}
+                      >
+                        Continue
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Teacher Schedule List */}

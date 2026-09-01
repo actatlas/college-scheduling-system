@@ -47,14 +47,14 @@ const PRESET_ACCOUNTS: PresetAccount[] = [
     icon: <ShieldAlert size={16} />,
   },
   {
-    label: "College Registrar (Admin)",
+    label: "Dean of Student Affairs (Admin)",
     email: "admin@srcb.edu.ph",
     pass: "@admin123",
     role: "admin",
     icon: <Building2 size={16} />,
   },
   {
-    label: "Program Head (IT Head)",
+    label: "Program Head",
     email: "programhead@srcb.edu.ph",
     pass: "@program123",
     role: "program_head",
@@ -73,13 +73,6 @@ const PRESET_ACCOUNTS: PresetAccount[] = [
     pass: "@teacher123",
     role: "teacher",
     icon: <Clock size={16} />,
-  },
-  {
-    label: "Van Account (Created in DB)",
-    email: "achasjovann5@gmail.com",
-    pass: "@srcb123",
-    role: "admin",
-    icon: <User size={16} />,
   },
 ];
 
@@ -394,7 +387,7 @@ export function DevFloatingTools() {
                   onClick={() => handleRoleOverride("admin")}
                 >
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                    <Building2 size={15} /> Administrator (College Registrar)
+                    <Building2 size={15} /> Dean of Student Affairs (Admin)
                   </span>
                 </button>
                 <button
@@ -403,7 +396,7 @@ export function DevFloatingTools() {
                   onClick={() => handleRoleOverride("program_head")}
                 >
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                    <GraduationCap size={15} /> Program Head (Department Head)
+                    <GraduationCap size={15} /> Program Head
                   </span>
                 </button>
                 <button

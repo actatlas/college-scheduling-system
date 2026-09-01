@@ -4,10 +4,16 @@ const ALL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Satur
 
 function formatTo24HourTime(timeStr) {
   if (!timeStr) return null;
-  const parts = String(timeStr).trim().split(':');
+  const clean = String(timeStr).trim();
+  const isPM = /pm/i.test(clean);
+  const isAM = /am/i.test(clean);
+  const raw = clean.replace(/am|pm/i, '').trim();
+  const parts = raw.split(':');
   let h = Number(parts[0]) || 0;
   const m = String(parts[1] || '00').padStart(2, '0').slice(0, 2);
-  if (h >= 1 && h <= 7) h += 12;
+  if (isPM && h < 12) h += 12;
+  if (isAM && h === 12) h = 0;
+  if (!isPM && !isAM && h >= 1 && h <= 7) h += 12;
   return `${String(h).padStart(2, '0')}:${m}:00`;
 }
 
@@ -84,12 +90,25 @@ async function listFaculty() {
     ids,
   );
 
-  const availabilityMap = new Map();
+  const teacherAvailGroup = new Map();
   for (const row of availabilityRows) {
-    const key = String(row.teacher_id);
-    const current = availabilityMap.get(key) || [];
-    current.push(`${row.day_of_week}: ${row.start_time}-${row.end_time}`);
-    availabilityMap.set(key, current);
+    const tId = String(row.teacher_id);
+    if (!teacherAvailGroup.has(tId)) teacherAvailGroup.set(tId, new Map());
+    const dayMap = teacherAvailGroup.get(tId);
+    const day = row.day_of_week;
+    if (!dayMap.has(day)) dayMap.set(day, []);
+    const sStr = String(row.start_time).slice(0, 5);
+    const eStr = String(row.end_time).slice(0, 5);
+    dayMap.get(day).push(`${sStr}-${eStr}`);
+  }
+
+  const availabilityMap = new Map();
+  for (const [tId, dayMap] of teacherAvailGroup.entries()) {
+    const parts = [];
+    for (const [day, slots] of dayMap.entries()) {
+      parts.push(`${day}: ${slots.join(', ')}`);
+    }
+    availabilityMap.set(tId, parts.join(' | '));
   }
 
   const subjectMap = new Map();
@@ -106,7 +125,7 @@ async function listFaculty() {
     email: teacher.email || '',
     phone: teacher.phone || '',
     status: teacher.status,
-    availability: (availabilityMap.get(String(teacher.id)) || []).join(' | '),
+    availability: availabilityMap.get(String(teacher.id)) || '',
     subjects: subjectMap.get(String(teacher.id)) || [],
   }));
 }

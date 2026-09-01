@@ -41,6 +41,9 @@ export interface SubjectItem {
   program?: string
   courseCode?: string
   isMajor?: boolean
+  isGeneralEducation?: boolean
+  classification?: string
+  status?: string
   instructor: string
   instructorId?: string
 }
@@ -64,6 +67,7 @@ export interface SectionItem {
   students: number
   semester: string
   schoolYear: string
+  status?: string
 }
 
 export interface ClassScheduleItem {
@@ -138,6 +142,7 @@ export interface CourseItem {
   name: string
   department?: string
   program?: string
+  programCode?: string
 }
 
 // Backwards compatibility alias

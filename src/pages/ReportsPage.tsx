@@ -494,7 +494,7 @@ export function ReportsPage() {
 
       {/* Tab 3: Formal Certificate of Faculty Loading (CFL) Document */}
       {activeTab === "cfl" && cflFaculty && (
-        <section className="card" style={{ padding: "36px 40px", background: "#ffffff", border: "1px solid var(--srcb-border)", maxWidth: 960, margin: "0 auto" }}>
+        <section className="card" style={{ padding: "36px 40px", background: "var(--srcb-surface-elevated, #ffffff)", border: "1px solid var(--srcb-border)", maxWidth: 960, margin: "0 auto" }}>
           {/* Institutional Header */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 18, borderBottom: "2px solid var(--srcb-navy)", paddingBottom: 20, marginBottom: 24, textAlign: "center" }}>
             <img src={Logo} alt="SRCB Logo" style={{ width: 72, height: 72, objectFit: "contain" }} />

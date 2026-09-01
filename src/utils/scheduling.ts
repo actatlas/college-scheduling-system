@@ -16,11 +16,24 @@ export interface AiRecommendation {
   severity: 'High' | 'Medium' | 'Low'
 }
 
-function to12Hour(t: string): string {
+function to12Hour(t: string, defaultPM = false): string {
   if (!t) return ''
-  const [hStr, mStr = '00'] = t.split(':')
+  const clean = t.trim()
+  const isPM = /pm/i.test(clean)
+  const isAM = /am/i.test(clean)
+  const raw = clean.replace(/am|pm/i, '').trim()
+  const [hStr, mStr = '00'] = raw.split(':')
   let h = Number(hStr) || 0
   const m = mStr.slice(0, 2)
+  if (isPM && h < 12) h += 12
+  if (isAM && h === 12) h = 0
+  if (!isPM && !isAM) {
+    if (defaultPM && h <= 11) {
+      h += 12
+    } else if (h >= 1 && h <= 7) {
+      h += 12
+    }
+  }
   const ampm = h >= 12 ? 'PM' : 'AM'
   h = h % 12 || 12
   return `${h}:${m} ${ampm}`
@@ -30,7 +43,10 @@ export function formatAvailabilitySlotRange(slot: string): string {
   if (!slot) return ''
   if (slot.includes('-')) {
     const [start, end] = slot.split('-').map((s) => s.trim())
-    return `${to12Hour(start)} - ${to12Hour(end)}`
+    const formattedStart = to12Hour(start)
+    const isStartPM = formattedStart.includes('PM')
+    const formattedEnd = to12Hour(end, isStartPM)
+    return `${formattedStart} - ${formattedEnd}`
   }
   return to12Hour(slot)
 }
@@ -169,29 +185,42 @@ export function validateScheduleSlot(
 
   // 4. Check Part-Time Faculty Availability
   const teacher = facultyList.find(
-    (f) => f.id === candidate.facultyId || f.name.toLowerCase() === candidate.faculty.toLowerCase()
+    (f) =>
+      (candidate.facultyId && String(f.id) === String(candidate.facultyId)) ||
+      (f.name && candidate.faculty && f.name.toLowerCase().trim() === candidate.faculty.toLowerCase().trim())
   )
-  if (teacher && teacher.status === 'Part-Time' && teacher.availability) {
-    const parsedAvail = parseTeacherAvailability(teacher.availability)
-    const dayEntry = parsedAvail.find((d) => d.day.toLowerCase() === candidate.day.toLowerCase())
-    if (!dayEntry) {
+  if (teacher && teacher.status === 'Part-Time') {
+    if (!teacher.availability || !teacher.availability.trim()) {
       errors.push(
         `Instructor unavailable: ${teacher.name} has not registered availability for ${candidate.day}.`
       )
-    } else if (dayEntry.slots.length > 0) {
-      const [candStart] = candidate.time.split('-').map((t) => t.trim())
-      const isSlotListed = dayEntry.slots.some((slot) => {
-        const [sStart] = slot.split('-').map((t) => t.trim())
-        return (
-          slot.includes(candidate.time) ||
-          candidate.time.includes(slot) ||
-          (sStart && candStart && sStart.slice(0, 2) === candStart.slice(0, 2))
-        )
-      })
-      if (!isSlotListed) {
+    } else {
+      const parsedAvail = parseTeacherAvailability(teacher.availability)
+      const dayEntry = parsedAvail.find((d) => d.day.toLowerCase() === candidate.day.toLowerCase())
+      if (!dayEntry || dayEntry.slots.length === 0) {
         errors.push(
-          `Instructor availability mismatch: ${teacher.name} is available on ${candidate.day} at [${dayEntry.slots.map(formatAvailabilitySlotRange).join(', ')}], but this slot is ${candidate.time}.`
+          `Instructor unavailable: ${teacher.name} has not registered availability for ${candidate.day}.`
         )
+      } else {
+        const [candStartStr, candEndStr] = candidate.time.split('-').map((t) => t.trim())
+        const candStartMin = parseTimeToMinutes(candStartStr)
+        const candEndMin = parseTimeToMinutes(candEndStr)
+
+        const isSlotValid = dayEntry.slots.some((slot) => {
+          const [slotStartStr, slotEndStr] = slot.split('-').map((t) => t.trim())
+          const slotStartMin = parseTimeToMinutes(slotStartStr)
+          const slotEndMin = parseTimeToMinutes(slotEndStr)
+          if (slotStartMin !== undefined && slotEndMin !== undefined && candStartMin !== undefined && candEndMin !== undefined) {
+            if (candStartMin >= slotStartMin && candEndMin <= slotEndMin) return true
+          }
+          return slot.includes(candidate.time) || candidate.time.includes(slot)
+        })
+
+        if (!isSlotValid) {
+          errors.push(
+            `Instructor availability mismatch: ${teacher.name} is available on ${candidate.day} at [${dayEntry.slots.map(formatAvailabilitySlotRange).join(', ')}], but this slot is ${candidate.time}.`
+          )
+        }
       }
     }
   }

@@ -52,9 +52,36 @@ async function deleteExamSchedule(req, res, next) {
   }
 }
 
+async function getExamPeriodSettings(req, res, next) {
+  try {
+    const data = await examSchedulesService.getExamPeriodSettings();
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function updateExamPeriodSettings(req, res, next) {
+  try {
+    if (!['admin', 'super_admin'].includes(req.user?.role?.toLowerCase())) {
+      return res.status(403).json({
+        error: 'Forbidden. Only Administrators can configure official examination dates.',
+        code: 'UNAUTHORIZED_ROLE',
+      });
+    }
+    const data = await examSchedulesService.updateExamPeriodSettings(req.body, req.user);
+    res.json({ data });
+  } catch (err) {
+    if (err?.statusCode) return res.status(err.statusCode).json({ error: err.message, code: err.code || 'VALIDATION_ERROR' });
+    next(err);
+  }
+}
+
 module.exports = {
   listExamSchedules,
   createExamSchedule,
   updateExamSchedule,
   deleteExamSchedule,
+  getExamPeriodSettings,
+  updateExamPeriodSettings,
 };
