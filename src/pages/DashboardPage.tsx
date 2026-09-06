@@ -68,7 +68,7 @@ function parseTimeToMinutes(tStr: string): number {
   const m = Number(parts[1]) || 0;
   if (isPM && h < 12) h += 12;
   if (isAM && h === 12) h = 0;
-  if (!isPM && !isAM && h >= 1 && h <= 7) h += 12;
+  if (!isPM && !isAM && h >= 1 && h <= 6) h += 12;
   return h * 60 + m;
 }
 
@@ -181,8 +181,10 @@ export function DashboardPage() {
     exams: "0",
   });
 
-  const loadDashboardData = async () => {
-    setIsLoading(true);
+  const loadDashboardData = async (isBackground = false) => {
+    if (!isBackground) {
+      setIsLoading(true);
+    }
     try {
       const [facRes, subRes, rmRes, secRes, schedRes, confRes, usrRes, exmRes]: any[] = await Promise.all([
         api.get("/faculty").catch(() => ({ data: { data: [] } })),
@@ -300,66 +302,12 @@ export function DashboardPage() {
           const normalizedUserName = userName.trim().toLowerCase();
           const normalizedHeadName = (currentHeadFaculty?.name || "").trim().toLowerCase();
 
-          let myHeadClasses = scheds.filter(
+          const myHeadClasses = scheds.filter(
             (s: any) =>
               (headFacultyId && String(s.facultyId) === String(headFacultyId)) ||
               (s.faculty && s.faculty.toLowerCase().includes(normalizedUserName)) ||
-              (normalizedHeadName && s.faculty && s.faculty.toLowerCase().includes(normalizedHeadName)) ||
-              (s.faculty && (s.faculty.toLowerCase().includes("alan turing") || s.faculty.toLowerCase().includes("dr. reyes") || s.faculty.toLowerCase().includes("program head")))
+              (normalizedHeadName && s.faculty && s.faculty.toLowerCase().includes(normalizedHeadName))
           );
-
-          if (myHeadClasses.length === 0) {
-            myHeadClasses = [
-              {
-                id: "ph-teach-1",
-                subjectCode: "IT301",
-                subject: "Web Systems and Technologies",
-                section: "BSIT 3-A",
-                day: "Monday",
-                time: "08:00 AM - 09:30 AM",
-                faculty: userName || "Dr. Reyes (IT Head)",
-                facultyId: headFacultyId,
-                room: "COMLAB-2",
-                building: "College Building",
-                modality: "Face-to-Face",
-                status: "Confirmed",
-                isMajor: true,
-                program: "ITP",
-              },
-              {
-                id: "ph-teach-2",
-                subjectCode: "IT302",
-                subject: "Advanced Database Systems",
-                section: "BSIT 3-B",
-                day: "Wednesday",
-                time: "10:00 AM - 11:30 AM",
-                faculty: userName || "Dr. Reyes (IT Head)",
-                facultyId: headFacultyId,
-                room: "COMLAB-1",
-                building: "College Building",
-                modality: "Face-to-Face",
-                status: "Confirmed",
-                isMajor: true,
-                program: "ITP",
-              },
-              {
-                id: "ph-teach-3",
-                subjectCode: "IT401",
-                subject: "Capstone Project & Research 1",
-                section: "BSIT 4-A",
-                day: "Friday",
-                time: "01:00 PM - 03:00 PM",
-                faculty: userName || "Dr. Reyes (IT Head)",
-                facultyId: headFacultyId,
-                room: "Virtual Room (MS Teams)",
-                building: "Virtual Classroom",
-                modality: "Online",
-                status: "Confirmed",
-                isMajor: true,
-                program: "ITP",
-              },
-            ];
-          }
 
           setHeadTeachingSchedules(myHeadClasses);
         }
@@ -373,7 +321,7 @@ export function DashboardPage() {
 
   useEffect(() => {
     loadDashboardData();
-    const handleUpdate = () => loadDashboardData();
+    const handleUpdate = () => loadDashboardData(true);
     window.addEventListener("scheduling_storage_update", handleUpdate);
     return () => window.removeEventListener("scheduling_storage_update", handleUpdate);
   }, [role, selectedProgram.key, userName]);
@@ -461,7 +409,6 @@ export function DashboardPage() {
 
   const targetSubjects = subjectsList.filter((s: any) => matchesProgram(s.program || s.department));
 
-  const totalSubjectsCount = Math.max(targetSubjects.length, 1);
   const scheduledSubjectCodes = new Set(
     schedules.map((s: any) => (s.subjectCode || "").toUpperCase()).filter(Boolean)
   );
@@ -470,27 +417,49 @@ export function DashboardPage() {
       !scheduledSubjectCodes.has((s.code || "").toUpperCase()) &&
       !schedules.some((sc: any) => (sc.subject || "").toLowerCase() === (s.name || "").toLowerCase())
   );
+  const totalSubjectsCount = targetSubjects.length;
   const unscheduledCount = unscheduledSubjects.length;
   const scheduledCount = Math.max(0, targetSubjects.length - unscheduledCount);
-  const completionRate = targetSubjects.length > 0 ? Math.min(100, Math.round((scheduledCount / targetSubjects.length) * 100)) : 100;
+  const completionRate = targetSubjects.length > 0 ? Math.min(100, Math.round((scheduledCount / targetSubjects.length) * 100)) : 0;
 
-  const attentionItems = [
-    {
-      code: "CS301 - Dr. Alan Turing",
-      reason: "Room Conflict: LAB-402",
+  const scopedFaculty = facultyList.filter((f: any) => matchesProgram(f.programs || f.department));
+
+  const attentionItems: { code: string; reason: string; path: string }[] = [];
+
+  if (Number(metrics.conflicts) > 0) {
+    attentionItems.push({
+      code: `${metrics.conflicts} Schedule Conflict${Number(metrics.conflicts) === 1 ? "" : "s"} Detected`,
+      reason: "Action Required: Resolve room, faculty, or time overlapping",
       path: "/conflicts",
-    },
-    {
-      code: "CS450 - Prof. Ada Lovelace",
-      reason: "Overload: 18 units (Max 15)",
-      path: "/faculty",
-    },
-    {
-      code: `${unscheduledCount} Unscheduled Subject${unscheduledCount === 1 ? "" : "s"}`,
+    });
+  }
+
+  if (unscheduledCount > 0) {
+    attentionItems.push({
+      code: `${unscheduledCount} Unscheduled Major Subject${unscheduledCount === 1 ? "" : "s"}`,
       reason: "Action Required: Allocate Timetable Blocks",
       path: "/schedules?view=unscheduled",
-    },
-  ];
+    });
+  }
+
+  const overloadedTeachers = scopedFaculty.filter((f: any) => {
+    const facScheds = schedules.filter(
+      (s: any) =>
+        (s.facultyId && String(s.facultyId) === String(f.id)) ||
+        (s.faculty && f.name && s.faculty.toLowerCase().includes(f.name.toLowerCase()))
+    );
+    const u = facScheds.reduce((acc: number, s: any) => acc + (Number(s.units) || 3), 0);
+    const maxU = f.status === "Part-Time" ? 12 : 18;
+    return u > maxU;
+  });
+
+  for (const ot of overloadedTeachers.slice(0, 2)) {
+    attentionItems.push({
+      code: `${ot.name} (${ot.status || "Faculty"})`,
+      reason: "Faculty Load Alert: Maximum units exceeded",
+      path: "/faculty",
+    });
+  }
 
   // Proactive Examination Period Status & Sequence Tracking (Prelim -> Midterm -> Semi-Final -> Final)
   const examPeriodStatus = (() => {
@@ -517,13 +486,23 @@ export function DashboardPage() {
     };
   })();
 
-  const scopedFaculty = facultyList.filter((f: any) => matchesProgram(f.programs || f.department));
-
-  const displayFaculty = scopedFaculty.length > 0 ? scopedFaculty.slice(0, 4) : [
-    { id: "1", name: "Dr. A. Turing", title: "Professor", units: 12, maxUnits: 15, isOverload: false },
-    { id: "2", name: "Prof. A. Lovelace", title: "Assoc. Professor", units: 18, maxUnits: 15, isOverload: true },
-    { id: "3", name: "Dr. G. Hopper", title: "Lecturer", units: 9, maxUnits: 12, isOverload: false },
-  ];
+  const displayFaculty = scopedFaculty.slice(0, 5).map((f: any) => {
+    const facScheds = schedules.filter(
+      (s: any) =>
+        (s.facultyId && String(s.facultyId) === String(f.id)) ||
+        (s.faculty && f.name && s.faculty.toLowerCase().includes(f.name.toLowerCase()))
+    );
+    const units = facScheds.reduce((acc: number, s: any) => acc + (Number(s.units) || 3), 0);
+    const maxUnits = f.status === "Part-Time" ? 12 : 18;
+    return {
+      id: f.id,
+      name: f.name,
+      title: f.status || "Faculty Member",
+      units,
+      maxUnits,
+      isOverload: units > maxUnits,
+    };
+  });
 
   // Scoped Program Schedules
   const programSchedules = schedules.filter((s: any) =>
@@ -889,7 +868,9 @@ export function DashboardPage() {
                     />
                   </div>
                   <p className="progress-footnote">
-                    * {metrics.conflicts || "12"} conflicts currently detected in scheduled subjects. Review required.
+                    {Number(metrics.conflicts) > 0
+                      ? `* ${metrics.conflicts} conflict(s) currently detected in scheduled subjects. Review required.`
+                      : "* All scheduled subjects are verified. No timetable conflicts detected."}
                   </p>
                 </div>
               </div>
@@ -902,19 +883,27 @@ export function DashboardPage() {
                 <span>Immediate Attention</span>
               </div>
               <div className="attention-items-list">
-                {attentionItems.map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="attention-item-box"
-                    onClick={() => navigate(item.path)}
-                  >
-                    <div className="attention-item-left">
-                      <p className="attention-item-title">{item.code}</p>
-                      <p className="attention-item-desc">{item.reason}</p>
-                    </div>
-                    <ChevronRight size={16} className="attention-item-chevron" />
+                {attentionItems.length === 0 ? (
+                  <div style={{ padding: "24px 16px", textAlign: "center", color: "var(--srcb-text-muted)" }}>
+                    <CheckCircle2 size={26} color="#10b981" style={{ margin: "0 auto 8px" }} />
+                    <p style={{ margin: 0, fontWeight: 700, fontSize: "0.88rem", color: "var(--srcb-navy)" }}>All Systems Nominal</p>
+                    <p style={{ margin: "4px 0 0", fontSize: "0.78rem" }}>No active timetable conflicts, unscheduled courses, or overload warnings.</p>
                   </div>
-                ))}
+                ) : (
+                  attentionItems.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="attention-item-box"
+                      onClick={() => navigate(item.path)}
+                    >
+                      <div className="attention-item-left">
+                        <p className="attention-item-title">{item.code}</p>
+                        <p className="attention-item-desc">{item.reason}</p>
+                      </div>
+                      <ChevronRight size={16} className="attention-item-chevron" />
+                    </div>
+                  ))
+                )}
               </div>
             </article>
           </div>
@@ -937,37 +926,45 @@ export function DashboardPage() {
               </div>
 
               <div className="faculty-load-table">
-                {displayFaculty.map((f: any, idx: number) => {
-                  const units = f.units || (idx === 1 ? 18 : idx === 2 ? 9 : 12);
-                  const maxUnits = f.maxUnits || (idx === 2 ? 12 : 15);
-                  const isOverload = units > maxUnits;
-                  const pct = Math.min(100, Math.round((units / maxUnits) * 100));
+                {displayFaculty.length === 0 ? (
+                  <div style={{ padding: "28px 16px", textAlign: "center", color: "var(--srcb-text-muted)" }}>
+                    <Users size={28} color="var(--srcb-slate)" style={{ margin: "0 auto 8px", opacity: 0.6 }} />
+                    <p style={{ margin: 0, fontWeight: 700, fontSize: "0.88rem", color: "var(--srcb-navy)" }}>No Faculty Assigned</p>
+                    <p style={{ margin: "4px 0 0", fontSize: "0.78rem" }}>Add faculty members in the Faculty Directory to view workload allocations.</p>
+                  </div>
+                ) : (
+                  displayFaculty.map((f: any, idx: number) => {
+                    const units = Number(f.units) || 0;
+                    const maxUnits = Number(f.maxUnits) || 18;
+                    const isOverload = Boolean(f.isOverload);
+                    const pct = Math.min(100, Math.round((units / maxUnits) * 100));
 
-                  return (
-                    <div key={f.id || idx} className="faculty-load-row">
-                      <div className="faculty-load-user">
-                        <div className="faculty-load-avatar">
-                          {f.name ? f.name.slice(0, 2).toUpperCase() : "FA"}
+                    return (
+                      <div key={f.id || idx} className="faculty-load-row">
+                        <div className="faculty-load-user">
+                          <div className="faculty-load-avatar">
+                            {f.name ? f.name.slice(0, 2).toUpperCase() : "FA"}
+                          </div>
+                          <div className="faculty-load-info">
+                            <p className="faculty-load-name">{f.name}</p>
+                            <p className="faculty-load-rank">{f.title || "Faculty Member"}</p>
+                          </div>
                         </div>
-                        <div className="faculty-load-info">
-                          <p className="faculty-load-name">{f.name}</p>
-                          <p className="faculty-load-rank">{f.title || f.rank || "Assoc. Professor"}</p>
+                        <div className="faculty-load-units">
+                          <span className={`faculty-units-badge ${isOverload ? "overload" : ""}`}>
+                            {units} / {maxUnits} Units
+                          </span>
+                          <div className="faculty-units-bar">
+                            <div
+                              className={`faculty-units-bar-fill ${isOverload ? "overload" : ""}`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
                         </div>
                       </div>
-                      <div className="faculty-load-units">
-                        <span className={`faculty-units-badge ${isOverload ? "overload" : ""}`}>
-                          {units} / {maxUnits} Units
-                        </span>
-                        <div className="faculty-units-bar">
-                          <div
-                            className={`faculty-units-bar-fill ${isOverload ? "overload" : ""}`}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
               </div>
             </article>
 
@@ -1201,7 +1198,7 @@ export function DashboardPage() {
                         return (
                           <tr key={row.id || idx}>
                             <td style={{ fontWeight: 700, color: "var(--srcb-navy)" }}>
-                              <div>{row.code || row.subjectCode || `CS${101 + idx * 20}-A`}</div>
+                              <div>{row.code || row.subjectCode || "Unspecified"}</div>
                               {row.subject && (
                                 <div style={{ fontSize: "0.72rem", fontWeight: 400, color: "var(--srcb-text-muted)" }}>
                                   {row.subject}
@@ -1210,15 +1207,15 @@ export function DashboardPage() {
                             </td>
                             <td>
                               <span className="pill pill--slate" style={{ fontSize: "0.72rem", fontWeight: 600 }}>
-                                {row.section || "BSIT 1-A"}
+                                {row.section || "Unassigned"}
                               </span>
                             </td>
-                            <td style={{ color: row.faculty?.includes("Unassigned") ? "#94a3b8" : "inherit", fontStyle: row.faculty?.includes("Unassigned") ? "italic" : "normal" }}>
-                              {row.faculty || "Dr. Alan Turing"}
+                            <td style={{ color: !row.faculty || row.faculty.includes("Unassigned") ? "#94a3b8" : "inherit", fontStyle: !row.faculty || row.faculty.includes("Unassigned") ? "italic" : "normal" }}>
+                              {row.faculty || "Unassigned"}
                             </td>
-                            <td>{row.room || "LAB-402"}</td>
+                            <td>{row.room || "TBA"}</td>
                             <td style={{ fontSize: "0.82rem", color: "var(--srcb-text-muted)", whiteSpace: "nowrap" }}>
-                              {row.day ? `${row.day} · ${row.time || row.schedule}` : (row.schedule || row.time || "MWF 09:00 - 10:30")}
+                              {row.day ? `${row.day} · ${row.time || row.schedule || "TBA"}` : (row.schedule || row.time || "TBA")}
                             </td>
                             <td>
                               <span className={`pill ${pillClass}`}>
@@ -1321,7 +1318,7 @@ export function DashboardPage() {
                         <div>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
                             <span className="pill pill--royal" style={{ fontSize: "0.74rem", fontWeight: 700 }}>
-                              {item.subjectCode || "IT301"}
+                              {item.subjectCode || "Unspecified"}
                             </span>
                             <span
                               className={`pill ${
@@ -1335,22 +1332,22 @@ export function DashboardPage() {
                             </span>
                           </div>
                           <h4 style={{ margin: "8px 0 4px", fontSize: "0.98rem", color: "var(--srcb-navy)", lineHeight: 1.3 }}>
-                            {item.subject || "Web Systems & Technologies"}
+                            {item.subject || "Assigned Subject"}
                           </h4>
                         </div>
 
                         <div style={{ fontSize: "0.82rem", color: "var(--srcb-text)", display: "flex", flexDirection: "column", gap: 6, paddingTop: 8, borderTop: "1px solid var(--srcb-border)" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <span style={{ color: "var(--srcb-text-muted)", minWidth: 65 }}>Section:</span>
-                            <strong>{item.section || "BSIT 3-A"}</strong>
+                            <strong>{item.section || "Unassigned"}</strong>
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <span style={{ color: "var(--srcb-text-muted)", minWidth: 65 }}>Schedule:</span>
-                            <span style={{ fontWeight: 600 }}>{item.day} · {item.time}</span>
+                            <span style={{ fontWeight: 600 }}>{item.day ? `${item.day} · ${item.time || "TBA"}` : (item.time || "TBA")}</span>
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <span style={{ color: "var(--srcb-text-muted)", minWidth: 65 }}>Facility:</span>
-                            <span>{item.room || "COMLAB-2"} ({item.building || "College Building"})</span>
+                            <span>{item.room || "TBA"}{item.building ? ` (${item.building})` : ""}</span>
                           </div>
                         </div>
                       </div>

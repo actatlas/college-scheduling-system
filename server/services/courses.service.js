@@ -56,6 +56,17 @@ async function updateCourse(code, { name, year, programCode, program }) {
 }
 
 async function deleteCourse(code) {
+  // Remove schedules referencing sections of this course
+  const secRows = await query('SELECT id FROM sections WHERE course_code = ?', [code]);
+  const secIds = Array.isArray(secRows) ? secRows.map((s) => s.id) : [];
+  for (const sId of secIds) {
+    await query('DELETE FROM schedules WHERE section_id = ?', [sId]).catch(() => {});
+  }
+  // Remove sections of this course
+  await query('DELETE FROM sections WHERE course_code = ?', [code]).catch(() => {});
+  // Remove exam schedules mentioning this course
+  await query('DELETE FROM exam_schedules WHERE course_code = ?', [code]).catch(() => {});
+  // Delete the course
   await query('DELETE FROM courses WHERE code = ?', [code]);
 }
 

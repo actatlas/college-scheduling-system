@@ -6,7 +6,8 @@ import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
 import { ConfirmModal } from "../components/common/ConfirmModal";
 import { TableSkeleton } from "../components/common/Skeleton";
-import { Plus, Search, Edit2, Trash2, Users, AlertTriangle } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Users, AlertTriangle, X } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { useProgramContext } from "../contexts/ProgramContext";
 import { useAcademicPeriod } from "../contexts/AcademicPeriodContext";
 import { getProgramLogo } from "../utils/programLogos";
@@ -19,7 +20,28 @@ export function SectionsPage() {
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [sectionToDelete, setSectionToDelete] = useState<SectionItem | null>(null);
-  const [query, setQuery] = useState("");
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [query, setQuery] = useState(searchParams.get("q") || searchParams.get("search") || "");
+
+  useEffect(() => {
+    const q = searchParams.get("q") || searchParams.get("search") || "";
+    setQuery(q);
+  }, [searchParams]);
+
+  const handleQueryChange = (val: string) => {
+    setQuery(val);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (val.trim()) {
+        next.set("q", val);
+      } else {
+        next.delete("q");
+        next.delete("search");
+      }
+      return next;
+    }, { replace: true });
+  };
   const [isOpen, setIsOpen] = useState(false);
   const [editingSection, setEditingSection] = useState<SectionItem | null>(null);
 
@@ -201,14 +223,38 @@ export function SectionsPage() {
             <p className="eyebrow">Student Organization</p>
             <h3>Active Section Roster ({filteredSections.length})</h3>
           </div>
-          <label className="topbar__search" aria-label="Search sections">
-            <Search size={16} />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search by section, program, course..."
-            />
-          </label>
+          <div style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+            <label className="topbar__search" aria-label="Search sections" style={{ margin: 0, paddingRight: query ? 32 : 12 }}>
+              <Search size={16} />
+              <input
+                value={query}
+                onChange={(event) => handleQueryChange(event.target.value)}
+                placeholder="Search by section, program, course..."
+              />
+            </label>
+            {query && (
+              <button
+                type="button"
+                onClick={() => handleQueryChange("")}
+                style={{
+                  position: "absolute",
+                  right: 8,
+                  background: "none",
+                  border: "none",
+                  color: "var(--srcb-text-muted, #94a3b8)",
+                  cursor: "pointer",
+                  padding: 4,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+                title="Clear search"
+                aria-label="Clear search"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
         </div>
 
         {fetching ? (
@@ -239,7 +285,7 @@ export function SectionsPage() {
                           <button
                             type="button"
                             className="secondary-button"
-                            onClick={() => setQuery("")}
+                            onClick={() => handleQueryChange("")}
                             style={{ marginTop: 12, fontSize: "0.8rem" }}
                           >
                             Clear Search

@@ -78,12 +78,11 @@ const defaultUsers: UserAccount[] = [
 ]
 
 const defaultPrograms = [
-  { code: 'BSIT', name: 'Bachelor of Science in Information Technology', focus: 'Software Development & Systems Administration' },
-  { code: 'BSBA', name: 'Bachelor of Science in Business Administration', focus: 'Marketing & Financial Management' },
-  { code: 'BSED', name: 'Bachelor of Secondary Education', focus: 'Secondary Curriculum & Pedagogy' },
-  { code: 'BEED', name: 'Bachelor of Elementary Education', focus: 'Early Childhood & Primary Education' },
-  { code: 'BSCrim', name: 'Bachelor of Science in Criminology', focus: 'Law Enforcement & Forensic Studies' },
-  { code: 'BSHM', name: 'Bachelor of Science in Hospitality Management', focus: 'Hotel & Culinary Operations' },
+  { code: 'BAP', name: 'Business Administration Program', focus: 'Business Administration & Management' },
+  { code: 'ITP', name: 'Information Technology Program', focus: 'Information Technology & Software Development' },
+  { code: 'CJEP', name: 'Criminal Justice Education Program', focus: 'Criminal Justice & Law Enforcement' },
+  { code: 'TEP', name: 'Teacher Education Program', focus: 'Teacher & Secondary Education' },
+  { code: 'HMP', name: 'Hospitality Management Program', focus: 'Hospitality & Culinary Management' },
 ]
 
 const defaultFaculty: FacultyMember[] = [
@@ -169,7 +168,7 @@ const defaultFaculty: FacultyMember[] = [
     availability: 'Monday-Friday: 08:00-17:00',
     maxLoadHours: 24,
     subjects: ['RS1'],
-    programs: ['BSIT', 'BSBA', 'BSED', 'BEED', 'BSCrim', 'BSHM'],
+    programs: ['ITP', 'BAP', 'TEP', 'CJEP', 'HMP'],
   },
 ]
 
@@ -443,7 +442,12 @@ class LocalStorageService {
 
   private setItem<T>(key: string, val: T): void {
     try {
-      localStorage.setItem(key, JSON.stringify(val))
+      const next = JSON.stringify(val)
+      const prev = localStorage.getItem(key)
+      if (prev === next) {
+        return
+      }
+      localStorage.setItem(key, next)
       this.notifyListeners()
     } catch (e) {
       // eslint-disable-next-line no-console
@@ -510,7 +514,19 @@ class LocalStorageService {
 
   // --- Programs ---
   getPrograms() {
-    return this.getItem(STORAGE_KEYS.PROGRAMS, defaultPrograms)
+    const raw = this.getItem(STORAGE_KEYS.PROGRAMS, defaultPrograms);
+    const invalidCodes = new Set(['BSIT', 'BSBA', 'BSED', 'BEED', 'BSCRIM', 'BSHM']);
+    const sanitized = (Array.isArray(raw) ? raw : []).filter(
+      (p: any) => p && p.code && !invalidCodes.has(String(p.code).trim().toUpperCase())
+    );
+    if (sanitized.length === 0) {
+      this.setItem(STORAGE_KEYS.PROGRAMS, defaultPrograms);
+      return defaultPrograms;
+    }
+    if (sanitized.length !== raw.length) {
+      this.setItem(STORAGE_KEYS.PROGRAMS, sanitized);
+    }
+    return sanitized;
   }
   saveProgram(prog: { code: string; name: string; focus: string }) {
     const list = this.getPrograms()
@@ -527,6 +543,9 @@ class LocalStorageService {
     const list = this.getPrograms().filter((p) => p.code !== code)
     this.setItem(STORAGE_KEYS.PROGRAMS, list)
     return true
+  }
+  setPrograms(programs: any[]) {
+    this.setItem(STORAGE_KEYS.PROGRAMS, programs)
   }
 
   // --- Faculty ---

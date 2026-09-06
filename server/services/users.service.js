@@ -2,15 +2,28 @@ const bcrypt = require('bcrypt');
 const { query } = require('../utils/db');
 
 async function listUsers() {
-  const rows = await query(
-    `SELECT u.id, u.name, u.email, u.role, u.status, u.created_at,
-            COALESCE(pm.code, pm.program_code) AS program,
-            t.id AS teacher_id
-     FROM users u
-     LEFT JOIN program_majors pm ON pm.program_head_id = u.id
-     LEFT JOIN teachers t ON LOWER(t.email) = LOWER(u.email)
-     ORDER BY u.id DESC`
-  );
+  let rows;
+  try {
+    rows = await query(
+      `SELECT u.id, u.name, u.email, u.role, u.status, u.created_at,
+              COALESCE(u.program, pm.code, pm.program_code) AS program,
+              t.id AS teacher_id
+       FROM users u
+       LEFT JOIN program_majors pm ON pm.program_head_id = u.id
+       LEFT JOIN teachers t ON LOWER(t.email) = LOWER(u.email)
+       ORDER BY u.id DESC`
+    );
+  } catch (e) {
+    rows = await query(
+      `SELECT u.id, u.name, u.email, u.role, u.status, u.created_at,
+              COALESCE(pm.code, pm.program_code) AS program,
+              t.id AS teacher_id
+       FROM users u
+       LEFT JOIN program_majors pm ON pm.program_head_id = u.id
+       LEFT JOIN teachers t ON LOWER(t.email) = LOWER(u.email)
+       ORDER BY u.id DESC`
+    );
+  }
 
   return rows.map((u) => ({
     id: String(u.id),
@@ -34,11 +47,22 @@ async function createUser({ name, email, role, password, program, status }) {
     throw err;
   }
   const accountStatus = status === 'Suspended' ? 'Suspended' : 'Active';
-  const [result] = await query('INSERT INTO users (name, email, password_hash, role, status) VALUES (?, ?, ?, ?, ?)', [name, email, passwordHash, role, accountStatus]);
+  let result;
+  try {
+    [result] = await query(
+      'INSERT INTO users (name, email, password_hash, role, status, program) VALUES (?, ?, ?, ?, ?, ?)',
+      [name, email, passwordHash, role, accountStatus, role === 'program_head' ? (program || 'BAP') : (program || null)]
+    );
+  } catch (e) {
+    [result] = await query(
+      'INSERT INTO users (name, email, password_hash, role, status) VALUES (?, ?, ?, ?, ?)',
+      [name, email, passwordHash, role, accountStatus]
+    );
+  }
   const newId = (Array.isArray(result) ? result[0] : result)?.insertId || result.insertId || Date.now();
-  
+
   if (role === 'program_head') {
-    const targetProg = (program || 'BSIT').trim();
+    const targetProg = (program || 'BAP').trim();
     const [majorRow] = await query('SELECT id FROM program_majors WHERE code = ? OR program_code = ? LIMIT 1', [targetProg, targetProg]);
     if (majorRow) {
       await query('UPDATE program_majors SET program_head_id = ? WHERE id = ?', [newId, majorRow.id]);
@@ -78,9 +102,17 @@ async function updateUser(id, { name, email, role, password, program, status }) 
     );
   }
 
+  if (role === 'program_head' || program !== undefined) {
+    try {
+      await query('UPDATE users SET program = ? WHERE id = ?', [role === 'program_head' ? (program || null) : null, id]);
+    } catch (e) {
+      // ignore if program column doesn't exist
+    }
+  }
+
   if (role === 'program_head') {
     await query('UPDATE program_majors SET program_head_id = NULL WHERE program_head_id = ?', [id]);
-    const targetProg = (program || 'BSIT').trim();
+    const targetProg = (program || 'BAP').trim();
     const [majorRow] = await query('SELECT id FROM program_majors WHERE code = ? OR program_code = ? LIMIT 1', [targetProg, targetProg]);
     if (majorRow) {
       await query('UPDATE program_majors SET program_head_id = ? WHERE id = ?', [id, majorRow.id]);
@@ -114,7 +146,7 @@ async function deleteUser(id) {
     err.statusCode = 404;
     throw err;
   }
-  
+
   if (user.role === 'program_head') {
     await query('UPDATE program_majors SET program_head_id = NULL WHERE program_head_id = ?', [id]);
   }
@@ -122,7 +154,7 @@ async function deleteUser(id) {
   if (user.role === 'teacher') {
     await query('DELETE FROM teachers WHERE email = ?', [user.email]);
   }
-  
+
   await query('DELETE FROM users WHERE id = ?', [id]);
 }
 

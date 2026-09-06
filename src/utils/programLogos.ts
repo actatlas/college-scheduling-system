@@ -16,6 +16,7 @@ export const PROGRAM_LOGOS: Record<string, string> = {
   "Information Technology Program": itLogo,
 
   // Business Administration / Accountancy
+  BAP: baLogo,
   BSA: baLogo,
   BSBA: baLogo,
   "Business Administration": baLogo,
@@ -60,7 +61,7 @@ export function getProgramLogo(identifier?: string | string[] | null): string {
   if (upper.includes("CRIM") || upper.includes("JUSTICE") || upper.includes("CJEP")) {
     return crimLogo;
   }
-  if (upper.includes("BUS") || upper.includes("ADMIN") || upper.includes("BSA") || upper.includes("ACCOUNT")) {
+  if (upper.includes("BUS") || upper.includes("ADMIN") || upper.includes("BAP") || upper.includes("BSA") || upper.includes("ACCOUNT")) {
     return baLogo;
   }
   if (upper.includes("HOSP") || upper.includes("HOTEL") || upper.includes("HMP") || upper.includes("HM")) {

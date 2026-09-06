@@ -228,6 +228,53 @@ html[data-theme="dark"] .topbar__search input::placeholder {
   color: var(--srcb-text-muted);
 }
 
+html[data-theme="dark"] .topbar__search-clear {
+  color: #94a3b8;
+}
+
+html[data-theme="dark"] .topbar__search-clear:hover {
+  color: #38bdf8;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="dark"] .topbar__search-dropdown {
+  background: #141620 !important;
+  border-color: rgba(255, 255, 255, 0.13) !important;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 20px rgba(56, 189, 248, 0.1) !important;
+}
+
+html[data-theme="dark"] .topbar__search-header {
+  border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+  color: #94a3b8 !important;
+}
+
+html[data-theme="dark"] .topbar__search-item:hover,
+html[data-theme="dark"] .topbar__search-item.is-selected {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(56, 189, 248, 0.35) !important;
+}
+
+html[data-theme="dark"] .topbar__search-item-title {
+  color: #f1f5f9 !important;
+}
+
+html[data-theme="dark"] .topbar__search-item-sub {
+  color: #94a3b8 !important;
+}
+
+html[data-theme="dark"] .topbar__search-footer {
+  border-top-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+html[data-theme="dark"] .topbar__search-quick-btn {
+  color: #38bdf8 !important;
+}
+
+html[data-theme="dark"] .topbar__search-quick-btn:hover {
+  background: rgba(56, 189, 248, 0.12) !important;
+  border-color: rgba(56, 189, 248, 0.3) !important;
+}
+
 html[data-theme="dark"] .topbar__program-badge {
   background: rgba(255, 255, 255, 0.05);
   border-color: var(--srcb-border);
@@ -730,17 +777,18 @@ html[data-theme="dark"] .field-group label {
 
 html[data-theme="dark"] .field-group input,
 html[data-theme="dark"] .field-group select,
+html[data-theme="dark"] select,
 html[data-theme="dark"] .field-group textarea,
 html[data-theme="dark"] .input-wrapper,
 html[data-theme="dark"] .user-mgmt-modal-input,
 html[data-theme="dark"] .user-mgmt-search-input {
-  background-color: rgba(255, 255, 255, 0.05) !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background-color: #161822 !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
   color: #ffffff !important;
 }
 
 html[data-theme="dark"] select option {
-  background-color: #181920 !important;
+  background-color: #161822 !important;
   color: #f4f4f6 !important;
 }
 
@@ -977,68 +1025,243 @@ html[data-theme="dark"] .timesheet-cell-slot.is-dragging {
   color: #38bdf8;
 }
 
+/* ==========================================================================
+   SCHEDULE TIMETABLE & MATRICES DARK MODE ENHANCEMENTS
+   ========================================================================== */
+
+/* Outer Timetable Container / Wrap */
+html[data-theme="dark"] .table-wrap {
+  background: #0d0e14 !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Timetable Header Row */
+html[data-theme="dark"] .data-table thead th {
+  background: linear-gradient(180deg, #181a26 0%, #11131c 100%) !important;
+  color: #cbd5e1 !important;
+  font-weight: 700;
+  border-bottom: 2px solid rgba(56, 189, 248, 0.35) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+  letter-spacing: 0.02em;
+}
+
+/* Timetable Time Slot Column */
+html[data-theme="dark"] .timetable-time-slot-cell {
+  background: #10121a !important;
+  border-right: 2px solid rgba(255, 255, 255, 0.12) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07) !important;
+}
+
+html[data-theme="dark"] .timetable-time-slot-cell.is-hour {
+  background: #151825 !important;
+}
+
+html[data-theme="dark"] .timetable-time-slot-time {
+  color: #94a3b8 !important;
+}
+
+html[data-theme="dark"] .timetable-time-slot-cell.is-hour .timetable-time-slot-time {
+  color: #38bdf8 !important;
+  text-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
+}
+
+html[data-theme="dark"] .timetable-time-slot-range {
+  color: #64748b !important;
+}
+
+/* Timetable Grid Cells */
+html[data-theme="dark"] .schedule-grid-cell {
+  background: #0f1118 !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.07) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07) !important;
+}
+
+html[data-theme="dark"] .schedule-grid-cell:nth-child(even) {
+  background: #0c0e14 !important;
+}
+
 html[data-theme="dark"] .schedule-empty-slot {
-  color: #71717a;
-  border-color: transparent;
+  color: #475569 !important;
+  border-color: transparent !important;
 }
 
 html[data-theme="dark"] .schedule-empty-slot:hover {
-  border-color: rgba(56, 189, 248, 0.35);
-  background: rgba(56, 189, 248, 0.08);
-  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.4) !important;
+  background: rgba(56, 189, 248, 0.08) !important;
+  color: #38bdf8 !important;
+  box-shadow: inset 0 0 14px rgba(56, 189, 248, 0.08);
 }
 
 html[data-theme="dark"] .schedule-drag-hint {
-  color: #38bdf8;
+  color: #38bdf8 !important;
+  background: rgba(56, 189, 248, 0.15) !important;
+  border: 1px solid rgba(56, 189, 248, 0.3) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
 }
 
 html[data-theme="dark"] .schedule-grid-cell.drag-hover,
 html[data-theme="dark"] .schedule-grid-cell.drag-target-hover {
-  background: rgba(56, 189, 248, 0.15) !important;
+  background: rgba(56, 189, 248, 0.14) !important;
   border: 2px dashed #38bdf8 !important;
+  box-shadow: inset 0 0 16px rgba(56, 189, 248, 0.2), 0 0 16px rgba(56, 189, 248, 0.2) !important;
 }
 
+/* Enhanced Draggable Schedule Cards in Dark Mode */
+html[data-theme="dark"] .schedule-card-draggable {
+  background: linear-gradient(145deg, #171924 0%, #10121a 100%) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.13) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.55) !important;
+}
+
+html[data-theme="dark"] .schedule-card-draggable.is-online {
+  background: linear-gradient(145deg, #0e221b 0%, #081611 100%) !important;
+  border-top: 1px solid rgba(52, 211, 153, 0.3) !important;
+  border-right: 1px solid rgba(52, 211, 153, 0.22) !important;
+  border-bottom: 1px solid rgba(52, 211, 153, 0.22) !important;
+}
+
+html[data-theme="dark"] .schedule-card-draggable:hover {
+  transform: translateY(-2px);
+  border-top-color: rgba(56, 189, 248, 0.5) !important;
+  border-right-color: rgba(56, 189, 248, 0.5) !important;
+  border-bottom-color: rgba(56, 189, 248, 0.5) !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.7), 0 0 16px rgba(56, 189, 248, 0.18) !important;
+}
+
+html[data-theme="dark"] .schedule-card-draggable .schedule-card-code {
+  color: #38bdf8 !important;
+  text-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+}
+
+html[data-theme="dark"] .schedule-card-draggable .schedule-card-subject {
+  color: #f1f5f9 !important;
+}
+
+html[data-theme="dark"] .schedule-card-draggable .schedule-card-meta {
+  color: #94a3b8 !important;
+}
+
+html[data-theme="dark"] .schedule-card-draggable .schedule-card-faculty {
+  color: #60a5fa !important;
+}
+
+html[data-theme="dark"] .schedule-card-draggable .schedule-card-actions {
+  border-top: 1px dashed rgba(255, 255, 255, 0.12) !important;
+}
+
+html[data-theme="dark"] .schedule-card-draggable .icon-button {
+  background: rgba(255, 255, 255, 0.07) !important;
+  color: #cbd5e1 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+
+html[data-theme="dark"] .schedule-card-draggable .icon-button:hover {
+  background: rgba(56, 189, 248, 0.2) !important;
+  color: #38bdf8 !important;
+  border-color: #38bdf8 !important;
+}
+
+html[data-theme="dark"] .schedule-card-draggable .icon-button--danger:hover {
+  background: rgba(239, 68, 68, 0.25) !important;
+  color: #fca5a5 !important;
+  border-color: #f87171 !important;
+}
+
+/* Stacked on Top Scheduling Dark Mode */
+html[data-theme="dark"] .stacked-pill-badge {
+  background: rgba(56, 189, 248, 0.16) !important;
+  color: #38bdf8 !important;
+  border: 1px solid rgba(56, 189, 248, 0.35) !important;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.15) !important;
+}
+
+html[data-theme="dark"] .stacked-view-toggle-btn {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #94a3b8 !important;
+}
+
+html[data-theme="dark"] .stacked-view-toggle-btn:hover {
+  background: rgba(56, 189, 248, 0.15) !important;
+  border-color: #38bdf8 !important;
+  color: #38bdf8 !important;
+}
+
+html[data-theme="dark"] .stacked-add-slot-btn {
+  background: rgba(56, 189, 248, 0.14) !important;
+  border: 1px solid rgba(56, 189, 248, 0.35) !important;
+  color: #38bdf8 !important;
+}
+
+html[data-theme="dark"] .stacked-add-slot-btn:hover {
+  background: #0284c7 !important;
+  color: #ffffff !important;
+  border-color: #38bdf8 !important;
+}
+
+html[data-theme="dark"] .stacked-cards-stack.mode-stacked .stacked-card-wrapper:not(:first-child) {
+  box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.75), 0 6px 18px rgba(0, 0, 0, 0.6) !important;
+}
+
+html[data-theme="dark"] .stacked-card-wrapper:hover {
+  z-index: 30 !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.85), 0 0 20px rgba(56, 189, 248, 0.22) !important;
+}
+
+html[data-theme="dark"] .stacked-card-wrapper.is-front {
+  z-index: 25 !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.8), 0 0 16px rgba(56, 189, 248, 0.16) !important;
+}
+
+/* DnD Tray in Dark Mode */
 html[data-theme="dark"] .dnd-tray-container {
-  background: #14151a;
-  border-color: var(--srcb-border);
+  background: linear-gradient(180deg, #151722 0%, #10121a 100%) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4) !important;
 }
 
 html[data-theme="dark"] .dnd-tray-title {
-  color: #38bdf8;
+  color: #38bdf8 !important;
 }
 
 html[data-theme="dark"] .dnd-subject-card {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1.5px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
 }
 
 html[data-theme="dark"] .dnd-subject-card:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: #38bdf8;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: #38bdf8 !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 14px rgba(56, 189, 248, 0.2) !important;
 }
 
 html[data-theme="dark"] .dnd-subject-code {
-  color: #38bdf8;
+  color: #38bdf8 !important;
 }
 
 html[data-theme="dark"] .dnd-subject-name {
-  color: #f4f4f6;
+  color: #f4f4f6 !important;
 }
 
 html[data-theme="dark"] .dnd-subject-meta {
-  color: var(--srcb-text-muted);
+  color: var(--srcb-text-muted) !important;
 }
 
 html[data-theme="dark"] .schedule-card,
 html[data-theme="dark"] .schedule-item {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--srcb-border);
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid var(--srcb-border) !important;
 }
 
 html[data-theme="dark"] .schedule-item:hover {
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.07) !important;
 }
+
+
 
 html[data-theme="dark"] .schedule-item__title {
   color: #ffffff;
@@ -1437,3 +1660,114 @@ html[data-theme="dark"] [style*="color: #7f1d1d"],
 html[data-theme="dark"] [style*="color:#7f1d1d"] {
   color: #fca5a5 !important;
 }
+
+/* ===================================================
+   DARK THEME: SCHEDULE WIZARD FORM ENHANCEMENTS
+   =================================================== */
+html[data-theme="dark"] .sched-wizard-stepper {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--srcb-border);
+}
+
+html[data-theme="dark"] .sched-step-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="dark"] .sched-step-btn.is-active {
+  background: #0284c7;
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35);
+}
+
+html[data-theme="dark"] .sched-step-btn.is-active .sched-step-circle {
+  background: #ffffff;
+  color: #0284c7;
+}
+
+html[data-theme="dark"] .sched-form-card {
+  background: rgba(255, 255, 255, 0.025);
+  border-color: var(--srcb-border);
+}
+
+html[data-theme="dark"] .sched-form-card-title {
+  color: #38bdf8;
+}
+
+html[data-theme="dark"] .sched-modality-card {
+  background: rgba(255, 255, 255, 0.035);
+  border-color: var(--srcb-border);
+}
+
+html[data-theme="dark"] .sched-modality-card:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+html[data-theme="dark"] .sched-modality-card.is-selected {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: #38bdf8;
+}
+
+html[data-theme="dark"] .sched-segmented-tabs {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--srcb-border);
+}
+
+html[data-theme="dark"] .sched-segmented-tab.is-active {
+  background: #1e293b;
+  color: #38bdf8;
+}
+
+html[data-theme="dark"] .sched-readiness-box {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: var(--srcb-border);
+}
+
+html[data-theme="dark"] .sched-readiness-pill {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--srcb-border);
+}
+
+html[data-theme="dark"] .sched-context-banner {
+  background: rgba(56, 189, 248, 0.08);
+  border-color: rgba(56, 189, 248, 0.25);
+}
+
+html[data-theme="dark"] .sched-context-item strong {
+  color: #38bdf8;
+}
+
+html[data-theme="dark"] .exam-allocation-tracker {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--srcb-border);
+}
+
+html[data-theme="dark"] .exam-assignment-card {
+  background: var(--srcb-surface-elevated);
+  border-color: var(--srcb-border);
+}
+
+html[data-theme="dark"] .exam-assignment-card-header {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--srcb-border);
+}
+
+html[data-theme="dark"] .exam-capacity-bar-wrap {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: var(--srcb-border);
+}
+
+html[data-theme="dark"] .exam-section-chip {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--srcb-border);
+}
+
+html[data-theme="dark"] .exam-section-chip:hover:not(.is-disabled) {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+html[data-theme="dark"] .exam-section-chip.is-selected {
+  background: rgba(56, 189, 248, 0.14);
+  border-color: #38bdf8;
+}
+
+

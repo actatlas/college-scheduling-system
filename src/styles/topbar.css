@@ -92,11 +92,15 @@
   flex-wrap: wrap;
 }
 
+.topbar__search-container {
+  position: relative;
+}
+
 .topbar__search {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-width: 240px;
+  min-width: 260px;
   padding: 8px 12px;
   border: 1px solid var(--srcb-border);
   border-radius: 8px;
@@ -111,6 +115,11 @@
   box-shadow: 0 0 0 3px rgba(var(--srcb-navy-rgb, 22, 50, 105), 0.1);
 }
 
+.topbar__search-icon {
+  color: var(--srcb-text-muted);
+  flex-shrink: 0;
+}
+
 .topbar__search input {
   border: none;
   outline: none;
@@ -119,6 +128,173 @@
   flex: 1;
   font-size: 0.86rem;
   color: var(--srcb-text);
+}
+
+.topbar__search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--srcb-text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.topbar__search-clear:hover {
+  color: var(--srcb-navy);
+  background: rgba(15, 44, 89, 0.08);
+}
+
+/* Global Live Search Dropdown */
+.topbar__search-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 460px;
+  max-width: 92vw;
+  max-height: 480px;
+  overflow-y: auto;
+  background: var(--srcb-surface-elevated, #ffffff);
+  border: 1px solid var(--srcb-border);
+  border-radius: 12px;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.16), 0 4px 12px rgba(15, 23, 42, 0.08);
+  z-index: 1000;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.topbar__search-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  font-size: 0.74rem;
+  color: var(--srcb-text-muted);
+  border-bottom: 1px solid var(--srcb-border-subtle, #f1f5f9);
+}
+
+.topbar__search-results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.topbar__search-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: all 0.12s ease;
+  text-decoration: none;
+  color: inherit;
+}
+
+.topbar__search-item:hover,
+.topbar__search-item.is-selected {
+  background: var(--srcb-surface-alt, #f1f5f9);
+  border-color: var(--srcb-border);
+}
+
+.topbar__search-item-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.topbar__search-item-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(56, 189, 248, 0.12);
+  color: var(--srcb-navy);
+  flex-shrink: 0;
+}
+
+.topbar__search-item-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.topbar__search-item-title {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--srcb-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar__search-item-sub {
+  font-size: 0.73rem;
+  color: var(--srcb-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar__search-item-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.topbar__search-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-top: 6px;
+  border-top: 1px solid var(--srcb-border-subtle, #f1f5f9);
+  margin-top: 4px;
+}
+
+.topbar__search-quick-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--srcb-navy);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  width: 100%;
+  text-align: left;
+}
+
+.topbar__search-quick-btn:hover {
+  background: var(--srcb-surface-alt, #f1f5f9);
+  border-color: var(--srcb-border);
+}
+
+.topbar__search-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--srcb-text-muted);
+  font-size: 0.84rem;
 }
 
 .topbar__program-badge {

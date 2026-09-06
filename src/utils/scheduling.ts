@@ -30,7 +30,7 @@ function to12Hour(t: string, defaultPM = false): string {
   if (!isPM && !isAM) {
     if (defaultPM && h <= 11) {
       h += 12
-    } else if (h >= 1 && h <= 7) {
+    } else if (h >= 1 && h <= 6) {
       h += 12
     }
   }
@@ -90,7 +90,7 @@ export function parseTimeToMinutes(tStr: string): number {
   const m = Number(parts[1]) || 0
   if (isPM && h < 12) h += 12
   if (isAM && h === 12) h = 0
-  if (!isPM && !isAM && h >= 1 && h <= 7) h += 12
+  if (!isPM && !isAM && h >= 1 && h <= 6) h += 12
   return h * 60 + m
 }
 

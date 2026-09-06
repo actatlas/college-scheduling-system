@@ -13,28 +13,71 @@ import {
   ExternalLink,
   X,
   ChevronDown,
+  CalendarDays,
+  BookOpen,
+  Users,
+  Building2,
+  GraduationCap,
+  ArrowRight,
 } from "lucide-react";
-import { useEffect, useState, useRef, type FormEvent } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useEffect, useState, useRef, useMemo, type FormEvent } from "react";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useProgramContext } from "../../contexts/ProgramContext";
 import { useNotifications, type SystemNotification } from "../../contexts/NotificationContext";
 import { Tooltip } from "../common/Tooltip";
 import Logo from "../../assets/images/Logo.png";
 import { getProgramLogo } from "../../utils/programLogos";
+import { api } from "../../data/apiClient";
 
 interface TopbarProps {
   title: string;
   onToggleMobileSidebar?: () => void;
 }
 
+interface GlobalSearchItem {
+  id: string;
+  category: "schedules" | "subjects" | "faculty" | "rooms" | "sections";
+  categoryLabel: string;
+  title: string;
+  subtitle: string;
+  badge?: string;
+  badgeTone?: "blue" | "green" | "purple" | "amber" | "slate";
+  url: string;
+  keywords: string;
+}
+
 export function Topbar({ title, onToggleMobileSidebar }: TopbarProps) {
   const [dark, setDark] = useState(false);
   const [query, setQuery] = useState("");
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
+  const [allSearchItems, setAllSearchItems] = useState<GlobalSearchItem[]>([]);
+  const isFetchingSearchRef = useRef(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [notifFilter, setNotifFilter] = useState<"all" | "unread">("all");
   const notifRef = useRef<HTMLDivElement>(null);
 
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const role = (
+    window.localStorage.getItem("userRole") || "admin"
+  ).toLowerCase();
+
+  const isIct =
+    role === "super_admin" ||
+    role === "ict" ||
+    role.includes("super_admin") ||
+    role.includes("ict") ||
+    location?.pathname === "/users" ||
+    Boolean(location?.pathname?.startsWith("/users")) ||
+    Boolean(title && (title.includes("ICT") || title.toLowerCase().includes("user management")));
+
+  const isIctPage = isIct;
+
   const { selectedProgram, setSelectedProgramKey, programOptions } = useProgramContext();
   const {
     notifications,
@@ -44,10 +87,6 @@ export function Topbar({ title, onToggleMobileSidebar }: TopbarProps) {
     clearNotification,
     clearAll,
   } = useNotifications();
-
-  const role = (
-    window.localStorage.getItem("userRole") || "admin"
-  ).toLowerCase();
   const userName =
     window.localStorage.getItem("userName") ||
     (role === "super_admin"
@@ -70,10 +109,121 @@ export function Topbar({ title, onToggleMobileSidebar }: TopbarProps) {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
         setIsNotifOpen(false);
       }
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setIsSearchOpen(false);
+      }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  const loadSearchItems = async () => {
+    if (isFetchingSearchRef.current || allSearchItems.length > 0) return;
+    isFetchingSearchRef.current = true;
+    try {
+      const [schedRes, subRes, facRes, rmRes, secRes] = await Promise.all([
+        api.get("/schedules").catch(() => ({ data: { data: [] } })),
+        api.get("/subjects").catch(() => ({ data: { data: [] } })),
+        api.get("/faculty").catch(() => ({ data: { data: [] } })),
+        api.get("/rooms").catch(() => ({ data: { data: [] } })),
+        api.get("/sections").catch(() => ({ data: { data: [] } })),
+      ]);
+
+      const items: GlobalSearchItem[] = [];
+
+      // 1. Schedules
+      (schedRes.data?.data || []).forEach((s: any) => {
+        items.push({
+          id: `sched-${s.id || s.subjectCode}-${s.day}-${s.time}`,
+          category: "schedules",
+          categoryLabel: "Schedule",
+          title: `${s.subjectCode || "Class"} - ${s.subject || "Scheduled Class"}`,
+          subtitle: `${s.day || "Day"} · ${s.time || "Time"} · Room: ${s.room || "TBA"} · Sec: ${s.section || "General"} · ${s.faculty || "Faculty"}`,
+          badge: s.modality || "Face-to-Face",
+          badgeTone: s.modality === "Online" ? "green" : "blue",
+          url: `/schedules?q=${encodeURIComponent(s.subjectCode || s.subject)}`,
+          keywords: `${s.subjectCode || ""} ${s.subject || ""} ${s.faculty || ""} ${s.room || ""} ${s.section || ""} ${s.day || ""} ${s.modality || ""} ${s.building || ""}`.toLowerCase(),
+        });
+      });
+
+      // 2. Subjects
+      (subRes.data?.data || []).forEach((sub: any) => {
+        items.push({
+          id: `sub-${sub.code || sub.id}`,
+          category: "subjects",
+          categoryLabel: "Subject",
+          title: `${sub.code} - ${sub.name}`,
+          subtitle: `${sub.program || sub.department || "Curriculum"} · ${sub.units || 3} Units · ${sub.instructor || "Unassigned"}`,
+          badge: sub.isMajor ? "Major" : "Gen Ed",
+          badgeTone: sub.isMajor ? "purple" : "slate",
+          url: `/subjects?q=${encodeURIComponent(sub.code || sub.name)}`,
+          keywords: `${sub.code || ""} ${sub.name || ""} ${sub.department || ""} ${sub.program || ""} ${sub.instructor || ""}`.toLowerCase(),
+        });
+      });
+
+      // 3. Faculty
+      (facRes.data?.data || []).forEach((f: any) => {
+        items.push({
+          id: `fac-${f.id || f.name}`,
+          category: "faculty",
+          categoryLabel: "Faculty",
+          title: f.name,
+          subtitle: `${f.department || "Academic"} · ${f.status || "Faculty"} · ${f.email || ""}`,
+          badge: f.status || "Faculty",
+          badgeTone: "green",
+          url: `/faculty?q=${encodeURIComponent(f.name)}`,
+          keywords: `${f.name || ""} ${f.department || ""} ${f.email || ""} ${f.status || ""} ${f.id || ""}`.toLowerCase(),
+        });
+      });
+
+      // 4. Rooms
+      (rmRes.data?.data || []).forEach((r: any) => {
+        items.push({
+          id: `rm-${r.number}`,
+          category: "rooms",
+          categoryLabel: "Room",
+          title: `Room ${r.number}`,
+          subtitle: `${r.building || "Campus"} · ${r.type || "Classroom"} · Capacity: ${r.capacity || 40}`,
+          badge: `Cap: ${r.capacity || 40}`,
+          badgeTone: "slate",
+          url: `/rooms?q=${encodeURIComponent(r.number)}`,
+          keywords: `${r.number || ""} ${r.building || ""} ${r.type || ""}`.toLowerCase(),
+        });
+      });
+
+      // 5. Sections
+      (secRes.data?.data || []).forEach((sec: any) => {
+        const label = sec.section || (sec.course ? `${sec.course} ${sec.yearLevel || ""}-${sec.section}`.trim() : "Section");
+        items.push({
+          id: `sec-${sec.id || label}`,
+          category: "sections",
+          categoryLabel: "Section",
+          title: label,
+          subtitle: `${sec.course || sec.program || "Program"} · Year ${sec.yearLevel || 1} · ${sec.students || 30} Students`,
+          badge: `${sec.students || 30} Students`,
+          badgeTone: "amber",
+          url: `/sections?q=${encodeURIComponent(label)}`,
+          keywords: `${label} ${sec.course || ""} ${sec.program || ""} Year ${sec.yearLevel || ""}`.toLowerCase(),
+        });
+      });
+
+      setAllSearchItems(items);
+    } catch (err) {
+      console.error("Failed to load search data:", err);
+    } finally {
+      isFetchingSearchRef.current = false;
+    }
+  };
+
+  const matchedResults = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+
+    const tokens = q.split(/\s+/).filter(Boolean);
+    return allSearchItems
+      .filter((item) => tokens.every((token) => item.keywords.includes(token)))
+      .slice(0, 8);
+  }, [allSearchItems, query]);
 
   const toggleTheme = () => {
     const next = !dark;
@@ -82,26 +232,73 @@ export function Topbar({ title, onToggleMobileSidebar }: TopbarProps) {
     localStorage.setItem("theme", next ? "dark" : "light");
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!isSearchOpen || matchedResults.length === 0) {
+      if (e.key === "Escape") {
+        setIsSearchOpen(false);
+      }
+      return;
+    }
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev + 1 < matchedResults.length ? prev + 1 : 0));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev - 1 >= 0 ? prev - 1 : matchedResults.length - 1));
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setIsSearchOpen(false);
+    }
+  };
+
   const handleSearch = (event: FormEvent) => {
     event.preventDefault();
-    const value = query.trim().toLowerCase();
-    if (!value) return;
-    if (value.includes("faculty") || value.includes("teacher")) {
-      navigate("/faculty");
-    } else if (value.includes("program") || value.includes("course")) {
-      navigate("/programs");
-    } else if (value.includes("subject")) {
-      navigate("/subjects");
-    } else if (value.includes("section")) {
-      navigate("/sections");
-    } else if (value.includes("room")) {
-      navigate("/rooms");
-    } else if (value.includes("exam")) {
-      navigate("/exams");
-    } else if (value.includes("schedule") || value.includes("timetable")) {
-      navigate("/schedules");
+    const q = query.trim();
+    if (!q) return;
+
+    setIsSearchOpen(false);
+
+    if (selectedIndex >= 0 && selectedIndex < matchedResults.length) {
+      navigate(matchedResults[selectedIndex].url);
+      return;
+    }
+
+    if (matchedResults.length > 0) {
+      navigate(matchedResults[0].url);
+      return;
+    }
+
+    const lower = q.toLowerCase();
+    if (lower.includes("faculty") || lower.includes("teacher") || lower.includes("prof") || lower.includes("instructor")) {
+      navigate(`/faculty?q=${encodeURIComponent(q)}`);
+    } else if (lower.includes("subject") || lower.includes("curriculum")) {
+      navigate(`/subjects?q=${encodeURIComponent(q)}`);
+    } else if (lower.includes("room") || lower.includes("lab") || lower.includes("facility")) {
+      navigate(`/rooms?q=${encodeURIComponent(q)}`);
+    } else if (lower.includes("section") || lower.includes("cohort")) {
+      navigate(`/sections?q=${encodeURIComponent(q)}`);
+    } else if (lower.includes("exam")) {
+      navigate(`/exams?q=${encodeURIComponent(q)}`);
     } else {
-      navigate("/reports");
+      navigate(`/schedules?q=${encodeURIComponent(q)}`);
+    }
+  };
+
+  const getCategoryIcon = (category: GlobalSearchItem["category"]) => {
+    switch (category) {
+      case "schedules":
+        return <CalendarDays size={16} />;
+      case "subjects":
+        return <BookOpen size={16} />;
+      case "faculty":
+        return <Users size={16} />;
+      case "rooms":
+        return <Building2 size={16} />;
+      case "sections":
+        return <GraduationCap size={16} />;
+      default:
+        return <Search size={16} />;
     }
   };
 
@@ -204,15 +401,144 @@ export function Topbar({ title, onToggleMobileSidebar }: TopbarProps) {
           </label>
         ) : null}
 
-        <form className="topbar__search" onSubmit={handleSearch} role="search" aria-label="Global search">
-          <Search size={16} />
-          <input
-            placeholder="Search subjects, faculty..."
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            aria-label="Search subjects or faculty across SCSMS"
-          />
-        </form>
+        {!isIctPage && (
+          <div className="topbar__search-container" ref={searchContainerRef}>
+          <form className="topbar__search" onSubmit={handleSearch} role="search" aria-label="Global search">
+            <Search size={16} className="topbar__search-icon" />
+            <input
+              ref={searchInputRef}
+              placeholder="Search schedules, subjects, faculty, rooms..."
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setIsSearchOpen(true);
+                setSelectedIndex(-1);
+              }}
+              onFocus={() => {
+                loadSearchItems();
+                if (query.trim().length > 0) setIsSearchOpen(true);
+              }}
+              onKeyDown={handleKeyDown}
+              aria-label="Search across SCSMS"
+            />
+            {query && (
+              <button
+                type="button"
+                className="topbar__search-clear"
+                onClick={() => {
+                  setQuery("");
+                  setIsSearchOpen(false);
+                  setSelectedIndex(-1);
+                  searchInputRef.current?.focus();
+                }}
+                aria-label="Clear search input"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </form>
+
+          {isSearchOpen && query.trim().length > 0 && (
+            <div className="topbar__search-dropdown" role="listbox" aria-label="Search results">
+              <div className="topbar__search-header">
+                <span>
+                  {matchedResults.length > 0
+                    ? `Found ${matchedResults.length} instant result${matchedResults.length === 1 ? "" : "s"}`
+                    : "No matching records found"}
+                </span>
+                <span style={{ fontSize: "0.7rem", opacity: 0.7 }}>Press Enter to search</span>
+              </div>
+
+              {matchedResults.length > 0 ? (
+                <div className="topbar__search-results-list">
+                  {matchedResults.map((item, idx) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={`topbar__search-item ${idx === selectedIndex ? "is-selected" : ""}`}
+                      onClick={() => {
+                        setIsSearchOpen(false);
+                        navigate(item.url);
+                      }}
+                      onMouseEnter={() => setSelectedIndex(idx)}
+                    >
+                      <div className="topbar__search-item-main">
+                        <div className="topbar__search-item-icon">
+                          {getCategoryIcon(item.category)}
+                        </div>
+                        <div className="topbar__search-item-info">
+                          <span className="topbar__search-item-title">{item.title}</span>
+                          <span className="topbar__search-item-sub">{item.subtitle}</span>
+                        </div>
+                      </div>
+                      <div className="topbar__search-item-right">
+                        {item.badge && (
+                          <span className={`pill pill--${item.badgeTone || "navy"}`} style={{ fontSize: "0.66rem", padding: "1px 6px" }}>
+                            {item.badge}
+                          </span>
+                        )}
+                        <ArrowRight size={13} style={{ opacity: 0.5 }} />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="topbar__search-empty">
+                  No direct matches found for "<strong>{query}</strong>".
+                  <div style={{ marginTop: 6, fontSize: "0.76rem" }}>
+                    Press <strong>Enter</strong> to search across all institutional schedules.
+                  </div>
+                </div>
+              )}
+
+              <div className="topbar__search-footer">
+                <button
+                  type="button"
+                  className="topbar__search-quick-btn"
+                  onClick={() => {
+                    setIsSearchOpen(false);
+                    navigate(`/schedules?q=${encodeURIComponent(query.trim())}`);
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <CalendarDays size={13} />
+                    <span>Search in <strong>Schedules</strong> for "{query.trim()}"</span>
+                  </span>
+                  <ArrowRight size={12} />
+                </button>
+                <button
+                  type="button"
+                  className="topbar__search-quick-btn"
+                  onClick={() => {
+                    setIsSearchOpen(false);
+                    navigate(`/subjects?q=${encodeURIComponent(query.trim())}`);
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <BookOpen size={13} />
+                    <span>Search in <strong>Subjects</strong> for "{query.trim()}"</span>
+                  </span>
+                  <ArrowRight size={12} />
+                </button>
+                <button
+                  type="button"
+                  className="topbar__search-quick-btn"
+                  onClick={() => {
+                    setIsSearchOpen(false);
+                    navigate(`/faculty?q=${encodeURIComponent(query.trim())}`);
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <Users size={13} />
+                    <span>Search in <strong>Faculty</strong> for "{query.trim()}"</span>
+                  </span>
+                  <ArrowRight size={12} />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+        )}
 
         {/* Real-time Notifications Popover */}
         <div className="topbar__notif-wrapper" ref={notifRef} style={{ position: "relative" }}>

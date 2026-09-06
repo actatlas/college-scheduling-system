@@ -6,7 +6,8 @@ import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
 import { ConfirmModal } from "../components/common/ConfirmModal";
 import { TableSkeleton } from "../components/common/Skeleton";
-import { Plus, Search, Edit2, Trash2, AlertTriangle } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, AlertTriangle, X } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { useProgramContext } from "../contexts/ProgramContext";
 import { useAcademicPeriod } from "../contexts/AcademicPeriodContext";
 import { getProgramLogo } from "../utils/programLogos";
@@ -20,7 +21,28 @@ export function SubjectsPage() {
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [subjectToDelete, setSubjectToDelete] = useState<SubjectItem | null>(null);
-  const [query, setQuery] = useState("");
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [query, setQuery] = useState(searchParams.get("q") || searchParams.get("search") || "");
+
+  useEffect(() => {
+    const q = searchParams.get("q") || searchParams.get("search") || "";
+    setQuery(q);
+  }, [searchParams]);
+
+  const handleQueryChange = (val: string) => {
+    setQuery(val);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (val.trim()) {
+        next.set("q", val);
+      } else {
+        next.delete("q");
+        next.delete("search");
+      }
+      return next;
+    }, { replace: true });
+  };
   const [majorFilter, setMajorFilter] = useState("All");
   const [programFilter, setProgramFilter] = useState<string>("All");
   const [isOpen, setIsOpen] = useState(false);
@@ -210,7 +232,7 @@ export function SubjectsPage() {
 
             const IT_KEYS = ["ITP", "BSIT", "BSCS", "IT", "INFORMATION TECHNOLOGY", "COMPUTER"];
             const CRIM_KEYS = ["CJEP", "BSCRIM", "CRIMINOLOGY", "CRIM", "CRIMINAL JUSTICE"];
-            const BUS_KEYS = ["BSA", "BSBA", "BUSINESS", "ACCOUNTANCY", "ADMINISTRATION"];
+            const BUS_KEYS = ["BAP", "BSA", "BSBA", "BUSINESS", "ACCOUNTANCY", "ADMINISTRATION"];
             const HM_KEYS = ["HMP", "BSHM", "HOSPITALITY", "HOTEL", "TOURISM"];
             const EDUC_KEYS = ["TEP", "BSED", "BEED", "EDUCATION", "TEACHER"];
 
@@ -361,7 +383,7 @@ export function SubjectsPage() {
                   {programsList.length === 0 && (
                     <>
                       <option value="ITP">Information Technology Program (ITP / BSIT)</option>
-                      <option value="BSA">Business Administration (BSA / BSBA)</option>
+                      <option value="BAP">Business Administration Program (BAP / BSBA / BSA)</option>
                       <option value="CJEP">Criminal Justice Education Program (CJEP / BSCrim)</option>
                       <option value="HMP">Hospitality Management Program (HMP / BSHM)</option>
                       <option value="TEP">Teacher Education Program (TEP / BSED / BEED)</option>
@@ -392,14 +414,38 @@ export function SubjectsPage() {
               </select>
             </label>
 
-            <label className="topbar__search" aria-label="Search subjects">
-              <Search size={16} />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search by code, subject name, instructor..."
-              />
-            </label>
+            <div style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+              <label className="topbar__search" aria-label="Search subjects" style={{ margin: 0, paddingRight: query ? 32 : 12 }}>
+                <Search size={16} />
+                <input
+                  value={query}
+                  onChange={(event) => handleQueryChange(event.target.value)}
+                  placeholder="Search by code, subject name, instructor..."
+                />
+              </label>
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => handleQueryChange("")}
+                  style={{
+                    position: "absolute",
+                    right: 8,
+                    background: "none",
+                    border: "none",
+                    color: "var(--srcb-text-muted, #94a3b8)",
+                    cursor: "pointer",
+                    padding: 4,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                  title="Clear search"
+                  aria-label="Clear search"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

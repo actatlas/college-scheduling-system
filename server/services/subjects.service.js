@@ -144,11 +144,10 @@ async function createSubject({ code, name, units, lectureHours, labHours, semest
 }
 
 async function deleteSubject(code) {
-  try {
-    await query('DELETE FROM subjects WHERE code = ?', [code]);
-  } catch (err) {
-    console.error('[backend] deleteSubject error:', err);
-  }
+  // Clean up any referencing schedules and exam schedules before removing subject
+  await query('DELETE FROM exam_schedules WHERE subject_code = ?', [code]).catch(() => {});
+  await query('DELETE FROM schedules WHERE subject_code = ?', [code]).catch(() => {});
+  await query('DELETE FROM subjects WHERE code = ?', [code]);
 }
 
 async function updateSubject(code, { name, units, lectureHours, labHours, semester, department, instructorId, programCode, program, courseCode, isMajor }) {

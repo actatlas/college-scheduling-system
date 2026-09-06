@@ -31,6 +31,10 @@ import {
   ListFilter,
   Settings,
   Lock,
+  Check,
+  UserCheck,
+  ShieldCheck,
+  Sparkles,
 } from "lucide-react";
 import { api } from "../data/apiClient";
 import { useProgramContext } from "../contexts/ProgramContext";
@@ -2620,41 +2624,44 @@ export function ExamSchedulesPage() {
           setModalStep(1);
         }}
       >
-        {/* Step Indicator */}
+        {/* Modern Stepper Header */}
         {!isAddingToExistingSession && !editingExam && (
-          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-            <div
-              style={{
-                flex: 1,
-                padding: "8px 12px",
-                borderRadius: 6,
-                background: modalStep === 1 ? "var(--srcb-navy)" : "rgba(148, 163, 184, 0.15)",
-                color: modalStep === 1 ? "#ffffff" : "var(--srcb-text-muted)",
-                fontSize: "0.78rem",
-                fontWeight: 700,
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-              }}
+          <div className="sched-wizard-stepper">
+            <button
+              type="button"
+              className={`sched-step-btn ${modalStep === 1 ? "is-active" : "is-completed"}`}
+              onClick={() => setModalStep(1)}
             >
-              <span>1. Basic Exam Details (Shared Date &amp; Time)</span>
-            </div>
-            <div
-              style={{
-                flex: 1,
-                padding: "8px 12px",
-                borderRadius: 6,
-                background: modalStep === 2 ? "var(--srcb-navy)" : "rgba(148, 163, 184, 0.15)",
-                color: modalStep === 2 ? "#ffffff" : "var(--srcb-text-muted)",
-                fontSize: "0.78rem",
-                fontWeight: 700,
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
+              <div className="sched-step-circle">
+                {modalStep > 1 ? <Check size={16} /> : <span>1</span>}
+              </div>
+              <div className="sched-step-info">
+                <span className="sched-step-label">Step 1</span>
+                <span className="sched-step-title">Exam Date &amp; Time</span>
+              </div>
+            </button>
+
+            <div className={`sched-step-divider ${modalStep === 2 ? "is-active" : ""}`} />
+
+            <button
+              type="button"
+              className={`sched-step-btn ${modalStep === 2 ? "is-active" : ""}`}
+              onClick={() => {
+                if (isExamStep1ResourcesAvailable) {
+                  handleContinueToStep2();
+                }
               }}
+              disabled={modalStep === 1 && !isExamStep1ResourcesAvailable}
+              title={!isExamStep1ResourcesAvailable ? "Please complete Step 1 details first" : "Jump to Step 2"}
             >
-              <span>2. Resource Assignment (Proctor, Room, Sections)</span>
-            </div>
+              <div className="sched-step-circle">
+                <span>2</span>
+              </div>
+              <div className="sched-step-info">
+                <span className="sched-step-label">Step 2</span>
+                <span className="sched-step-title">Resource Assignment</span>
+              </div>
+            </button>
           </div>
         )}
 
@@ -2737,78 +2744,47 @@ export function ExamSchedulesPage() {
 
             {/* Proactive Availability Assessment */}
             {form.subjectCode && form.examDate && form.time && (
-              <div
-                style={{
-                  gridColumn: "1 / -1",
-                  background: "var(--srcb-surface)",
-                  border: "1px solid var(--srcb-border)",
-                  borderRadius: 8,
-                  padding: 12,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 10,
-                }}
-              >
+              <div className="sched-readiness-box" style={{ gridColumn: "1 / -1" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--srcb-navy)" }}>
-                    Proactive Examination Resource Availability:
-                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: "0.82rem", color: "var(--srcb-navy)" }}>
+                    <Sparkles size={15} color="var(--srcb-royal)" />
+                    <span>Proactive Examination Resource Assessment</span>
+                  </div>
                   <span style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)" }}>
-                    Analyzed for {form.examDate} • {form.time}
+                    {form.examDate} • {form.time}
                   </span>
                 </div>
 
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <span
-                    className={`pill ${availableProctorsForStep1.length > 0 ? "pill--emerald" : "pill--danger"}`}
-                    style={{ fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: 4 }}
-                  >
-                    {availableProctorsForStep1.length > 0 ? (
-                      <>
-                        <CheckCircle2 size={12} />
-                        {availableProctorsForStep1.length} Proctors Available
-                      </>
-                    ) : (
-                      <>
-                        <AlertTriangle size={12} />
-                        No available faculty/proctors for this schedule.
-                      </>
-                    )}
-                  </span>
+                <div className="sched-readiness-grid">
+                  <div className={`sched-readiness-pill ${availableProctorsForStep1.length > 0 ? "is-ok" : "is-warning"}`}>
+                    {availableProctorsForStep1.length > 0 ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                    <div>
+                      <div style={{ fontWeight: 700 }}>Proctors</div>
+                      <div style={{ fontSize: "0.72rem", opacity: 0.85 }}>
+                        {availableProctorsForStep1.length > 0 ? `${availableProctorsForStep1.length} Available` : "No proctors free"}
+                      </div>
+                    </div>
+                  </div>
 
-                  <span
-                    className={`pill ${availableRoomsForStep1.length > 0 ? "pill--emerald" : "pill--danger"}`}
-                    style={{ fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: 4 }}
-                  >
-                    {availableRoomsForStep1.length > 0 ? (
-                      <>
-                        <CheckCircle2 size={12} />
-                        {availableRoomsForStep1.length} Rooms Available
-                      </>
-                    ) : (
-                      <>
-                        <AlertTriangle size={12} />
-                        No available rooms for this schedule.
-                      </>
-                    )}
-                  </span>
+                  <div className={`sched-readiness-pill ${availableRoomsForStep1.length > 0 ? "is-ok" : "is-warning"}`}>
+                    {availableRoomsForStep1.length > 0 ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                    <div>
+                      <div style={{ fontWeight: 700 }}>Rooms</div>
+                      <div style={{ fontSize: "0.72rem", opacity: 0.85 }}>
+                        {availableRoomsForStep1.length > 0 ? `${availableRoomsForStep1.length} Available` : "No rooms free"}
+                      </div>
+                    </div>
+                  </div>
 
-                  <span
-                    className={`pill ${availableSectionsForCurrentExam.length > 0 ? "pill--emerald" : "pill--danger"}`}
-                    style={{ fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: 4 }}
-                  >
-                    {availableSectionsForCurrentExam.length > 0 ? (
-                      <>
-                        <CheckCircle2 size={12} />
-                        {availableSectionsForCurrentExam.length} Section(s) Available
-                      </>
-                    ) : (
-                      <>
-                        <AlertTriangle size={12} />
-                        No available sections taking {form.subjectCode} at this time.
-                      </>
-                    )}
-                  </span>
+                  <div className={`sched-readiness-pill ${availableSectionsForCurrentExam.length > 0 ? "is-ok" : "is-warning"}`}>
+                    {availableSectionsForCurrentExam.length > 0 ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                    <div>
+                      <div style={{ fontWeight: 700 }}>Sections</div>
+                      <div style={{ fontSize: "0.72rem", opacity: 0.85 }}>
+                        {availableSectionsForCurrentExam.length > 0 ? `${availableSectionsForCurrentExam.length} Section(s) Free` : "No sections free"}
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 {!isExamStep1ResourcesAvailable && (
@@ -2817,31 +2793,31 @@ export function ExamSchedulesPage() {
                       display: "flex",
                       alignItems: "flex-start",
                       gap: 8,
-                      padding: "8px 12px",
+                      padding: "10px 14px",
                       background: "rgba(239, 68, 68, 0.08)",
                       border: "1px solid rgba(239, 68, 68, 0.25)",
-                      borderRadius: 6,
+                      borderRadius: 8,
                       color: "#dc2626",
                       fontSize: "0.8rem",
                       fontWeight: 600,
                     }}
                   >
-                    <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 2 }} />
-                    <div>
+                    <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                       {isProgramHead && !isOfficialDateConfiguredForTerm && (
-                        <div>{form.term} examination date has not yet been configured by the Admin.</div>
+                        <div>• {form.term} examination date has not yet been configured by the Admin.</div>
                       )}
                       {isProgramHead && isOfficialDateConfiguredForTerm && !isFormDateMatchingOfficial && (
-                        <div>{form.term} examinations are officially scheduled for {officialExamDates[form.term]}.</div>
+                        <div>• {form.term} examinations are officially scheduled for {officialExamDates[form.term]}.</div>
                       )}
                       {availableSectionsForCurrentExam.length === 0 && (
-                        <div>No available sections taking {form.subjectCode} at this time. All matching sections have overlapping schedules.</div>
+                        <div>• No available sections taking {form.subjectCode} at this time. All matching sections have overlapping schedules.</div>
                       )}
                       {availableProctorsForStep1.length === 0 && (
-                        <div>No available proctors for this schedule. All qualified faculty are assigned to other examinations at this time.</div>
+                        <div>• No available proctors for this schedule. All qualified faculty are assigned to other examinations at this time.</div>
                       )}
                       {availableRoomsForStep1.length === 0 && (
-                        <div>No available rooms for this schedule. All classrooms/labs are occupied for exams at {form.examDate} {form.time}.</div>
+                        <div>• No available rooms for this schedule. All classrooms/labs are occupied for exams at {form.examDate} {form.time}.</div>
                       )}
                       <div style={{ fontSize: "0.74rem", fontWeight: 400, marginTop: 4, color: "var(--srcb-text-muted)" }}>
                         Please adjust the Examination Date or Time Slot to proceed to resource assignment.
@@ -2886,412 +2862,572 @@ export function ExamSchedulesPage() {
           </div>
         )}
 
-        {/* STEP 2: Resource Assignment */}
-        {modalStep === 2 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {/* Context Summary Bar */}
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-                flexWrap: "wrap",
-                background: "var(--srcb-surface)",
-                border: "1px solid var(--srcb-border)",
-                borderRadius: 8,
-                padding: "10px 14px",
-                fontSize: "0.82rem",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <BookOpen size={14} color="var(--srcb-navy)" />
-                <strong>Subject:</strong> <span>{form.subjectCode} - {form.subject}</span>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <Calendar size={14} color="var(--srcb-navy)" />
-                <strong>Official Date &amp; Time:</strong> <span>{form.examDate} • {form.time}</span>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <Layers size={14} color="var(--srcb-navy)" />
-                <strong>Term:</strong> <span>{form.term} Exam</span>
-              </div>
-            </div>
+        {/* STEP 2: Enhanced Resource Assignment */}
+        {modalStep === 2 && (() => {
+          // Calculate Cohort Allocation Statistics
+          const allAssignedSectionNames = Array.from(new Set(form.assignments.flatMap((a) => a.sections)));
+          const assignedSectionsCount = availableSectionsForCurrentExam.filter((sec) => {
+            const secLabel = sec.course && sec.section ? `${sec.course} ${sec.yearLevel || ""}-${sec.section}`.trim() : sec.section;
+            return allAssignedSectionNames.includes(secLabel) || allAssignedSectionNames.includes(sec.section);
+          }).length;
+          const unassignedCount = Math.max(0, availableSectionsForCurrentExam.length - assignedSectionsCount);
 
-            {/* List of Resource Assignments */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {form.assignments.map((assignment, idx) => {
-                const availableProctors = getAvailableProctorsForAssignment(idx);
-                const availableRooms = getAvailableRoomsForAssignment(idx);
+          // Validation issues across assignments
+          const assignmentValidationErrors: string[] = [];
+          form.assignments.forEach((a, aIdx) => {
+            const rowNum = aIdx + 1;
+            if (!a.room) assignmentValidationErrors.push(`Assignment #${rowNum}: Please select an Examination Room.`);
+            if (!a.proctor) assignmentValidationErrors.push(`Assignment #${rowNum}: Please select a Proctor.`);
+            if (a.sections.length === 0) assignmentValidationErrors.push(`Assignment #${rowNum}: Please select at least one student section.`);
 
-                const proctorOptions: SearchableOption[] = availableProctors.map((f) => ({
-                  value: f.id,
-                  label: f.name,
-                  sublabel: `${f.department || "Academic Faculty"} • ${f.status}`,
-                  badge: f.status,
-                  badgeTone: f.status === "Full-Time" ? "emerald" : "amber",
-                  searchKeywords: [f.name, f.department || "", f.status || "", f.id],
-                }));
+            const studentsCount = a.sections.reduce((sum, secName) => {
+              const sObj = sectionsList.find((s) => s.section === secName || (s.course && `${s.course} ${s.yearLevel || ""}-${s.section}`.trim() === secName) || secName.includes(s.section));
+              return sum + Number(sObj?.students || 35);
+            }, 0);
+            const assignedRoom = roomsList.find((r) => r.number === a.room);
+            if (assignedRoom && studentsCount > 0 && Number(assignedRoom.capacity) < studentsCount) {
+              assignmentValidationErrors.push(
+                `Assignment #${rowNum}: Room ${a.room} capacity (${assignedRoom.capacity}) is smaller than headcount (${studentsCount} students).`
+              );
+            }
+          });
 
-                const roomOptions: SearchableOption[] = availableRooms.map((r) => ({
-                  value: r.number,
-                  label: `${r.number} - ${r.building}`,
-                  sublabel: `${r.type} • Capacity: ${r.capacity} seats`,
-                  badge: `Cap: ${r.capacity}`,
-                  badgeTone: "slate",
-                  searchKeywords: [r.number, r.building, r.type],
-                }));
+          const isAllAssignmentsValid = assignmentValidationErrors.length === 0 && form.assignments.length > 0;
 
-                return (
-                  <div
-                    key={idx}
-                    style={{
-                      padding: 16,
-                      borderRadius: 8,
-                      border: "1px solid var(--srcb-border)",
-                      background: "var(--srcb-surface)",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 12,
-                    }}
+          return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {/* Context Summary Banner */}
+              <div className="sched-context-banner">
+                <div className="sched-context-tags">
+                  <div className="sched-context-item">
+                    <BookOpen size={15} color="var(--srcb-royal)" />
+                    <strong>Subject:</strong> <span>{form.subjectCode} — {form.subject}</span>
+                  </div>
+                  <div className="sched-context-item">
+                    <Calendar size={15} color="var(--srcb-royal)" />
+                    <strong>Official Schedule:</strong> <span>{form.examDate} • {form.time}</span>
+                  </div>
+                  <div className="sched-context-item">
+                    <Layers size={15} color="var(--srcb-royal)" />
+                    <span className="pill pill--royal" style={{ fontSize: "0.72rem", padding: "2px 8px" }}>
+                      {form.term} Examination
+                    </span>
+                  </div>
+                </div>
+                {!isAddingToExistingSession && !editingExam && (
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => setModalStep(1)}
+                    style={{ padding: "4px 10px", fontSize: "0.76rem" }}
                   >
-                    {/* Assignment Header */}
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span className="pill pill--navy" style={{ fontWeight: 700 }}>
-                          Assignment #{idx + 1}
-                        </span>
-                        {assignment.program && (
-                          <span className="pill" style={{ fontWeight: 600 }}>
-                            {assignment.program}
+                    <Edit2 size={12} />
+                    <span>Edit Date / Time</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Global Section Allocation Tracker */}
+              <div className="exam-allocation-tracker">
+                <div className="exam-allocation-stats">
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, color: "var(--srcb-navy)" }}>
+                    <Users size={16} color="var(--srcb-royal)" />
+                    <span>Section Allocation Progress:</span>
+                  </div>
+                  <span
+                    className={`pill ${unassignedCount === 0 ? "pill--emerald" : "pill--amber"}`}
+                    style={{ fontSize: "0.76rem", fontWeight: 700 }}
+                  >
+                    {unassignedCount === 0
+                      ? `✓ All ${availableSectionsForCurrentExam.length} Sections Allocated`
+                      : `⚠ ${assignedSectionsCount} of ${availableSectionsForCurrentExam.length} Sections Allocated (${unassignedCount} Remaining)`}
+                  </span>
+                </div>
+                <div style={{ fontSize: "0.78rem", color: "var(--srcb-text-muted)" }}>
+                  Configuring <strong>{form.assignments.length}</strong> Room Assignment{form.assignments.length !== 1 ? "s" : ""}
+                </div>
+              </div>
+
+              {/* List of Assignment Cards */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {form.assignments.map((assignment, idx) => {
+                  const availableProctors = getAvailableProctorsForAssignment(idx);
+                  const availableRooms = getAvailableRoomsForAssignment(idx);
+
+                  const proctorOptions: SearchableOption[] = availableProctors.map((f) => ({
+                    value: f.id,
+                    label: f.name,
+                    sublabel: `${f.department || "Academic Faculty"} • ${f.status}`,
+                    badge: f.status,
+                    badgeTone: f.status === "Full-Time" ? "emerald" : "amber",
+                    searchKeywords: [f.name, f.department || "", f.status || "", f.id],
+                  }));
+
+                  const roomOptions: SearchableOption[] = availableRooms.map((r) => ({
+                    value: r.number,
+                    label: `${r.number} - ${r.building}`,
+                    sublabel: `${r.type} • Capacity: ${r.capacity} seats`,
+                    badge: `Cap: ${r.capacity}`,
+                    badgeTone: "slate",
+                    searchKeywords: [r.number, r.building, r.type],
+                  }));
+
+                  // Capacity calculations for this specific assignment
+                  const totalStudentsInAssignment = assignment.sections.reduce((sum, secName) => {
+                    const sObj = sectionsList.find(
+                      (s) =>
+                        s.section === secName ||
+                        (s.course && `${s.course} ${s.yearLevel || ""}-${s.section}`.trim() === secName) ||
+                        secName.includes(s.section)
+                    );
+                    return sum + Number(sObj?.students || 35);
+                  }, 0);
+
+                  const assignedRoomObj = roomsList.find((r) => r.number === assignment.room);
+                  const roomCapacity = Number(assignedRoomObj?.capacity || 0);
+                  const isTooSmall = Boolean(assignment.room && assignedRoomObj && totalStudentsInAssignment > 0 && roomCapacity < totalStudentsInAssignment);
+                  const remainingSeats = roomCapacity - totalStudentsInAssignment;
+                  const capacityPercent = roomCapacity > 0 ? Math.min(100, Math.round((totalStudentsInAssignment / roomCapacity) * 100)) : 0;
+
+                  return (
+                    <div key={idx} className="exam-assignment-card">
+                      {/* Assignment Card Header */}
+                      <div className="exam-assignment-card-header">
+                        <div className="exam-assignment-header-left">
+                          <span className="pill pill--navy" style={{ fontWeight: 800 }}>
+                            Assignment #{idx + 1}
                           </span>
-                        )}
-                        <span style={{ fontSize: "0.78rem", color: "var(--srcb-text-muted)" }}>
-                          ({assignment.sections.length} section{assignment.sections.length !== 1 ? "s" : ""} selected)
-                        </span>
-                      </div>
-                      {form.assignments.length > 1 && !editingExam && (
-                        <button
-                          type="button"
-                          className="secondary-button"
-                          style={{ padding: "4px 8px", fontSize: "0.74rem", color: "#dc2626" }}
-                          onClick={() => handleRemoveAssignmentRow(idx)}
-                        >
-                          <Trash2 size={13} />
-                          Remove
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Section Selection */}
-                    <div className="field-group">
-                      <label style={{ marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span>
-                          Available Sections for this Assignment <span style={{ color: "#dc2626" }}>*</span>
-                        </span>
-                        <span style={{ fontSize: "0.75rem", color: "var(--srcb-text-muted)" }}>
-                          Select sections (e.g. CRIM, ITP, HMP, EDUC, BSBA)
-                        </span>
-                      </label>
-
-                      {availableSectionsForCurrentExam.length === 0 ? (
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            padding: "8px 12px",
-                            background: "rgba(239, 68, 68, 0.08)",
-                            borderRadius: 6,
-                            color: "#dc2626",
-                            fontSize: "0.8rem",
-                            fontWeight: 600,
-                          }}
-                        >
-                          <AlertTriangle size={14} />
-                          <span>No available sections taking {form.subjectCode} at this time.</span>
+                          {assignment.room && (
+                            <span className="pill pill--blue" style={{ fontSize: "0.74rem", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                              <DoorOpen size={12} />
+                              <span>Room {assignment.room}</span>
+                            </span>
+                          )}
+                          {assignment.proctor && (
+                            <span className="pill pill--slate" style={{ fontSize: "0.74rem", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                              <UserCheck size={12} />
+                              <span>Proctor: {assignment.proctor.split(" ")[0]}</span>
+                            </span>
+                          )}
                         </div>
-                      ) : (
-                        <div
-                          style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 12,
-                            background: "var(--srcb-surface-elevated, #ffffff)",
-                            padding: 12,
-                            borderRadius: 6,
-                            border: "1px solid var(--srcb-border)",
-                            maxHeight: 240,
-                            overflowY: "auto",
-                          }}
-                        >
-                          {sectionsGroupedByProgram.map(({ program, sections }) => (
-                            <div key={program} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          {/* Live Capacity Badge in Header */}
+                          {assignedRoomObj ? (
+                            <span
+                              className={`pill ${isTooSmall ? "pill--danger" : "pill--emerald"}`}
+                              style={{ fontSize: "0.74rem", fontWeight: 700 }}
+                            >
+                              {isTooSmall
+                                ? `⚠ Over Capacity (${totalStudentsInAssignment} / ${roomCapacity} seats)`
+                                : `✓ ${totalStudentsInAssignment} / ${roomCapacity} seats (${remainingSeats} seats available)`}
+                            </span>
+                          ) : (
+                            <span className="pill pill--slate" style={{ fontSize: "0.74rem" }}>
+                              {totalStudentsInAssignment} students selected
+                            </span>
+                          )}
+
+                          {form.assignments.length > 1 && !editingExam && (
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              style={{ padding: "3px 8px", fontSize: "0.74rem", color: "#dc2626" }}
+                              onClick={() => handleRemoveAssignmentRow(idx)}
+                              title="Remove this room assignment"
+                            >
+                              <Trash2 size={13} />
+                              <span>Remove</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Assignment Card Body */}
+                      <div className="exam-assignment-body">
+                        {/* Row 1: Venue & Proctor Selects */}
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
+                          {/* Proctor Select */}
+                          <div className="field-group" style={{ margin: 0 }}>
+                            <label htmlFor={`assign-proctor-${idx}`}>
+                              Teacher / Exam Proctor <span style={{ color: "#dc2626" }}>*</span>
+                            </label>
+                            {availableProctors.length === 0 ? (
+                              <div
+                                style={{
+                                  padding: "8px 12px",
+                                  background: "rgba(239, 68, 68, 0.08)",
+                                  border: "1px solid rgba(239, 68, 68, 0.25)",
+                                  borderRadius: 6,
+                                  color: "#dc2626",
+                                  fontSize: "0.8rem",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                No available proctors for this timeslot.
+                              </div>
+                            ) : (
+                              <SearchableSelect
+                                id={`assign-proctor-${idx}`}
+                                value={assignment.proctorId}
+                                onChange={(val) => handleAssignmentProctorChange(idx, val)}
+                                options={proctorOptions}
+                                placeholder="Select available proctor..."
+                                searchPlaceholder="Search faculty by name, status..."
+                                emptyText="No matching proctors found"
+                              />
+                            )}
+                          </div>
+
+                          {/* Room Select */}
+                          <div className="field-group" style={{ margin: 0 }}>
+                            <label htmlFor={`assign-room-${idx}`}>
+                              Assigned Room &amp; Venue <span style={{ color: "#dc2626" }}>*</span>
+                            </label>
+                            {availableRooms.length === 0 ? (
+                              <div
+                                style={{
+                                  padding: "8px 12px",
+                                  background: "rgba(239, 68, 68, 0.08)",
+                                  border: "1px solid rgba(239, 68, 68, 0.25)",
+                                  borderRadius: 6,
+                                  color: "#dc2626",
+                                  fontSize: "0.8rem",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                No available rooms for this timeslot.
+                              </div>
+                            ) : (
+                              <SearchableSelect
+                                id={`assign-room-${idx}`}
+                                value={assignment.room}
+                                onChange={(val) => handleAssignmentRoomChange(idx, val)}
+                                options={roomOptions}
+                                placeholder="Select available room..."
+                                searchPlaceholder="Search room by number, building..."
+                                emptyText="No matching rooms found"
+                              />
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Row 2: Live Room Capacity Health Meter */}
+                        {assignedRoomObj && (
+                          <div className="exam-capacity-bar-wrap">
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.76rem" }}>
+                              <span style={{ fontWeight: 600, color: "var(--srcb-text)" }}>
+                                Room {assignment.room} Capacity Meter ({assignedRoomObj.type || "Classroom"}):
+                              </span>
+                              <span style={{ fontWeight: 700, color: isTooSmall ? "#dc2626" : "var(--srcb-navy)" }}>
+                                {totalStudentsInAssignment} / {roomCapacity} seats ({capacityPercent}%)
+                              </span>
+                            </div>
+
+                            <div className="exam-capacity-bar-track">
+                              <div
+                                className="exam-capacity-bar-fill"
+                                style={{
+                                  width: `${Math.min(100, capacityPercent)}%`,
+                                  background: isTooSmall
+                                    ? "#ef4444"
+                                    : capacityPercent > 85
+                                      ? "#f59e0b"
+                                      : "#10b981",
+                                }}
+                              />
+                            </div>
+
+                            {isTooSmall && (
                               <div
                                 style={{
                                   display: "flex",
-                                  justifyContent: "space-between",
                                   alignItems: "center",
-                                  background: "var(--srcb-surface)",
-                                  padding: "4px 8px",
-                                  borderRadius: 4,
+                                  gap: 6,
+                                  color: "#dc2626",
+                                  fontSize: "0.75rem",
+                                  fontWeight: 600,
+                                  marginTop: 2,
                                 }}
                               >
-                                <span style={{ fontSize: "0.76rem", fontWeight: 700, color: "var(--srcb-navy)" }}>
-                                  {program} Cohort
+                                <AlertTriangle size={13} style={{ flexShrink: 0 }} />
+                                <span>
+                                  ⚠ Headcount exceeds capacity by {totalStudentsInAssignment - roomCapacity} students. Choose a larger room or add another assignment below.
                                 </span>
-                                <button
-                                  type="button"
-                                  className="secondary-button"
-                                  style={{ padding: "2px 8px", fontSize: "0.68rem", fontWeight: 600 }}
-                                  onClick={() => handleAssignAllProgramSections(idx, program, sections)}
-                                >
-                                  + Assign All {program} Sections
-                                </button>
                               </div>
+                            )}
+                          </div>
+                        )}
 
-                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 6 }}>
-                                {sections.map((sec) => {
-                                  const secLabel =
-                                    sec.course && sec.section
-                                      ? `${sec.course} ${sec.yearLevel || ""}-${sec.section}`.trim()
-                                      : sec.section;
-                                  const isChecked =
-                                    assignment.sections.includes(sec.section) ||
-                                    assignment.sections.includes(secLabel);
+                        {/* Row 3: Section Cohorts Selector */}
+                        <div className="field-group" style={{ margin: 0 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                            <label style={{ margin: 0, fontWeight: 700, fontSize: "0.82rem" }}>
+                              Student Sections Assigned to Room {assignment.room || `#${idx + 1}`} <span style={{ color: "#dc2626" }}>*</span>
+                            </label>
+                            <span style={{ fontSize: "0.74rem", color: "var(--srcb-text-muted)" }}>
+                              {assignment.sections.length} section{assignment.sections.length !== 1 ? "s" : ""} selected ({totalStudentsInAssignment} students)
+                            </span>
+                          </div>
 
-                                  const assignedInOtherIdx = form.assignments.findIndex(
-                                    (a, aIdx) =>
-                                      aIdx !== idx &&
-                                      (a.sections.includes(sec.section) || a.sections.includes(secLabel))
-                                  );
-                                  const isAssignedInOther = assignedInOtherIdx !== -1;
-
-                                  return (
-                                    <label
-                                      key={sec.id || sec.section}
-                                      style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: 8,
-                                        padding: "6px 8px",
-                                        borderRadius: 4,
-                                        background: isChecked
-                                          ? "rgba(2, 132, 199, 0.1)"
-                                          : isAssignedInOther
-                                            ? "rgba(148, 163, 184, 0.1)"
-                                            : "var(--srcb-surface)",
-                                        border: `1px solid ${isChecked ? "var(--srcb-navy)" : "var(--srcb-border)"}`,
-                                        cursor: isAssignedInOther ? "not-allowed" : "pointer",
-                                        opacity: isAssignedInOther ? 0.5 : 1,
-                                      }}
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        checked={isChecked}
-                                        disabled={isAssignedInOther}
-                                        onChange={() =>
-                                          handleToggleSectionInAssignment(
-                                            idx,
-                                            secLabel,
-                                            sec.course || sec.program
-                                          )
-                                        }
-                                      />
-                                      <div style={{ fontSize: "0.78rem" }}>
-                                        <strong>{secLabel}</strong>
-                                        <span style={{ display: "block", fontSize: "0.7rem", color: "var(--srcb-text-muted)" }}>
-                                          {sec.students || 30} students
-                                          {isAssignedInOther && ` (In Assignment #${assignedInOtherIdx + 1})`}
-                                        </span>
-                                      </div>
-                                    </label>
-                                  );
-                                })}
-                              </div>
+                          {availableSectionsForCurrentExam.length === 0 ? (
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                                padding: "8px 12px",
+                                background: "rgba(239, 68, 68, 0.08)",
+                                borderRadius: 6,
+                                color: "#dc2626",
+                                fontSize: "0.8rem",
+                                fontWeight: 600,
+                              }}
+                            >
+                              <AlertTriangle size={14} />
+                              <span>No available sections taking {form.subjectCode} at this time.</span>
                             </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                          ) : (
+                            <div
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 10,
+                                background: "var(--srcb-surface-alt, #f8fafc)",
+                                padding: 12,
+                                borderRadius: 8,
+                                border: "1px solid var(--srcb-border)",
+                                maxHeight: 220,
+                                overflowY: "auto",
+                              }}
+                            >
+                              {sectionsGroupedByProgram.map(({ program, sections }) => (
+                                <div key={program} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      justifyContent: "space-between",
+                                      alignItems: "center",
+                                      background: "var(--srcb-surface)",
+                                      padding: "4px 8px",
+                                      borderRadius: 6,
+                                      border: "1px solid var(--srcb-border-subtle, rgba(0,0,0,0.05))",
+                                    }}
+                                  >
+                                    <span style={{ fontSize: "0.76rem", fontWeight: 700, color: "var(--srcb-navy)" }}>
+                                      {program} Program Cohort
+                                    </span>
+                                    <button
+                                      type="button"
+                                      className="secondary-button"
+                                      style={{ padding: "2px 8px", fontSize: "0.68rem", fontWeight: 600 }}
+                                      onClick={() => handleAssignAllProgramSections(idx, program, sections)}
+                                    >
+                                      + Assign All {program} Sections
+                                    </button>
+                                  </div>
 
-                    {/* Room and Proctor Inputs */}
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
-                      <div className="field-group">
-                        <label htmlFor={`assign-proctor-${idx}`}>
-                          Teacher / Exam Proctor <span style={{ color: "#dc2626" }}>*</span>
-                        </label>
-                        {availableProctors.length === 0 ? (
-                          <div
-                            style={{
-                              padding: "8px 12px",
-                              background: "rgba(239, 68, 68, 0.08)",
-                              borderRadius: 6,
-                              color: "#dc2626",
-                              fontSize: "0.8rem",
-                              fontWeight: 600,
-                            }}
-                          >
-                            No available proctor for this slot.
-                          </div>
-                        ) : (
-                          <SearchableSelect
-                            id={`assign-proctor-${idx}`}
-                            value={assignment.proctorId}
-                            onChange={(val) => handleAssignmentProctorChange(idx, val)}
-                            options={proctorOptions}
-                            placeholder="Select available proctor..."
-                            searchPlaceholder="Search faculty by name..."
-                            emptyText="No matching proctors found"
-                          />
-                        )}
-                      </div>
+                                  <div className="exam-section-chip-grid">
+                                    {sections.map((sec) => {
+                                      const secLabel =
+                                        sec.course && sec.section
+                                          ? `${sec.course} ${sec.yearLevel || ""}-${sec.section}`.trim()
+                                          : sec.section;
+                                      const isChecked =
+                                        assignment.sections.includes(sec.section) ||
+                                        assignment.sections.includes(secLabel);
 
-                      <div className="field-group">
-                        <label htmlFor={`assign-room-${idx}`}>
-                          Assigned Room &amp; Venue <span style={{ color: "#dc2626" }}>*</span>
-                        </label>
-                        {availableRooms.length === 0 ? (
-                          <div
-                            style={{
-                              padding: "8px 12px",
-                              background: "rgba(239, 68, 68, 0.08)",
-                              borderRadius: 6,
-                              color: "#dc2626",
-                              fontSize: "0.8rem",
-                              fontWeight: 600,
-                            }}
-                          >
-                            No available room for this slot.
-                          </div>
-                        ) : (
-                          <>
-                            <SearchableSelect
-                              id={`assign-room-${idx}`}
-                              value={assignment.room}
-                              onChange={(val) => handleAssignmentRoomChange(idx, val)}
-                              options={roomOptions}
-                              placeholder="Select available room..."
-                              searchPlaceholder="Search room by number..."
-                              emptyText="No matching rooms found"
-                            />
-                            {(() => {
-                              const totalStudentsInAssignment = assignment.sections.reduce((sum, secName) => {
-                                const sObj = sectionsList.find((s) => s.section === secName || (s.course && `${s.course} ${s.yearLevel || ""}-${s.section}`.trim() === secName) || secName.includes(s.section));
-                                return sum + Number(sObj?.students || 35);
-                              }, 0);
-                              const assignedRoomObj = roomsList.find((r) => r.number === assignment.room);
-                              const isTooSmall = Boolean(assignment.room && assignedRoomObj && totalStudentsInAssignment > 0 && Number(assignedRoomObj.capacity) < totalStudentsInAssignment);
+                                      const assignedInOtherIdx = form.assignments.findIndex(
+                                        (a, aIdx) =>
+                                          aIdx !== idx &&
+                                          (a.sections.includes(sec.section) || a.sections.includes(secLabel))
+                                      );
+                                      const isAssignedInOther = assignedInOtherIdx !== -1;
+                                      const otherAssignment = isAssignedInOther ? form.assignments[assignedInOtherIdx] : null;
 
-                              if (!isTooSmall) return null;
-                              return (
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: 6,
-                                    padding: "6px 10px",
-                                    background: "rgba(239, 68, 68, 0.08)",
-                                    border: "1px solid rgba(239, 68, 68, 0.25)",
-                                    borderRadius: 6,
-                                    color: "#dc2626",
-                                    fontSize: "0.76rem",
-                                    fontWeight: 600,
-                                    marginTop: 4,
-                                  }}
-                                >
-                                  <AlertTriangle size={13} style={{ flexShrink: 0 }} />
-                                  <span>
-                                    ⚠ Room {assignment.room} capacity ({assignedRoomObj?.capacity}) is smaller than assigned sections headcount ({totalStudentsInAssignment}).
-                                  </span>
+                                      return (
+                                        <div
+                                          key={sec.id || sec.section}
+                                          className={`exam-section-chip ${isChecked ? "is-selected" : ""} ${isAssignedInOther ? "is-disabled" : ""}`}
+                                          onClick={() => {
+                                            if (!isAssignedInOther) {
+                                              handleToggleSectionInAssignment(idx, secLabel, sec.course || sec.program);
+                                            }
+                                          }}
+                                          title={
+                                            isAssignedInOther
+                                              ? `Assigned to Room ${otherAssignment?.room || `#${assignedInOtherIdx + 1}`}`
+                                              : `Click to ${isChecked ? "remove" : "assign"} ${secLabel}`
+                                          }
+                                        >
+                                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                            <input
+                                              type="checkbox"
+                                              checked={isChecked}
+                                              disabled={isAssignedInOther}
+                                              readOnly
+                                              style={{ cursor: isAssignedInOther ? "not-allowed" : "pointer" }}
+                                            />
+                                            <div>
+                                              <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--srcb-navy)" }}>
+                                                {secLabel}
+                                              </div>
+                                              <div style={{ fontSize: "0.7rem", color: "var(--srcb-text-muted)" }}>
+                                                {isAssignedInOther
+                                                  ? `Assigned in Room ${otherAssignment?.room || `#${assignedInOtherIdx + 1}`}`
+                                                  : `${sec.students || 35} students enrolled`}
+                                              </div>
+                                            </div>
+                                          </div>
+                                          <span className="pill pill--blue" style={{ fontSize: "0.68rem", padding: "1px 6px" }}>
+                                            {sec.students || 35} Seats
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
                                 </div>
-                              );
-                            })()}
-                          </>
-                        )}
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Add Another Room Assignment Button */}
+              {!editingExam && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    style={{
+                      alignSelf: "flex-start",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      fontWeight: 700,
+                      fontSize: "0.84rem",
+                      padding: "10px 16px",
+                      borderRadius: 8,
+                      borderColor: "var(--srcb-navy)",
+                      color: "var(--srcb-navy)",
+                      background: "var(--srcb-surface)",
+                    }}
+                    onClick={handleAddAssignmentRow}
+                  >
+                    <Plus size={16} />
+                    <span>+ Add Another Room &amp; Proctor Assignment</span>
+                  </button>
+                  <span style={{ fontSize: "0.75rem", color: "var(--srcb-text-muted)" }}>
+                    💡 Tip: If cohorts exceed a single classroom&apos;s capacity, split sections across multiple rooms with dedicated proctors.
+                  </span>
+                </div>
+              )}
+
+              {/* Validation Checklist / Conflict-Free Banner */}
+              <div style={{ marginTop: 6 }}>
+                {isAllAssignmentsValid ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "12px 16px",
+                      background: "rgba(16, 185, 129, 0.08)",
+                      borderRadius: 8,
+                      border: "1px solid rgba(16, 185, 129, 0.28)",
+                      color: "#059669",
+                      fontSize: "0.82rem",
+                      fontWeight: 600,
+                    }}
+                  >
+                    <ShieldCheck size={18} style={{ flexShrink: 0 }} />
+                    <span>
+                      All {form.assignments.length} examination room assignment(s) are conflict-free, verified within classroom capacity, and ready to schedule.
+                    </span>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      padding: 12,
+                      background: "rgba(239, 68, 68, 0.08)",
+                      borderRadius: 8,
+                      border: "1px solid rgba(239, 68, 68, 0.25)",
+                      borderLeft: "4px solid #dc2626",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, color: "#dc2626", fontSize: "0.84rem" }}>
+                      <AlertTriangle size={15} />
+                      <span>Please resolve the following items to save the exam schedule:</span>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 6 }}>
+                      {assignmentValidationErrors.map((err, i) => (
+                        <div key={i} style={{ fontSize: "0.78rem", color: "var(--srcb-text)" }}>
+                          • {err}
+                        </div>
+                      ))}
                     </div>
                   </div>
-                );
-              })}
-            </div>
+                )}
+              </div>
 
-            {!editingExam && (
-              <button
-                type="button"
-                className="secondary-button"
-                style={{
-                  alignSelf: "flex-start",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  fontWeight: 600,
-                  fontSize: "0.82rem",
-                  borderColor: "var(--srcb-navy)",
-                  color: "var(--srcb-navy)",
-                }}
-                onClick={handleAddAssignmentRow}
-              >
-                <Plus size={15} />
-                <span>+ Add Another Program / Room Assignment</span>
-              </button>
-            )}
-
-            {/* Modal Actions */}
-            <div className="table-actions" style={{ marginTop: 20 }}>
-              {!isAddingToExistingSession && !editingExam && (
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => setModalStep(1)}
-                >
-                  <ArrowLeft size={16} />
-                  <span>Back to Exam Details</span>
-                </button>
-              )}
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => {
-                  setIsOpen(false);
-                  setEditingExam(null);
-                  setIsAddingToExistingSession(false);
-                  setModalStep(1);
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="action-button"
-                disabled={
-                  loading ||
-                  form.assignments.some((a) => {
-                    if (!a.room || !a.proctor || a.sections.length === 0) return true;
-                    const totalStudentsInAssignment = a.sections.reduce((sum, secName) => {
-                      const sObj = sectionsList.find((s) => s.section === secName || (s.course && `${s.course} ${s.yearLevel || ""}-${s.section}`.trim() === secName) || secName.includes(s.section));
-                      return sum + Number(sObj?.students || 35);
-                    }, 0);
-                    const assignedRoomObj = roomsList.find((r) => r.number === a.room);
-                    return Boolean(assignedRoomObj && totalStudentsInAssignment > 0 && Number(assignedRoomObj.capacity) < totalStudentsInAssignment);
-                  })
-                }
-                onClick={handleSave}
-              >
-                <CheckCircle2 size={16} />
-                <span>
-                  {loading
-                    ? "Saving…"
-                    : editingExam
-                      ? "Update Assignment"
-                      : isAddingToExistingSession
-                        ? "Add Assignment to Exam"
-                        : form.assignments.length > 1
-                          ? `Save All ${form.assignments.length} Assignments`
-                          : "Save Examination Schedule"}
-                </span>
-              </button>
+              {/* Modal Actions */}
+              <div className="table-actions" style={{ marginTop: 12, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+                {!isAddingToExistingSession && !editingExam && (
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => setModalStep(1)}
+                  >
+                    <ArrowLeft size={16} />
+                    <span>Back to Exam Details</span>
+                  </button>
+                )}
+                <div style={{ display: "flex", gap: 10, marginLeft: "auto" }}>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => {
+                      setIsOpen(false);
+                      setEditingExam(null);
+                      setIsAddingToExistingSession(false);
+                      setModalStep(1);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="action-button"
+                    disabled={loading || !isAllAssignmentsValid}
+                    style={{
+                      opacity: isAllAssignmentsValid ? 1 : 0.5,
+                      cursor: isAllAssignmentsValid ? "pointer" : "not-allowed",
+                    }}
+                    onClick={handleSave}
+                    title={!isAllAssignmentsValid ? "Complete all required room, proctor, and section assignments first" : "Save and publish examination schedule"}
+                  >
+                    <CheckCircle2 size={16} />
+                    <span>
+                      {loading
+                        ? "Saving…"
+                        : editingExam
+                          ? "Update Assignment"
+                          : isAddingToExistingSession
+                            ? "Add Assignment to Exam"
+                            : form.assignments.length > 1
+                              ? `Save All ${form.assignments.length} Room Assignments`
+                              : "Save Examination Schedule"}
+                    </span>
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </Modal>
 
       {/* ===================================================

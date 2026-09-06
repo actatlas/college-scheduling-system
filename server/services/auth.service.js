@@ -23,9 +23,24 @@ async function ensureCatalogSeed() {
     }
   }
 
-  const [program] = await query('SELECT code FROM programs WHERE code = ? LIMIT 1', ['ITP']);
-  if (!program) {
-    await query('INSERT INTO programs (code, name, focus) VALUES (?, ?, ?)', ['ITP', 'Information Technology Program', 'ITP']);
+  try {
+    await query("ALTER TABLE users ADD COLUMN program VARCHAR(50) DEFAULT NULL");
+  } catch (err) {
+    // ignore if already exists or unsupported
+  }
+
+  const standardPrograms = [
+    ['BAP', 'Business Administration Program', 'BAP Focus'],
+    ['ITP', 'Information Technology Program', 'ITP Focus'],
+    ['CJEP', 'Criminal Justice Education Program', 'CJEP Focus'],
+    ['TEP', 'Teacher Education Program', 'TEP Focus'],
+    ['HMP', 'Hospitality Management Program', 'HMP Focus'],
+  ];
+  for (const [pCode, pName, pFocus] of standardPrograms) {
+    const [existingProg] = await query('SELECT code FROM programs WHERE code = ? LIMIT 1', [pCode]);
+    if (!existingProg) {
+      await query('INSERT INTO programs (code, name, focus) VALUES (?, ?, ?)', [pCode, pName, pFocus]);
+    }
   }
 
   const [semester] = await query('SELECT id FROM semesters WHERE name = ? LIMIT 1', ['1st Semester']);
@@ -38,20 +53,6 @@ async function ensureCatalogSeed() {
     await query('INSERT INTO academic_years (name, is_active) VALUES (?, ?)', ['2026-2027', true]);
   }
 
-  const [course] = await query('SELECT code FROM courses WHERE code = ? LIMIT 1', ['BSCS']);
-  if (!course) {
-    await query('INSERT INTO courses (code, name, program_code, year_duration) VALUES (?, ?, ?, ?)', ['BSCS', 'Bachelor of Science in Computer Science', 'ITP', 4]);
-  }
-
-  const [section] = await query('SELECT id FROM sections WHERE course_code = ? AND section_label = ? LIMIT 1', ['BSCS', 'A']);
-  if (!section) {
-    const [semesterRow] = await query('SELECT id FROM semesters WHERE name = ? LIMIT 1', ['1st Semester']);
-    const [yearRow] = await query('SELECT id FROM academic_years WHERE name = ? LIMIT 1', ['2026-2027']);
-    await query(
-      'INSERT INTO sections (course_code, year_level, section_label, adviser_id, students, semester_id, academic_year_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      ['BSCS', 1, 'A', null, 30, semesterRow?.id || 1, yearRow?.id || 1]
-    );
-  }
 }
 
 async function ensureDefaultUsers() {
@@ -250,13 +251,13 @@ async function login({ email, password }) {
       [user.id]
     );
     if (majors && majors.length > 0) {
-      payload.program = majors[0].code || majors[0].program_code;
-      payload.programCode = majors[0].program_code;
+      payload.program = user.program || majors[0].code || majors[0].program_code;
+      payload.programCode = user.program || majors[0].program_code;
       payload.programs = majors.map((m) => m.code);
     } else {
-      payload.program = 'BSIT';
-      payload.programCode = 'ITP';
-      payload.programs = ['BSIT'];
+      payload.program = user.program || 'ITP';
+      payload.programCode = user.program || 'ITP';
+      payload.programs = [user.program || 'ITP'];
     }
   }
 

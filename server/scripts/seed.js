@@ -45,13 +45,13 @@ async function run() {
     const teacherHash = await bcrypt.hash('@teacher123', 10);
     const [teacherUser] = await conn.query('INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, "teacher")', ['Maria Santos', teacherEmail, teacherHash]);
 
-    // 5. Programs (ITP, BSA, CJEP, HMP, TEP)
+    // 5. Programs (BAP, ITP, CJEP, TEP, HMP)
     const programsList = [
+      ['BAP', 'Business Administration Program', 'BAP Focus'],
       ['ITP', 'Information Technology Program', 'ITP Focus'],
-      ['BSA', 'Business Administration', 'BSA Focus'],
       ['CJEP', 'Criminal Justice Education Program', 'CJEP Focus'],
-      ['HMP', 'Hospitality Management Program', 'HMP Focus'],
-      ['TEP', 'Teacher Education Program', 'TEP Focus']
+      ['TEP', 'Teacher Education Program', 'TEP Focus'],
+      ['HMP', 'Hospitality Management Program', 'HMP Focus']
     ];
     for (const [code, name, focus] of programsList) {
       await conn.query('INSERT INTO programs (code, name, focus) VALUES (?, ?, ?)', [code, name, focus]);
@@ -59,7 +59,7 @@ async function run() {
 
     // 6. Program majors
     await conn.query('INSERT INTO program_majors (code, name, program_code, program_head_id) VALUES (?, ?, ?, ?)', ['BSIT', 'Bachelor of Science in Information Technology', 'ITP', programHeadUser.insertId]);
-    await conn.query('INSERT INTO program_majors (code, name, program_code, program_head_id) VALUES (?, ?, ?, ?)', ['BSBA', 'Bachelor of Science in Business Administration', 'BSA', programHeadUser.insertId]);
+    await conn.query('INSERT INTO program_majors (code, name, program_code, program_head_id) VALUES (?, ?, ?, ?)', ['BSBA', 'Bachelor of Science in Business Administration', 'BAP', programHeadUser.insertId]);
 
     // 7. Year levels
     const [majorIT] = await conn.query('SELECT id FROM program_majors WHERE code = ? LIMIT 1', ['BSIT']);

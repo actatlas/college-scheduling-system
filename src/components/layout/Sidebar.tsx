@@ -226,7 +226,7 @@ export function Sidebar({ isMobileOpen = false, onClose }: SidebarProps) {
       </div>
 
       {/* Quick Action CTA Button */}
-      {role !== "teacher" && role !== "super_admin" && (
+      {role !== "teacher" && role !== "super_admin" && role !== "admin" && (
         <button
           className="sidebar__cta"
           type="button"

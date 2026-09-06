@@ -174,19 +174,63 @@
   margin-top: 12px;
 }
 
+/* Timetable Time Slot Column Cell */
+.timetable-time-slot-cell {
+  font-weight: 700;
+  font-size: 0.76rem;
+  color: var(--srcb-navy, #0f2c59);
+  background: #ffffff;
+  border-right: 2px solid var(--srcb-border, #cbd5e1);
+  border-bottom: 1px solid var(--srcb-border, #e2e8f0);
+  padding: 6px 8px;
+  white-space: nowrap;
+  vertical-align: middle;
+  user-select: none;
+  text-align: center;
+}
+
+.timetable-time-slot-cell.is-hour {
+  background: var(--srcb-surface-alt, #f1f5f9);
+}
+
+.timetable-time-slot-time {
+  font-weight: 800;
+  font-size: 0.8rem;
+  color: #475569;
+  transition: color 150ms ease;
+}
+
+.timetable-time-slot-cell.is-hour .timetable-time-slot-time {
+  color: var(--srcb-navy, #0f2c59);
+}
+
+.timetable-time-slot-range {
+  font-size: 0.68rem;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
 /* Draggable Weekly Schedule Grid Cells */
 .schedule-grid-cell {
   position: relative;
-  min-height: 65px;
-  padding: 6px;
+  min-height: 48px;
+  padding: 4px 6px;
   vertical-align: top;
-  transition: background 150ms ease;
+  border-right: 1px solid var(--srcb-border, #e2e8f0);
+  border-bottom: 1px solid var(--srcb-border, #e2e8f0);
+  transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  background: #ffffff;
+}
+
+.schedule-grid-cell:nth-child(even) {
+  background: #fafcff;
 }
 
 .schedule-grid-cell.drag-hover,
 .schedule-grid-cell.drag-target-hover {
-  background: #dbeafe !important;
+  background: #eff6ff !important;
   border: 2px dashed #2563eb !important;
+  box-shadow: inset 0 0 12px rgba(37, 99, 235, 0.15), 0 0 16px rgba(37, 99, 235, 0.12) !important;
   border-radius: 8px;
 }
 
@@ -196,11 +240,11 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  min-height: 48px;
+  min-height: 38px;
   border-radius: 6px;
-  border: 1.5px dashed transparent;
+  border: 1px dashed transparent;
   color: #94a3b8;
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   cursor: crosshair;
   transition: all 150ms ease;
   user-select: none;
@@ -208,105 +252,783 @@
 
 .schedule-empty-slot:hover {
   border-color: #93c5fd;
-  background: #f0f9ff;
-  color: var(--srcb-navy);
+  background: rgba(239, 246, 255, 0.7);
+  color: var(--srcb-royal, #0284c7);
 }
 
 .schedule-drag-hint {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 0.72rem;
-  color: #0284c7;
-  font-weight: 600;
+  gap: 5px;
+  font-size: 0.74rem;
+  color: #1d4ed8;
+  font-weight: 700;
+  background: #dbeafe;
+  padding: 3px 8px;
+  border-radius: 12px;
+  box-shadow: 0 2px 6px rgba(29, 78, 216, 0.15);
+  animation: pulse 1.6s infinite ease-in-out;
 }
 
-/* Drag and Drop Subject Drawer */
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.03); opacity: 0.85; }
+}
+
+/* Drag and Drop Subject Drawer / Tray */
 .dnd-tray-container {
-  margin-bottom: 16px;
-  border: 1px solid var(--srcb-border);
-  border-radius: 10px;
-  background: #ffffff;
-  padding: 14px 16px;
+  margin-bottom: 18px;
+  border: 1px solid var(--srcb-border, #e2e8f0);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  padding: 14px 18px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+  transition: all 200ms ease;
 }
 
 .dnd-tray-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .dnd-tray-title {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.88rem;
+  font-size: 0.92rem;
   font-weight: 700;
-  color: var(--srcb-navy);
+  color: var(--srcb-navy, #0f2c59);
 }
 
 .dnd-tray-scroll {
   display: flex;
   gap: 12px;
   overflow-x: auto;
-  padding-bottom: 6px;
+  padding: 4px 2px 10px 2px;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.dnd-tray-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.dnd-tray-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dnd-tray-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
 }
 
 .dnd-subject-card {
-  min-width: 175px;
-  max-width: 200px;
+  min-width: 190px;
+  max-width: 220px;
   padding: 10px 12px;
-  background: #f8fafc;
-  border: 1.5px solid #cbd5e1;
-  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-left: 4px solid var(--srcb-royal, #0284c7);
+  border-radius: 10px;
   cursor: grab;
-  transition: all 150ms ease;
+  transition: all 180ms cubic-bezier(0.4, 0, 0.2, 1);
   user-select: none;
   flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+  display: flex;
+  flex-direction: column;
+  justifyContent: space-between;
+  gap: 4px;
 }
 
 .dnd-subject-card:hover {
   background: #ffffff;
-  border-color: var(--srcb-navy);
-  box-shadow: 0 4px 12px rgba(15, 44, 89, 0.12);
-  transform: translateY(-2px);
+  border-color: var(--srcb-royal, #0284c7);
+  box-shadow: 0 8px 20px rgba(2, 132, 199, 0.15);
+  transform: translateY(-3px);
 }
 
 .dnd-subject-card:active {
   cursor: grabbing;
-  opacity: 0.6;
+  opacity: 0.75;
+  transform: scale(0.97);
 }
 
 .dnd-subject-code {
-  font-size: 0.82rem;
+  font-size: 0.86rem;
   font-weight: 800;
-  color: var(--srcb-navy);
-  margin-bottom: 2px;
+  color: var(--srcb-navy, #0f2c59);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .dnd-subject-name {
-  font-size: 0.76rem;
-  color: var(--srcb-text);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--srcb-text, #1e293b);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-bottom: 4px;
 }
 
 .dnd-subject-meta {
-  font-size: 0.7rem;
-  color: var(--srcb-text-muted);
+  font-size: 0.72rem;
+  color: var(--srcb-text-muted, #64748b);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
+/* Enhanced Draggable Schedule Card in Timetable */
 .schedule-card-draggable {
+  background: linear-gradient(135deg, #f8faff 0%, #ffffff 100%);
+  border-top: 1px solid #e2e8f0;
+  border-right: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05);
   cursor: grab;
   user-select: none;
+  transition: transform 180ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 180ms ease, opacity 150ms ease, border-color 150ms ease;
+}
+
+.schedule-card-draggable.is-online {
+  background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);
+}
+
+.schedule-card-draggable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12) !important;
 }
 
 .schedule-card-draggable:active {
   cursor: grabbing;
-  opacity: 0.6;
+  opacity: 0.7;
+  transform: scale(0.98);
 }
 
+.schedule-card-draggable .schedule-card-code {
+  color: var(--srcb-navy, #0f2c59);
+}
+
+.schedule-card-draggable .schedule-card-subject {
+  color: var(--srcb-text, #1e293b);
+}
+
+.schedule-card-draggable .schedule-card-meta {
+  color: var(--srcb-text-muted, #64748b);
+}
+
+.schedule-card-draggable .schedule-card-faculty {
+  color: var(--srcb-navy, #0f2c59);
+}
+
+.schedule-card-draggable .schedule-card-actions {
+  border-top: 1px dashed var(--srcb-border, #cbd5e1);
+}
+
+/* ===================================================
+   ENHANCED SCHEDULE CREATION & EDIT WIZARD FORM
+   =================================================== */
+
+/* Stepper Bar */
+.sched-wizard-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--srcb-surface-alt, #f8fafc);
+  border: 1px solid var(--srcb-border);
+  border-radius: 12px;
+  margin-bottom: 20px;
+  gap: 12px;
+}
+
+.sched-step-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.sched-step-btn:hover:not(:disabled) {
+  background: var(--srcb-surface, #ffffff);
+  border-color: var(--srcb-border);
+}
+
+.sched-step-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.sched-step-btn.is-active {
+  background: var(--srcb-navy, #0f2c59);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(15, 44, 89, 0.22);
+}
+
+.sched-step-circle {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.82rem;
+  font-weight: 800;
+  background: rgba(148, 163, 184, 0.2);
+  color: var(--srcb-text-muted, #64748b);
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.sched-step-btn.is-active .sched-step-circle {
+  background: #ffffff;
+  color: var(--srcb-navy, #0f2c59);
+}
+
+.sched-step-btn.is-completed .sched-step-circle {
+  background: #10b981;
+  color: #ffffff;
+}
+
+.sched-step-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.sched-step-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  opacity: 0.85;
+}
+
+.sched-step-btn.is-active .sched-step-label {
+  color: #93c5fd;
+}
+
+.sched-step-title {
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.sched-step-divider {
+  flex: 1;
+  height: 2px;
+  background: var(--srcb-border);
+  position: relative;
+  transition: background 0.3s ease;
+}
+
+.sched-step-divider.is-active {
+  background: linear-gradient(90deg, var(--srcb-navy, #0f2c59), #0284c7);
+}
+
+/* Card Containers for Form Sections */
+.sched-form-card {
+  background: var(--srcb-surface, #ffffff);
+  border: 1px solid var(--srcb-border);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
+  transition: border-color 0.2s ease;
+}
+
+.sched-form-card:hover {
+  border-color: rgba(2, 132, 199, 0.3);
+}
+
+.sched-form-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--srcb-border-subtle, rgba(0, 0, 0, 0.06));
+}
+
+.sched-form-card-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sched-form-card-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 132, 199, 0.1);
+  color: var(--srcb-royal, #0284c7);
+  flex-shrink: 0;
+}
+
+.sched-form-card-title {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--srcb-navy, #0f2c59);
+}
+
+.sched-form-card-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--srcb-text-muted);
+}
+
+/* Modality Picker Cards */
+.sched-modality-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.sched-modality-card {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1.5px solid var(--srcb-border);
+  background: var(--srcb-surface-alt, #f8fafc);
+  cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  transition: all 0.2s ease;
+  position: relative;
+  text-align: left;
+}
+
+.sched-modality-card:hover {
+  border-color: var(--srcb-royal, #0284c7);
+  background: var(--srcb-surface, #ffffff);
+  transform: translateY(-1px);
+}
+
+.sched-modality-card.is-selected {
+  border-color: var(--srcb-royal, #0284c7);
+  background: rgba(2, 132, 199, 0.06);
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.12);
+}
+
+.sched-modality-icon-wrap {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--srcb-text-muted);
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.sched-modality-card.is-selected .sched-modality-icon-wrap {
+  background: var(--srcb-royal, #0284c7);
+  color: #ffffff;
+}
+
+.sched-modality-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sched-modality-name {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--srcb-text);
+}
+
+.sched-modality-sub {
+  font-size: 0.74rem;
+  color: var(--srcb-text-muted);
+}
+
+/* Time Selector Segmented Tabs */
+.sched-segmented-tabs {
+  display: inline-flex;
+  background: var(--srcb-surface-alt, #f1f5f9);
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid var(--srcb-border);
+  gap: 3px;
+}
+
+.sched-segmented-tab {
+  padding: 4px 10px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--srcb-text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sched-segmented-tab.is-active {
+  background: #ffffff;
+  color: var(--srcb-navy, #0f2c59);
+  font-weight: 700;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+/* Duration Tag */
+.sched-duration-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  background: rgba(2, 132, 199, 0.1);
+  color: var(--srcb-royal, #0284c7);
+  border: 1px solid rgba(2, 132, 199, 0.2);
+}
+
+/* Readiness Check Grid */
+.sched-readiness-box {
+  background: var(--srcb-surface-alt, #f8fafc);
+  border: 1px solid var(--srcb-border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sched-readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.sched-readiness-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--srcb-border);
+  background: var(--srcb-surface, #ffffff);
+  font-size: 0.78rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.sched-readiness-pill.is-ok {
+  border-color: rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.06);
+  color: #059669;
+}
+
+.sched-readiness-pill.is-warning {
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.06);
+  color: #dc2626;
+}
+
+/* Step 2 Context Banner */
+.sched-context-banner {
+  background: linear-gradient(135deg, rgba(15, 44, 89, 0.05) 0%, rgba(2, 132, 199, 0.08) 100%);
+  border: 1px solid rgba(2, 132, 199, 0.25);
+  border-radius: 10px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.sched-context-tags {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.sched-context-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--srcb-text);
+}
+
+.sched-context-item strong {
+  color: var(--srcb-navy, #0f2c59);
+}
+
+/* ===================================================
+   EXAMINATION SCHEDULING: ENHANCED RESOURCE ASSIGNMENT
+   =================================================== */
+
+/* Overview / Unassigned Summary Tracker */
+.exam-allocation-tracker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--srcb-surface-alt, #f8fafc);
+  border: 1px solid var(--srcb-border);
+  border-radius: 10px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.exam-allocation-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+}
+
+.exam-assignment-card {
+  border: 1.5px solid var(--srcb-border);
+  border-radius: 12px;
+  background: var(--srcb-surface, #ffffff);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.2s ease;
+}
+
+.exam-assignment-card:hover {
+  border-color: rgba(2, 132, 199, 0.35);
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.08);
+}
+
+.exam-assignment-card-header {
+  padding: 12px 16px;
+  background: var(--srcb-surface-alt, #f8fafc);
+  border-bottom: 1px solid var(--srcb-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.exam-assignment-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.exam-assignment-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.exam-capacity-bar-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  background: var(--srcb-surface-alt, #f8fafc);
+  border-radius: 8px;
+  border: 1px solid var(--srcb-border-subtle, rgba(0, 0, 0, 0.06));
+}
+
+.exam-capacity-bar-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.2);
+  overflow: hidden;
+}
+
+.exam-capacity-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease, background 0.3s ease;
+}
+
+.exam-section-chip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+}
+
+.exam-section-chip {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1.5px solid var(--srcb-border);
+  background: var(--srcb-surface, #ffffff);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.exam-section-chip:hover:not(.is-disabled) {
+  border-color: var(--srcb-royal, #0284c7);
+  background: var(--srcb-surface-alt, #f8fafc);
+}
+
+.exam-section-chip.is-selected {
+  border-color: var(--srcb-royal, #0284c7);
+  background: rgba(2, 132, 199, 0.08);
+  font-weight: 700;
+}
+
+.exam-section-chip.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--srcb-surface-alt, rgba(148, 163, 184, 0.08));
+}
+
+/* ===================================================
+   STACKED ON TOP SCHEDULE CARDS IN TIMETABLE
+   =================================================== */
+
+.stacked-schedule-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.stacked-schedule-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 2px 4px;
+  margin-bottom: 4px;
+  user-select: none;
+}
+
+.stacked-pill-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  color: #1d4ed8;
+  background: #dbeafe;
+  border: 1px solid #bfdbfe;
+  padding: 1px 6px;
+  border-radius: 12px;
+  letter-spacing: 0.02em;
+}
+
+.stacked-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stacked-view-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: #ffffff;
+  border: 1px solid var(--srcb-border, #cbd5e1);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.64rem;
+  font-weight: 600;
+  color: var(--srcb-text-muted, #64748b);
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.stacked-view-toggle-btn:hover {
+  background: #f1f5f9;
+  color: var(--srcb-navy, #0f2c59);
+  border-color: var(--srcb-navy, #0f2c59);
+}
+
+.stacked-add-slot-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 5px;
+  font-size: 0.64rem;
+  font-weight: 700;
+  border-radius: 4px;
+  border: 1px solid #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.stacked-add-slot-btn:hover {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+}
+
+.stacked-cards-stack {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  flex: 1;
+}
+
+.stacked-card-wrapper {
+  position: relative;
+  width: 100%;
+  border-radius: 8px;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), margin-top 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+}
+
+/* When in stacked mode (cards overlap on top of each other) */
+.stacked-cards-stack.mode-stacked .stacked-card-wrapper:not(:first-child) {
+  margin-top: -46px;
+  box-shadow: 0 -4px 10px rgba(15, 23, 42, 0.08), 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+/* Hover fan-out in stacked mode */
+.stacked-cards-stack.mode-stacked:hover .stacked-card-wrapper:not(:first-child) {
+  margin-top: 6px;
+}
+
+/* In expanded mode (stacked top to bottom vertically) */
+.stacked-cards-stack.mode-expanded .stacked-card-wrapper:not(:first-child) {
+  margin-top: 6px;
+}
+
+.stacked-card-wrapper:hover {
+  z-index: 30 !important;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16) !important;
+}
+
+.stacked-card-wrapper.is-front {
+  z-index: 25 !important;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.14);
+}
 

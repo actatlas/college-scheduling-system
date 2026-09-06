@@ -331,7 +331,7 @@ export function LandingPage() {
               <div className="landing-about-role-icon">
                 <Calendar size={22} />
               </div>
-              <h4>Admin (Registrar &amp; Scheduler)</h4>
+              <h4>Admin (Dean of College &amp; Scheduler)</h4>
               <p>
                 Configures active academic terms, manages campus buildings and classrooms, maintains the master faculty directory, and authors conflict-free timetables.
               </p>

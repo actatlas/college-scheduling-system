@@ -5,6 +5,8 @@ import {
   parseTeacherAvailability,
   formatGroupedAvailability,
   validateScheduleSlot,
+  parseTimeToMinutes,
+  isTimeOverlapping,
 } from "./scheduling";
 import type { ClassScheduleItem } from "../types";
 
@@ -164,5 +166,20 @@ describe("Part-Time Teacher Availability Verification & Formatting", () => {
     const invalidDayResult = validateScheduleSlot(invalidDayCandidate, [], partTimeFaculty);
     expect(invalidDayResult.valid).toBe(false);
     expect(invalidDayResult.errors.some((e) => e.includes("has not registered availability for Wednesday"))).toBe(true);
+  });
+
+  it("correctly parses 7:00 AM as morning time and handles 30-minute intervals starting at 7am", () => {
+    expect(parseTimeToMinutes("07:00 AM")).toBe(420);
+    expect(parseTimeToMinutes("07:00")).toBe(420);
+    expect(parseTimeToMinutes("07:30 AM")).toBe(450);
+    expect(parseTimeToMinutes("07:30")).toBe(450);
+    expect(parseTimeToMinutes("07:00 PM")).toBe(1140);
+    expect(parseTimeToMinutes("08:00 AM")).toBe(480);
+
+    // 07:00 AM - 08:30 AM overlaps with 07:00 AM - 07:30 AM
+    expect(isTimeOverlapping("07:00 AM - 08:30 AM", "07:00 AM - 07:30 AM")).toBe(true);
+    expect(isTimeOverlapping("07:00 AM - 08:30 AM", "08:00 AM - 08:30 AM")).toBe(true);
+    // Does not overlap with 08:30 AM - 09:00 AM
+    expect(isTimeOverlapping("07:00 AM - 08:30 AM", "08:30 AM - 09:00 AM")).toBe(false);
   });
 });

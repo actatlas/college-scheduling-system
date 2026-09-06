@@ -42,12 +42,6 @@ async function deleteSubject(req, res, next) {
     await subjectsService.deleteSubject(code);
     res.status(204).end();
   } catch (err) {
-    if (err && (err.code === 'ER_ROW_IS_REFERENCED_2' || err.errno === 1451)) {
-      return res.status(409).json({
-        error: 'Cannot delete subject because it is currently assigned to class or examination schedules. Please remove or reassign those schedules first.',
-        code: 'ACADEMIC_DEPENDENCY_RESTRICT',
-      });
-    }
     next(err);
   }
 }

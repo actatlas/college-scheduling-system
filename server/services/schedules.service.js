@@ -2,21 +2,49 @@ const { query } = require('../utils/db');
 
 const VALID_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+const PROGRAM_COURSE_MAP = {
+  BSIT: ['BSIT', 'ITP', 'IT', 'INFORMATION TECHNOLOGY'],
+  ITP: ['BSIT', 'ITP', 'IT', 'INFORMATION TECHNOLOGY'],
+  BSBA: ['BSBA', 'BAP', 'BA', 'BUSINESS ADMINISTRATION'],
+  BAP: ['BSBA', 'BAP', 'BA', 'BUSINESS ADMINISTRATION'],
+  BSHM: ['BSHM', 'HMP', 'HM', 'HOSPITALITY MANAGEMENT'],
+  HMP: ['BSHM', 'HMP', 'HM', 'HOSPITALITY MANAGEMENT'],
+  BSCRIM: ['BSCRIM', 'CJEP', 'CRIM', 'CRIMINAL JUSTICE'],
+  CJEP: ['BSCRIM', 'CJEP', 'CRIM', 'CRIMINAL JUSTICE'],
+  TEP: ['TEP', 'BSED', 'BEED', 'EDUC', 'EDUCATION', 'TEACHER EDUCATION'],
+  BSED: ['TEP', 'BSED', 'BEED', 'EDUC', 'EDUCATION', 'TEACHER EDUCATION'],
+  BEED: ['TEP', 'BSED', 'BEED', 'EDUC', 'EDUCATION', 'TEACHER EDUCATION'],
+};
+
 function normalizeTime(value) {
   if (!value) return null;
   const str = String(value).trim();
-  if (/^\d{1,2}:\d{2}:\d{2}$/.test(str)) return str.slice(0, 5);
-  if (/^\d{1,2}:\d{2}$/.test(str)) return str.padStart(5, '0');
-  return `${str.padStart(2, '0')}:00`;
+  const isPM = /pm/i.test(str);
+  const isAM = /am/i.test(str);
+  const numbersPart = str.replace(/[^\d:]/g, '');
+  const parts = numbersPart.split(':');
+  let h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10) || 0;
+  const s = parseInt(parts[2], 10) || 0;
+  if (isNaN(h)) return null;
+
+  if (isPM) {
+    if (h < 12) h += 12;
+  } else if (isAM) {
+    if (h === 12) h = 0;
+  } else if (h >= 1 && h <= 6) {
+    h += 12;
+  }
+
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
 function toMinutes(value) {
   if (!value) return 0;
-  const parts = String(value).trim().split(':');
-  let hour = Number(parts[0]) || 0;
-  const minute = Number(parts[1]) || 0;
-  if (hour >= 1 && hour <= 7) hour += 12;
-  return hour * 60 + minute;
+  const normalized = normalizeTime(value);
+  if (!normalized) return 0;
+  const [h, m] = normalized.split(':').map(Number);
+  return h * 60 + m;
 }
 
 function timesOverlap(startA, endA, startB, endB) {
@@ -175,7 +203,12 @@ async function validateSchedulePayload({
   if (subjectRow && sectionRow) {
     const subProg = String(subjectRow.program_code || '').trim().toUpperCase();
     const secCourse = String(sectionRow.course_code || '').trim().toUpperCase();
-    if (subProg && secCourse && subProg !== secCourse && !secCourse.includes(subProg) && !subProg.includes(secCourse)) {
+    const isGeneralEd = !subProg || ['ALL', 'GEN ED', 'GENERAL EDUCATION', 'GENED'].includes(subProg);
+    const subAliases = PROGRAM_COURSE_MAP[subProg] || [subProg];
+    const secAliases = PROGRAM_COURSE_MAP[secCourse] || [secCourse];
+    const hasAliasMatch = isGeneralEd || secAliases.some((sa) => subAliases.some((sb) => sa === sb || sa.includes(sb) || sb.includes(sa)));
+
+    if (!hasAliasMatch && subProg && secCourse && subProg !== secCourse && !secCourse.includes(subProg) && !subProg.includes(secCourse)) {
       const [courseMatch] = await query('SELECT code FROM courses WHERE code = ? AND program_code = ? LIMIT 1', [sectionRow.course_code, subjectRow.program_code]);
       const [majorMatch] = await query('SELECT code FROM program_majors WHERE code = ? AND program_code = ? LIMIT 1', [sectionRow.course_code, subjectRow.program_code]);
       const allMajors = await query('SELECT program_code, code FROM program_majors WHERE program_head_id IS NOT NULL OR code IS NOT NULL');
@@ -540,7 +573,7 @@ async function listSchedules({ user, department, facultyId, program } = {}) {
   });
 }
 
-async function resolveScheduleFKs({ subjectCode, facultyId, roomNumber, sectionId, section }) {
+async function resolveScheduleFKs({ subjectCode, facultyId, faculty, roomNumber, sectionId, section }) {
   let validSubjectCode = subjectCode;
   if (subjectCode) {
     const [sRow] = await query('SELECT code FROM subjects WHERE code = ? LIMIT 1', [subjectCode]);
@@ -554,6 +587,10 @@ async function resolveScheduleFKs({ subjectCode, facultyId, roomNumber, sectionI
     const [tRow] = await query('SELECT id FROM teachers WHERE id = ? LIMIT 1', [facultyId.trim()]);
     if (tRow) validFacultyId = tRow.id;
   }
+  if (!validFacultyId && faculty && typeof faculty === 'string' && faculty.trim()) {
+    const [tRow] = await query('SELECT id FROM teachers WHERE name = ? OR name LIKE ? LIMIT 1', [faculty.trim(), `%${faculty.trim()}%`]);
+    if (tRow) validFacultyId = tRow.id;
+  }
 
   let validRoomNumber = null;
   if (roomNumber && typeof roomNumber === 'string' && roomNumber.trim()) {
@@ -561,16 +598,23 @@ async function resolveScheduleFKs({ subjectCode, facultyId, roomNumber, sectionI
     if (isVirtual) {
       validRoomNumber = 'Virtual Room';
     } else {
-      const [rRow] = await query('SELECT number FROM rooms WHERE number = ? LIMIT 1', [roomNumber.trim()]);
+      const [rRow] = await query('SELECT number FROM rooms WHERE number = ? OR number LIKE ? LIMIT 1', [roomNumber.trim(), `%${roomNumber.trim()}%`]);
       if (rRow) validRoomNumber = rRow.number;
     }
   }
 
   let validSectionId = sectionId ? Number(sectionId) : null;
   if (!validSectionId && section) {
+    const trimmedSec = String(section).trim();
     const [secRow] = await query(
-      "SELECT id FROM sections WHERE CONCAT(course_code, ' ', year_level, '-', section_label) = ? OR section_label = ? OR CONCAT(course_code, ' ', year_level) = ? LIMIT 1",
-      [section, section, section]
+      `SELECT id FROM sections 
+       WHERE CONCAT(course_code, ' ', year_level, '-', section_label) = ? 
+          OR section_label = ? 
+          OR CONCAT(course_code, ' ', year_level) = ? 
+          OR CONCAT(course_code, ' ', section_label) = ?
+          OR ? LIKE CONCAT('%', section_label, '%')
+       ORDER BY id ASC LIMIT 1`,
+      [trimmedSec, trimmedSec, trimmedSec, trimmedSec, trimmedSec]
     );
     if (secRow) validSectionId = secRow.id;
   }
@@ -615,6 +659,7 @@ async function createSchedule(payload, user) {
   const { validSubjectCode, validFacultyId, validRoomNumber, validSectionId } = await resolveScheduleFKs({
     subjectCode: rawSubjectCode,
     facultyId: rawFacultyId,
+    faculty: payload.faculty || payload.faculty_name,
     roomNumber: rawRoom,
     sectionId: rawSectionId,
     section,
@@ -624,8 +669,11 @@ async function createSchedule(payload, user) {
   let finalEnd = end_time;
   if (!finalStart && time) {
     const [st, et] = String(time).split('-').map((t) => t.trim());
-    finalStart = st ? (/^\d{1,2}:\d{2}$/.test(st) ? `${st}:00` : st) : '08:00:00';
-    finalEnd = et ? (/^\d{1,2}:\d{2}$/.test(et) ? `${et}:00` : et) : '09:30:00';
+    finalStart = st ? normalizeTime(st) : '08:00:00';
+    finalEnd = et ? normalizeTime(et) : '09:30:00';
+  } else {
+    finalStart = normalizeTime(finalStart);
+    finalEnd = normalizeTime(finalEnd);
   }
 
   const validated = await validateSchedulePayload({
@@ -694,6 +742,7 @@ async function updateSchedule(id, payload, user) {
   const { validSubjectCode, validFacultyId, validRoomNumber, validSectionId } = await resolveScheduleFKs({
     subjectCode: rawSubjectCode,
     facultyId: rawFacultyId,
+    faculty: payload.faculty || payload.faculty_name,
     roomNumber: rawRoom,
     sectionId: rawSectionId,
     section,
@@ -703,8 +752,11 @@ async function updateSchedule(id, payload, user) {
   let finalEnd = end_time;
   if (!finalStart && time) {
     const [st, et] = String(time).split('-').map((t) => t.trim());
-    finalStart = st ? (/^\d{1,2}:\d{2}$/.test(st) ? `${st}:00` : st) : '08:00:00';
-    finalEnd = et ? (/^\d{1,2}:\d{2}$/.test(et) ? `${et}:00` : et) : '09:30:00';
+    finalStart = st ? normalizeTime(st) : '08:00:00';
+    finalEnd = et ? normalizeTime(et) : '09:30:00';
+  } else {
+    finalStart = normalizeTime(finalStart);
+    finalEnd = normalizeTime(finalEnd);
   }
 
   const validated = await validateSchedulePayload({

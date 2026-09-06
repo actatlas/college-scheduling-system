@@ -37,8 +37,16 @@ import {
   Lock,
   Lightbulb,
 } from "lucide-react";
-import { formatSystemId } from "../utils/idFormatter";
 import type { UserAccount, UserRole, ProgramItem, FacultyMember } from "../types";
+import { formatSystemId } from "../utils/idFormatter";
+
+export const ASSIGNED_ACADEMIC_PROGRAMS: ProgramItem[] = [
+  { code: "BAP", name: "Business Administration Program" },
+  { code: "ITP", name: "Information Technology Program" },
+  { code: "CJEP", name: "Criminal Justice Education Program" },
+  { code: "TEP", name: "Teacher Education Program" },
+  { code: "HMP", name: "Hospitality Management Program" },
+];
 
 export function UserManagementPage() {
   const [searchParams] = useSearchParams();
@@ -47,7 +55,7 @@ export function UserManagementPage() {
   const [faculty, setFaculty] = useState<FacultyMember[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
-  
+
   // Modals & Active Selections
   const [userToDelete, setUserToDelete] = useState<UserAccount | null>(null);
   const [userToSuspend, setUserToSuspend] = useState<UserAccount | null>(null);
@@ -75,7 +83,7 @@ export function UserManagementPage() {
       setStatusFilter(s);
     }
   }, [searchParams]);
-  
+
   // Dropdown Popovers
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
@@ -115,9 +123,40 @@ export function UserManagementPage() {
     password: "",
     role: "teacher" as UserRole,
     status: "Active" as "Active" | "Suspended",
-    program: "BSIT",
+    program: "BAP",
     teacherId: "",
   });
+
+  const assignedProgramOptions = useMemo(() => {
+    const invalidCodes = new Set(["BSIT", "BSBA", "BSED", "BEED", "BSCRIM", "BSHM"]);
+    const list = [...ASSIGNED_ACADEMIC_PROGRAMS];
+    if (
+      form.program &&
+      !invalidCodes.has(form.program.toUpperCase()) &&
+      !list.some((item) => item.code.toUpperCase() === form.program.toUpperCase())
+    ) {
+      const match = programs.find(
+        (p) => p.code.toUpperCase() === form.program.toUpperCase()
+      );
+      list.push(match || { code: form.program, name: form.program });
+    }
+    return list;
+  }, [form.program, programs]);
+
+  const filterProgramOptions = useMemo(() => {
+    const invalidCodes = new Set(["BSIT", "BSBA", "BSED", "BEED", "BSCRIM", "BSHM"]);
+    const list = [...ASSIGNED_ACADEMIC_PROGRAMS];
+    programs.forEach((p) => {
+      if (
+        p.code &&
+        !invalidCodes.has(p.code.toUpperCase()) &&
+        !list.some((item) => item.code.toUpperCase() === p.code.toUpperCase())
+      ) {
+        list.push(p);
+      }
+    });
+    return list;
+  }, [programs]);
 
   // Handle outside clicks for popovers
   useEffect(() => {
@@ -192,7 +231,18 @@ export function UserManagementPage() {
         statusFilter === "all" || u.status?.toLowerCase() === statusFilter.toLowerCase();
       const matchesProgram =
         programFilter === "all" ||
-        (u.program && u.program.toLowerCase() === programFilter.toLowerCase());
+        (u.program &&
+          (u.program.toLowerCase() === programFilter.toLowerCase() ||
+            (programFilter === "BAP" &&
+              (u.program.toUpperCase() === "BSBA" || u.program.toUpperCase() === "BSA")) ||
+            (programFilter === "ITP" &&
+              (u.program.toUpperCase() === "BSIT" || u.program.toUpperCase() === "BSCS")) ||
+            (programFilter === "CJEP" &&
+              (u.program.toUpperCase() === "BSCRIM" || u.program.toUpperCase() === "CRIM")) ||
+            (programFilter === "TEP" &&
+              (u.program.toUpperCase() === "BSED" || u.program.toUpperCase() === "BEED")) ||
+            (programFilter === "HMP" &&
+              (u.program.toUpperCase() === "BSHM" || u.program.toUpperCase() === "HM"))));
 
       return matchesQuery && matchesRole && matchesStatus && matchesProgram;
     });
@@ -366,14 +416,14 @@ export function UserManagementPage() {
     const validTargets =
       targetStatus === "Suspended"
         ? selectedUsers.filter(
-            (u) =>
-              String(u.status || "").trim().toLowerCase() !== "suspended" &&
-              !isSelfUser(u)
-          )
+          (u) =>
+            String(u.status || "").trim().toLowerCase() !== "suspended" &&
+            !isSelfUser(u)
+        )
         : selectedUsers.filter(
-            (u) =>
-              String(u.status || "").trim().toLowerCase() === "suspended"
-          );
+          (u) =>
+            String(u.status || "").trim().toLowerCase() === "suspended"
+        );
 
     if (validTargets.length === 0) {
       const msg =
@@ -601,7 +651,7 @@ export function UserManagementPage() {
       email: "",
       password: "@srcb123",
       role: "teacher",
-      program: "BSIT",
+      program: "BAP",
       teacherId: "",
       status: "Active",
     });
@@ -623,11 +673,30 @@ export function UserManagementPage() {
     setMiddleNameError(null);
     setLastNameError(null);
     setPhoneError(null);
+
+    const resolvedProgram =
+      user.role === "program_head"
+        ? (ASSIGNED_ACADEMIC_PROGRAMS.find(
+          (p) => p.code.toUpperCase() === (user.program || "").toUpperCase()
+        )?.code ||
+          (user.program === "BSIT" || user.program === "BSCS"
+            ? "ITP"
+            : user.program === "BSBA" || user.program === "BSA"
+              ? "BAP"
+              : user.program === "BSCrim" || user.program === "BSCRIM"
+                ? "CJEP"
+                : user.program === "BSED" || user.program === "BEED"
+                  ? "TEP"
+                  : user.program === "BSHM" || user.program === "HM"
+                    ? "HMP"
+                    : user.program || "BAP"))
+        : user.program || "BAP";
+
     setForm({
       email: user.email,
       password: "",
       role: user.role,
-      program: user.program || "BSIT",
+      program: resolvedProgram,
       teacherId: user.teacherId || "",
       status: user.status || "Active",
     });
@@ -773,12 +842,7 @@ export function UserManagementPage() {
   };
 
   return (
-    <motion.div
-      className="user-mgmt-container"
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25 }}
-    >
+    <div className="user-mgmt-container">
       <PageHeader
         title="User Account Management"
         description="Provision institutional users, assign system roles, configure departmental permissions, and manage account statuses."
@@ -799,7 +863,7 @@ export function UserManagementPage() {
           </button>
         }
       />
-            {/* ICT Governance Board Warning Alert (if any accounts are suspended) */}
+      {/* ICT Governance Board Warning Alert (if any accounts are suspended) */}
       {totalSuspendedCount > 0 && (
         <motion.div
           className="ict-suspended-board-alert"
@@ -862,33 +926,8 @@ export function UserManagementPage() {
 
       {/* Main Registered Accounts Data Table Card */}
       <section className="user-mgmt-card">
-        {/* Modern Controls Header (Search, Filter, Export, Add User) */}
-        <div className="user-mgmt-toolbar">
-          {/* Search Input with Clear Button */}
-          <div className="user-mgmt-search-wrapper">
-            <span className="user-mgmt-search-icon">
-              <Search size={16} />
-            </span>
-            <input
-              type="text"
-              className="user-mgmt-search-input"
-              placeholder="Search user..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              aria-label="Search users by name, email, role, or ID"
-            />
-            {query && (
-              <button
-                type="button"
-                className="user-mgmt-search-clear"
-                onClick={() => setQuery("")}
-                aria-label="Clear search"
-              >
-                <X size={14} />
-              </button>
-            )}
-          </div>
-
+        {/* Modern Controls Header (Filter, Export, Add User) */}
+        <div className="user-mgmt-toolbar" style={{ justifyContent: "flex-end" }}>
           {/* Controls Actions Group */}
           <div className="user-mgmt-actions-group">
             {/* Filter Popover Trigger */}
@@ -962,7 +1001,7 @@ export function UserManagementPage() {
                       onChange={(e) => setProgramFilter(e.target.value)}
                     >
                       <option value="all">All Programs</option>
-                      {programs.map((p) => (
+                      {filterProgramOptions.map((p) => (
                         <option key={p.code} value={p.code}>
                           {p.code} - {p.name}
                         </option>
@@ -1227,8 +1266,8 @@ export function UserManagementPage() {
                               {u.role === "super_admin"
                                 ? "ICT Office"
                                 : u.role === "admin"
-                                ? "Registrar Office"
-                                : "Institutional"}
+                                  ? "Registrar Office"
+                                  : "Institutional"}
                             </span>
                           )}
                         </td>
@@ -1236,9 +1275,8 @@ export function UserManagementPage() {
                         {/* STATUS Column */}
                         <td>
                           <span
-                            className={`status-indicator-pill ${
-                              isSuspended ? "suspended" : "active"
-                            }`}
+                            className={`status-indicator-pill ${isSuspended ? "suspended" : "active"
+                              }`}
                           >
                             <span className="status-dot" aria-hidden="true" />
                             <span>{isSuspended ? "Suspended (Blocked)" : "Active"}</span>
@@ -1381,12 +1419,12 @@ export function UserManagementPage() {
             {filteredUsers.length === 0
               ? "Showing 0 entries"
               : `Showing ${Math.min(
-                  (currentPage - 1) * pageSize + 1,
-                  filteredUsers.length
-                )} to ${Math.min(
-                  currentPage * pageSize,
-                  filteredUsers.length
-                )} of ${filteredUsers.length} entries`}
+                (currentPage - 1) * pageSize + 1,
+                filteredUsers.length
+              )} to ${Math.min(
+                currentPage * pageSize,
+                filteredUsers.length
+              )} of ${filteredUsers.length} entries`}
           </div>
 
           <div className="pagination-controls-group">
@@ -1510,9 +1548,8 @@ export function UserManagementPage() {
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
                   {getRoleBadge(viewingUser.role)}
                   <span
-                    className={`status-indicator-pill ${
-                      viewingUser.status === "Suspended" ? "suspended" : "active"
-                    }`}
+                    className={`status-indicator-pill ${viewingUser.status === "Suspended" ? "suspended" : "active"
+                      }`}
                   >
                     <span className="status-dot" aria-hidden="true" />
                     <span>{viewingUser.status || "Active"}</span>
@@ -1853,7 +1890,20 @@ export function UserManagementPage() {
             <select
               id="userRole"
               value={form.role}
-              onChange={(e) => setForm({ ...form, role: e.target.value as UserRole })}
+              onChange={(e) => {
+                const nextRole = e.target.value as UserRole;
+                setForm((prev) => ({
+                  ...prev,
+                  role: nextRole,
+                  program:
+                    nextRole === "program_head" &&
+                      !ASSIGNED_ACADEMIC_PROGRAMS.some(
+                        (p) => p.code.toUpperCase() === prev.program.toUpperCase()
+                      )
+                      ? "BAP"
+                      : prev.program,
+                }));
+              }}
             >
               <option value="super_admin">Super Admin (ICT Office)</option>
               <option value="admin">Dean of Student Affairs (Admin)</option>
@@ -1957,7 +2007,7 @@ export function UserManagementPage() {
                 value={form.program}
                 onChange={(e) => setForm({ ...form, program: e.target.value })}
               >
-                {programs.map((p) => (
+                {assignedProgramOptions.map((p) => (
                   <option key={p.code} value={p.code}>
                     {p.code} - {p.name}
                   </option>
@@ -2038,8 +2088,8 @@ export function UserManagementPage() {
             {loading
               ? "Saving..."
               : editingUser
-              ? "Update User Profile"
-              : "Create Account"}
+                ? "Update User Profile"
+                : "Create Account"}
           </button>
         </div>
       </Modal>
@@ -2055,6 +2105,6 @@ export function UserManagementPage() {
         onConfirm={executeDelete}
         onCancel={() => setUserToDelete(null)}
       />
-    </motion.div>
+    </div>
   );
 }

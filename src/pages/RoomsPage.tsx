@@ -6,7 +6,8 @@ import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
 import { ConfirmModal } from "../components/common/ConfirmModal";
 import { CardGridSkeleton } from "../components/common/Skeleton";
-import { Plus, Search, Edit2, Trash2, Building, AlertTriangle } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Building, AlertTriangle, X } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import type { RoomItem, BuildingType } from "../types";
 
 export function RoomsPage() {
@@ -14,7 +15,28 @@ export function RoomsPage() {
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [roomToDelete, setRoomToDelete] = useState<RoomItem | null>(null);
-  const [query, setQuery] = useState("");
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [query, setQuery] = useState(searchParams.get("q") || searchParams.get("search") || "");
+
+  useEffect(() => {
+    const q = searchParams.get("q") || searchParams.get("search") || "";
+    setQuery(q);
+  }, [searchParams]);
+
+  const handleQueryChange = (val: string) => {
+    setQuery(val);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (val.trim()) {
+        next.set("q", val);
+      } else {
+        next.delete("q");
+        next.delete("search");
+      }
+      return next;
+    }, { replace: true });
+  };
   const [buildingFilter, setBuildingFilter] = useState<string>("All");
 
   const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
@@ -145,14 +167,38 @@ export function RoomsPage() {
               </select>
             </label>
 
-            <label className="topbar__search" aria-label="Search rooms">
-              <Search size={16} />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search room name, type, building..."
-              />
-            </label>
+            <div style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+              <label className="topbar__search" aria-label="Search rooms" style={{ margin: 0, paddingRight: query ? 32 : 12 }}>
+                <Search size={16} />
+                <input
+                  value={query}
+                  onChange={(event) => handleQueryChange(event.target.value)}
+                  placeholder="Search room name, type, building..."
+                />
+              </label>
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => handleQueryChange("")}
+                  style={{
+                    position: "absolute",
+                    right: 8,
+                    background: "none",
+                    border: "none",
+                    color: "var(--srcb-text-muted, #94a3b8)",
+                    cursor: "pointer",
+                    padding: 4,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                  title="Clear search"
+                  aria-label="Clear search"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -171,7 +217,7 @@ export function RoomsPage() {
                     type="button"
                     className="secondary-button"
                     onClick={() => {
-                      setQuery("");
+                      handleQueryChange("");
                       setBuildingFilter("All");
                     }}
                     style={{ marginTop: 12, fontSize: "0.8rem" }}

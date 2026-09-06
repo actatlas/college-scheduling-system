@@ -5,9 +5,11 @@ import {
   useEffect,
   useMemo,
   useState,
+  useRef,
   type ReactNode,
 } from "react";
 import { storage } from "../data/storage";
+import { api } from "../data/apiClient";
 
 export type ProgramKey = string;
 
@@ -39,24 +41,68 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
   const [programOptions, setProgramOptions] = useState<ProgramOption[]>([allProgramsOption]);
   const [selectedProgramKey, setSelectedProgramKeyState] =
     useState<ProgramKey>("ALL");
+  const isFetchingRef = useRef(false);
 
-  const loadPrograms = useCallback(() => {
-    const rows = storage.getPrograms();
-    const specificPrograms: ProgramOption[] = rows.map((row: any) => ({
-      key: String(row.code || row.id || ""),
-      label: String(row.name || row.code || ""),
-      shortLabel: String(row.code || row.name || ""),
-    }));
+  const loadPrograms = useCallback(async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    try {
+      const invalidCodes = new Set(["BSIT", "BSBA", "BSED", "BEED", "BSCRIM", "BSHM"]);
 
-    const values: ProgramOption[] = [allProgramsOption, ...specificPrograms];
-    setProgramOptions(values);
+      const applyPrograms = (rows: any[]) => {
+        const sanitized = (Array.isArray(rows) ? rows : []).filter(
+          (p: any) => p && p.code && !invalidCodes.has(String(p.code).trim().toUpperCase())
+        );
+        const specificPrograms: ProgramOption[] = sanitized.map((row: any) => ({
+          key: String(row.code || row.id || ""),
+          label: String(row.name || row.code || ""),
+          shortLabel: String(row.code || row.name || ""),
+        }));
 
-    const saved = window.localStorage.getItem("selectedProgram");
-    if (saved && values.some((option: ProgramOption) => option.key === saved)) {
-      setSelectedProgramKeyState(saved);
-    } else {
-      setSelectedProgramKeyState("ALL");
-      window.localStorage.setItem("selectedProgram", "ALL");
+        const values: ProgramOption[] = [allProgramsOption, ...specificPrograms];
+        setProgramOptions((prev) => {
+          if (
+            prev.length === values.length &&
+            prev.every((p, idx) => p.key === values[idx].key && p.label === values[idx].label)
+          ) {
+            return prev;
+          }
+          return values;
+        });
+
+        const saved = window.localStorage.getItem("selectedProgram");
+        if (saved && values.some((option: ProgramOption) => option.key === saved)) {
+          setSelectedProgramKeyState((prev) => (prev === saved ? prev : saved));
+        } else {
+          setSelectedProgramKeyState((prev) => (prev === "ALL" ? prev : "ALL"));
+          if (window.localStorage.getItem("selectedProgram") !== "ALL") {
+            window.localStorage.setItem("selectedProgram", "ALL");
+          }
+        }
+      };
+
+      // 1. Instantly populate from sanitized storage
+      const localRows = storage.getPrograms();
+      applyPrograms(localRows);
+
+      // 2. Fetch real data from backend/database
+      try {
+        const res = await api.get("/programs");
+        const remoteRows = res.data?.data;
+        if (Array.isArray(remoteRows) && remoteRows.length > 0) {
+          const sanitizedRemote = remoteRows.filter(
+            (p: any) => p && p.code && !invalidCodes.has(String(p.code).trim().toUpperCase())
+          );
+          if (sanitizedRemote.length > 0) {
+            storage.setPrograms(sanitizedRemote);
+            applyPrograms(sanitizedRemote);
+          }
+        }
+      } catch {
+        // Backend not available, sanitized local storage is used
+      }
+    } finally {
+      isFetchingRef.current = false;
     }
   }, []);
 
@@ -91,7 +137,7 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
 
       const IT_KEYS = ["ITP", "BSIT", "BSCS", "IT", "INFORMATION TECHNOLOGY", "COMPUTER"];
       const CRIM_KEYS = ["CJEP", "BSCRIM", "CRIMINOLOGY", "CRIM", "CRIMINAL JUSTICE"];
-      const BUS_KEYS = ["BSA", "BSBA", "BUSINESS", "ACCOUNTANCY", "ADMINISTRATION"];
+      const BUS_KEYS = ["BAP", "BSA", "BSBA", "BUSINESS", "ACCOUNTANCY", "ADMINISTRATION"];
       const HM_KEYS = ["HMP", "BSHM", "HOSPITALITY", "HOTEL", "TOURISM"];
       const EDUC_KEYS = ["TEP", "BSED", "BEED", "EDUCATION", "TEACHER"];
 

@@ -7,6 +7,7 @@ import { Modal } from "../components/common/Modal";
 import { Plus } from "lucide-react";
 import { getProgramLogo } from "../utils/programLogos";
 import { CardGridSkeleton } from "../components/common/Skeleton";
+import { storage } from "../data/storage";
 
 type ProgramRow = { id?: number; name: string; focus: string };
 
@@ -27,8 +28,20 @@ export function ProgramsPage() {
     setIsFetching(true);
     api
       .get("/programs")
-      .then((res: any) => setPrograms(res.data?.data || []))
-      .catch(() => setPrograms([]))
+      .then((res: any) => {
+        const data = res.data?.data;
+        if (Array.isArray(data)) {
+          const invalidCodes = new Set(["BSIT", "BSBA", "BSED", "BEED", "BSCRIM", "BSHM"]);
+          const sanitized = data.filter((p: any) => !invalidCodes.has(String(p.code || p.name).trim().toUpperCase()));
+          setPrograms(sanitized);
+          if (sanitized.length > 0) {
+            storage.setPrograms(sanitized);
+          }
+        } else {
+          setPrograms(storage.getPrograms());
+        }
+      })
+      .catch(() => setPrograms(storage.getPrograms()))
       .finally(() => setIsFetching(false));
   };
 
