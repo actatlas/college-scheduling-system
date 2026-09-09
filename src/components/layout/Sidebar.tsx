@@ -12,7 +12,6 @@ import {
   Plus,
   Clock,
   GraduationCap,
-  AlertTriangle,
   FileBarChart,
   UserCircle,
   X,
@@ -82,7 +81,6 @@ export function Sidebar({ isMobileOpen = false, onClose }: SidebarProps) {
         { to: "/schedules", label: "Class Schedules", icon: CalendarDays },
         { to: "/exams", label: "Exam Schedules", icon: CalendarCheck },
         { to: "/rooms", label: "Rooms & Facilities", icon: DoorOpen },
-        { to: "/conflicts", label: "Conflict Diagnostics", icon: AlertTriangle },
       ],
     },
     {
@@ -118,7 +116,6 @@ export function Sidebar({ isMobileOpen = false, onClose }: SidebarProps) {
         { to: "/schedules", label: "Class Schedules", icon: CalendarDays },
         { to: "/exams", label: "Exam Schedules", icon: CalendarCheck },
         { to: "/rooms", label: "Campus Facilities", icon: DoorOpen },
-        { to: "/conflicts", label: "Conflict Diagnostics", icon: AlertTriangle },
       ],
     },
     {

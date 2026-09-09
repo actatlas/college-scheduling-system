@@ -116,7 +116,7 @@ describe("Topbar Global Search", () => {
       <BrowserRouter>
         <ProgramProvider>
           <NotificationProvider>
-            <Topbar />
+            <Topbar title="Dashboard" />
           </NotificationProvider>
         </ProgramProvider>
       </BrowserRouter>

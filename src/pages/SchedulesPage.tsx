@@ -39,9 +39,20 @@ import {
   ChevronLeft,
   ChevronRight,
   LayoutList,
+  Copy,
 } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
-import { validateScheduleSlot, formatGroupedAvailability, isTimeOverlapping, parseTeacherAvailability, parseTimeToMinutes } from "../utils/scheduling";
+import {
+  validateScheduleSlot,
+  findAvailableRoomForSlot,
+  formatGroupedAvailability,
+  isTimeOverlapping,
+  parseTeacherAvailability,
+  parseTimeToMinutes,
+  isGeneralSubject,
+  getPairedDay,
+} from "../utils/scheduling";
+import { getProgramTheme, getProgramColor } from "../utils/programColors";
 import { ScheduleDetailsModal } from "../components/schedule/ScheduleDetailsModal";
 import { TimetableSkeleton, CardGridSkeleton } from "../components/common/Skeleton";
 import { Tooltip } from "../components/common/Tooltip";
@@ -207,6 +218,12 @@ const PROGRAM_COURSE_MAP: Record<string, string[]> = {
 function isSubjectMatchingSection(sub: any, sec: any): boolean {
   if (!sec || !sub) return true;
 
+  // Universal General Subjects rule:
+  // If the subject is General Education / non-major, ALL academic programs can take it!
+  if (isGeneralSubject(sub) || !sub.isMajor) {
+    return true;
+  }
+
   const secCourse = String(sec.course || sec.course_code || "").trim().toUpperCase();
   const secProg = String(sec.program || sec.department || "").trim().toUpperCase();
   const secYearStr = String(sec.yearLevel || sec.year_level || sec.year || "").replace(/\D/g, "");
@@ -251,7 +268,7 @@ function isSubjectMatchingSection(sub: any, sec: any): boolean {
     return programMatches && yearMatches;
   }
 
-  return (programMatches || (!sub.isMajor && subProg === "GEN ED")) && yearMatches;
+  return true;
 }
 
 interface ScheduleCluster {
@@ -306,6 +323,7 @@ interface StackedScheduleCellProps {
   onDelete: (item: ClassScheduleItem) => void;
   onView: (item: ClassScheduleItem) => void;
   onAddAtSlot: (day: string, slotTime: string) => void;
+  onDuplicate?: (item: ClassScheduleItem) => void;
 }
 
 function StackedScheduleCell({
@@ -319,14 +337,41 @@ function StackedScheduleCell({
   onDelete,
   onView,
   onAddAtSlot,
+  onDuplicate,
 }: StackedScheduleCellProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [frontCardId, setFrontCardId] = useState<string | null>(null);
 
   const isStacked = schedules.length > 1;
 
+  // Active index for carousel flipper controls
+  const activeIdx = useMemo(() => {
+    if (!frontCardId) return schedules.length - 1;
+    const found = schedules.findIndex((s) => s.id === frontCardId);
+    return found >= 0 ? found : schedules.length - 1;
+  }, [schedules, frontCardId]);
+
+  const handlePrevCard = () => {
+    const nextIdx = (activeIdx - 1 + schedules.length) % schedules.length;
+    setFrontCardId(schedules[nextIdx].id);
+  };
+
+  const handleNextCard = () => {
+    const nextIdx = (activeIdx + 1) % schedules.length;
+    setFrontCardId(schedules[nextIdx].id);
+  };
+
+  const distinctRooms = useMemo(() => {
+    return Array.from(new Set(schedules.map((s) => s.room).filter(Boolean)));
+  }, [schedules]);
+
+  const hasRoomClash = distinctRooms.length < schedules.length;
+
   const renderCard = (item: ClassScheduleItem, isCompact = false) => {
     if (!item) return null;
+    const progTheme = getProgramTheme(item);
+    const cardBorderColor = progTheme.primary || item.color || (item.modality === "Online" ? "#10b981" : "#2563eb");
+
     return (
       <div
         key={item.id}
@@ -347,7 +392,7 @@ function StackedScheduleCell({
         }}
         title={canCreate ? "Drag to reschedule to another slot" : "Click to view official assigned schedule details"}
         style={{
-          borderLeft: `5px solid ${item.color || (item.modality === "Online" ? "#10b981" : "#2563eb")}`,
+          borderLeft: `5px solid ${cardBorderColor}`,
           borderRadius: 8,
           padding: isCompact ? "5px 7px" : "6px 8px",
           marginBottom: 0,
@@ -362,9 +407,21 @@ function StackedScheduleCell({
       >
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 4 }}>
-            <span className="schedule-card-code" style={{ fontWeight: 800, fontSize: isCompact ? "0.8rem" : "0.84rem" }}>
-              {item.subjectCode}
-            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+              <span className="schedule-card-code" style={{ fontWeight: 800, fontSize: isCompact ? "0.8rem" : "0.84rem" }}>
+                {item.subjectCode}
+              </span>
+              <span
+                className="program-card-badge"
+                style={{
+                  backgroundColor: progTheme.badgeBg,
+                  color: progTheme.badgeText,
+                }}
+                title={`Program: ${progTheme.name}`}
+              >
+                {progTheme.code}
+              </span>
+            </div>
             <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
               {canCreate && <GripVertical size={11} color="var(--srcb-text-muted, #94a3b8)" style={{ opacity: 0.6 }} />}
               <span
@@ -384,8 +441,21 @@ function StackedScheduleCell({
           <div className="schedule-card-meta" style={{ fontSize: "0.68rem", display: "flex", alignItems: "center", gap: 4 }}>
             <GraduationCap size={11} style={{ flexShrink: 0 }} /> <strong>Sec:</strong> {item.section}
           </div>
-          <div className="schedule-card-meta" style={{ fontSize: "0.68rem", display: "flex", alignItems: "center", gap: 4 }}>
-            <DoorOpen size={11} style={{ flexShrink: 0 }} /> <strong>Room:</strong> {item.room} {item.building ? `(${item.building.split(" ")[0]})` : ""}
+          <div
+            className="schedule-card-meta"
+            style={{
+              fontSize: "0.68rem",
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              fontWeight: 700,
+              color: "var(--srcb-text)",
+            }}
+          >
+            <DoorOpen size={11} style={{ flexShrink: 0, color: progTheme.primary }} />
+            <span>
+              <strong>Room:</strong> {item.room} {item.building ? `(${item.building.split(" ")[0]})` : ""}
+            </span>
           </div>
           <div className="schedule-card-faculty" style={{ fontSize: "0.7rem", fontWeight: 700, marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}>
             <UserCheck size={11} style={{ flexShrink: 0 }} /> {item.faculty}
@@ -414,6 +484,21 @@ function StackedScheduleCell({
 
         {canCreate && (
           <div className="schedule-card-actions" style={{ display: "flex", justifyContent: "flex-end", gap: 4, marginTop: 4, paddingTop: 3 }}>
+            {onDuplicate && (
+              <button
+                type="button"
+                className="icon-button icon-button--sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDuplicate(item);
+                }}
+                title="Duplicate Schedule Block"
+                aria-label={`Duplicate class block ${item.subjectCode}`}
+                style={{ width: 22, height: 22, padding: 0 }}
+              >
+                <Copy size={11} />
+              </button>
+            )}
             <button
               type="button"
               className="icon-button icon-button--sm"
@@ -461,7 +546,52 @@ function StackedScheduleCell({
           <Layers size={11} /> Stacked ({schedules.length})
         </span>
 
+        {distinctRooms.length > 1 && (
+          <span
+            style={{
+              fontSize: "0.66rem",
+              fontWeight: 700,
+              color: hasRoomClash ? "#dc2626" : "#15803d",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 2,
+            }}
+            title={hasRoomClash ? "Warning: Same room scheduled multiple times" : `${distinctRooms.length} distinct rooms scheduled`}
+          >
+            {hasRoomClash ? <AlertTriangle size={10} /> : <CheckCircle2 size={10} />}
+            {hasRoomClash ? "Room Conflict" : `${distinctRooms.length} Rooms`}
+          </span>
+        )}
+
         <div className="stacked-header-actions">
+          {!isExpanded && schedules.length > 1 && (
+            <div className="stacked-flipper" title="Cycle through concurrent room schedules">
+              <button
+                type="button"
+                className="stacked-flipper-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlePrevCard();
+                }}
+                aria-label="Previous card in stack"
+              >
+                <ChevronLeft size={10} />
+              </button>
+              <span>{activeIdx + 1}/{schedules.length}</span>
+              <button
+                type="button"
+                className="stacked-flipper-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleNextCard();
+                }}
+                aria-label="Next card in stack"
+              >
+                <ChevronRight size={10} />
+              </button>
+            </div>
+          )}
+
           <button
             type="button"
             className="stacked-view-toggle-btn"
@@ -490,6 +620,30 @@ function StackedScheduleCell({
             </button>
           )}
         </div>
+      </div>
+
+      {/* Room Tabs Strip */}
+      <div className="stacked-room-tabs" aria-label="Room tabs for concurrent classes">
+        {schedules.map((item, idx) => {
+          const isFront = frontCardId ? frontCardId === item.id : idx === schedules.length - 1;
+          const sTheme = getProgramTheme(item);
+          return (
+            <button
+              key={item.id}
+              type="button"
+              className={`stacked-room-pill ${isFront ? "is-active" : ""}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setFrontCardId(item.id);
+              }}
+              title={`Switch to Room ${item.room} (${sTheme.code} · ${item.subjectCode})`}
+            >
+              <span className="stacked-room-dot" style={{ backgroundColor: sTheme.primary }} />
+              <span>{item.room || `R${idx + 1}`}</span>
+              <span style={{ fontSize: "0.58rem", opacity: 0.9 }}>({sTheme.code})</span>
+            </button>
+          );
+        })}
       </div>
 
       <div className={`stacked-cards-stack ${isExpanded ? "mode-expanded" : "mode-stacked"}`}>
@@ -579,8 +733,6 @@ export function SchedulesPage() {
   const [roomsList, setRoomsList] = useState<any[]>([]);
   const [sectionsList, setSectionsList] = useState<any[]>([]);
 
-  const [isCustomTime, setIsCustomTime] = useState(false);
-
   const [form, setForm] = useState({
     day: "Monday",
     time: "07:00 AM - 08:30 AM",
@@ -596,6 +748,8 @@ export function SchedulesPage() {
     isMajor: true,
     program: selectedProgram.key || "BSIT",
   });
+  const [pairDayEnabled, setPairDayEnabled] = useState(true);
+  const [duplicateDays, setDuplicateDays] = useState<string[]>(["Friday"]);
 
   const handleMouseDownCell = (day: string, slotIdx: number) => {
     if (!canCreate) return;
@@ -625,14 +779,18 @@ export function SchedulesPage() {
     const calculatedTime = `${startSlotStr} - ${endSlotStr}`;
     const day = dragStart.day;
 
+    const freeRoom = findAvailableRoomForSlot(day, calculatedTime, roomsList, scheduleItems);
     const firstSub = availableSubjects[0] || subjectsList[0];
     const defFac = facultyList.find((f) => f.id === firstSub?.instructorId) || facultyList[0];
     const defSec = sectionsList.find((s) => s.program === firstSub?.program) || sectionsList[0];
     const defSecVal = defSec ? (defSec.course && defSec.section ? `${defSec.course} ${defSec.yearLevel || ''}-${defSec.section}`.trim() : defSec.section) : "BSIT 1-A";
-    const defRoom = roomsList[0]?.number || "room 101";
-    const defBuilding = roomsList[0]?.building || "College Building";
+    const defRoom = freeRoom?.number || roomsList[0]?.number || "COL-101";
+    const defBuilding = (freeRoom?.building as BuildingType) || roomsList[0]?.building || "College Building";
 
     setEditingSchedule(null);
+    const paired = getPairedDay(day);
+    setPairDayEnabled(Boolean(paired));
+    setDuplicateDays(paired ? [paired] : ["Friday"]);
     setForm({
       day,
       time: calculatedTime,
@@ -695,11 +853,12 @@ export function SchedulesPage() {
         fetchSchedules();
       } else if (payload.type === "new_subject") {
         const sub = payload.subject;
+        const freeRoom = findAvailableRoomForSlot(day, slot, roomsList, scheduleItems);
         const defFac = facultyList.find((f) => f.id === sub.instructorId) || facultyList[0];
         const defSec = sectionsList.find((s) => s.program === sub.program) || sectionsList[0];
         const defSecVal = defSec ? (defSec.course && defSec.section ? `${defSec.course} ${defSec.yearLevel || ''}-${defSec.section}`.trim() : defSec.section) : "BSIT 1-A";
-        const defRoom = roomsList[0]?.number || "room 101";
-        const defBuilding = roomsList[0]?.building || "College Building";
+        const defRoom = freeRoom?.number || roomsList[0]?.number || "COL-101";
+        const defBuilding = (freeRoom?.building as BuildingType) || roomsList[0]?.building || "College Building";
 
         setEditingSchedule(null);
         setForm({
@@ -756,7 +915,7 @@ export function SchedulesPage() {
 
   const availableSubjects = useMemo(() => {
     if (role === "program_head") {
-      return subjectsList.filter((s) => matchesProgram(s.program || s.department));
+      return subjectsList.filter((s) => isGeneralSubject(s) || matchesProgram(s.program || s.department));
     }
     return subjectsList;
   }, [role, subjectsList, selectedProgram.key, matchesProgram]);
@@ -964,6 +1123,18 @@ export function SchedulesPage() {
     return roomsList.find((r) => String(r.number).toLowerCase().trim() === String(form.room).toLowerCase().trim()) || null;
   }, [form.room, roomsList]);
 
+  const concurrentSlotSchedules = useMemo(() => {
+    if (!form.day || !form.time) return [];
+    return scheduleItems.filter(
+      (s) =>
+        (!editingSchedule || String(s.id) !== String(editingSchedule.id)) &&
+        s.day.toLowerCase() === form.day.toLowerCase() &&
+        isTimeOverlapping(s.time, form.time) &&
+        s.modality !== "Online" &&
+        s.room
+    );
+  }, [scheduleItems, editingSchedule, form.day, form.time]);
+
   const isRoomTooSmall = useMemo(() => {
     if (form.modality === "Online" || !selectedRoomObj || !selectedSectionHeadcount) return false;
     return Number(selectedRoomObj.capacity) < selectedSectionHeadcount;
@@ -1083,6 +1254,8 @@ export function SchedulesPage() {
   const handleScheduleUnscheduledSubject = (sub: any) => {
     if (!canCreate) return;
     setEditingSchedule(null);
+    setPairDayEnabled(true);
+    setDuplicateDays(["Friday"]);
     setForm({
       day: "Monday",
       time: "07:00 AM - 08:30 AM",
@@ -1098,7 +1271,6 @@ export function SchedulesPage() {
       isMajor: Boolean(sub.isMajor),
       program: sub.program || selectedProgram.key || "BSIT",
     });
-    setIsCustomTime(false);
     setModalStep(1);
     setIsOpen(true);
   };
@@ -1153,17 +1325,30 @@ export function SchedulesPage() {
         day: form.day,
         time: form.time,
         room: form.room,
-        building: form.building,
         faculty: form.faculty,
         facultyId: form.facultyId,
         section: form.section,
+        building: form.building,
         modality: form.modality,
       },
       scheduleItems,
       facultyList
     );
     setValidationFeedback(result);
-  }, [form.day, form.time, form.room, form.building, form.faculty, form.facultyId, form.section, form.modality, isOpen, editingSchedule, scheduleItems, facultyList]);
+  }, [
+    isOpen,
+    form.day,
+    form.time,
+    form.room,
+    form.faculty,
+    form.facultyId,
+    form.section,
+    form.building,
+    form.modality,
+    editingSchedule,
+    scheduleItems,
+    facultyList,
+  ]);
 
   const handleEdit = (item: ClassScheduleItem) => {
     if (!canCreate) {
@@ -1171,8 +1356,8 @@ export function SchedulesPage() {
       return;
     }
     setEditingSchedule(item);
-    const isCustom = !TIME_SLOTS.includes(item.time);
-    setIsCustomTime(isCustom);
+    setPairDayEnabled(false);
+    setDuplicateDays([]);
     setForm({
       day: item.day,
       time: item.time,
@@ -1190,6 +1375,32 @@ export function SchedulesPage() {
     });
     setModalStep(1);
     setIsOpen(true);
+  };
+
+  const handleDuplicate = (item: ClassScheduleItem) => {
+    if (!canCreate) return;
+    setEditingSchedule(null);
+    const targetDay = item.day === "Monday" || item.day === "Tuesday" ? "Friday" : (getPairedDay(item.day) || "Friday");
+    setForm({
+      day: targetDay,
+      time: item.time,
+      subjectCode: item.subjectCode || "",
+      subject: item.subject,
+      section: item.section,
+      facultyId: item.facultyId || "",
+      faculty: item.faculty,
+      room: item.room,
+      building: (item.building as BuildingType) || "College Building",
+      modality: item.modality || "Face-to-Face",
+      onlineLink: item.onlineLink || "",
+      isMajor: Boolean(item.isMajor),
+      program: item.program || selectedProgram.key || "BSIT",
+    });
+    setPairDayEnabled(false);
+    setDuplicateDays([]);
+    setModalStep(1);
+    setIsOpen(true);
+    toast.push(`Duplicating schedule for ${item.subjectCode} to ${targetDay}.`, "info");
   };
 
   const executeDelete = async () => {
@@ -1260,12 +1471,11 @@ export function SchedulesPage() {
         onlineLink: form.onlineLink,
         isMajor: form.isMajor,
         program: form.program,
-        color:
-          form.modality === "Online"
-            ? "#059669"
-            : form.isMajor
-              ? "#0284c7"
-              : "#f59e0b",
+        color: getProgramColor({
+          program: form.program,
+          section: form.section,
+          subjectCode: form.subjectCode,
+        }),
         status: "Confirmed",
       };
 
@@ -1283,16 +1493,68 @@ export function SchedulesPage() {
         });
       } else {
         await api.post("/schedules", payload);
-        toast.push("Class schedule created successfully", "success");
-        addNotification({
-          title: "New Class Scheduled",
-          message: `${form.subjectCode} assigned to ${form.faculty} on ${form.day} ${form.time}.`,
-          type: "success",
-          link: "/schedules",
-          targetRole: "admin,program_head,teacher",
-          targetProgram: form.program,
-          targetTeacherId: form.facultyId,
-        });
+
+        // Schedule Duplication (e.g., Monday -> Friday, Tuesday -> Friday)
+        const targetDuplicateDays = (
+          duplicateDays.length > 0
+            ? duplicateDays
+            : getPairedDay(form.day)
+            ? [getPairedDay(form.day)!]
+            : []
+        ).filter((d) => d !== form.day);
+
+        const successfullyDuplicatedDays: string[] = [];
+        const failedDuplicateErrors: string[] = [];
+
+        if (pairDayEnabled && targetDuplicateDays.length > 0) {
+          for (const targetDay of targetDuplicateDays) {
+            const duplicatedPayload = {
+              ...payload,
+              id: undefined,
+              day: targetDay,
+            };
+            try {
+              await api.post("/schedules", duplicatedPayload);
+              successfullyDuplicatedDays.push(targetDay);
+            } catch (dupErr: any) {
+              console.warn(`Could not duplicate schedule to ${targetDay}:`, dupErr);
+              const errMsg = dupErr?.response?.data?.error || dupErr?.message || "Slot conflict";
+              failedDuplicateErrors.push(`${targetDay} (${errMsg})`);
+            }
+          }
+        }
+
+        if (successfullyDuplicatedDays.length > 0) {
+          toast.push(
+            `Successfully scheduled on ${form.day} & also saved on ${successfullyDuplicatedDays.join(", ")} (${form.time})`,
+            "success"
+          );
+          addNotification({
+            title: "Duplicated Classes Scheduled",
+            message: `${form.subjectCode} (${form.section}) scheduled on ${form.day} & also saved on ${successfullyDuplicatedDays.join(", ")} at ${form.time}.`,
+            type: "success",
+            link: "/schedules",
+            targetRole: "admin,program_head,teacher",
+            targetProgram: form.program,
+            targetTeacherId: form.facultyId,
+          });
+          if (failedDuplicateErrors.length > 0) {
+            toast.push(`Some duplicate days could not be saved: ${failedDuplicateErrors.join(", ")}`, "info");
+          }
+        } else if (failedDuplicateErrors.length > 0) {
+          toast.push(`Created on ${form.day}, but duplicate on ${failedDuplicateErrors.join(", ")} failed`, "info");
+        } else {
+          toast.push("Class schedule created successfully", "success");
+          addNotification({
+            title: "New Class Scheduled",
+            message: `${form.subjectCode} assigned to ${form.faculty} on ${form.day} ${form.time}.`,
+            type: "success",
+            link: "/schedules",
+            targetRole: "admin,program_head,teacher",
+            targetProgram: form.program,
+            targetTeacherId: form.facultyId,
+          });
+        }
       }
 
       setIsOpen(false);
@@ -1385,16 +1647,28 @@ export function SchedulesPage() {
 
   const handleOpenAddAtSlot = (day: string, timeSlot: string) => {
     if (!canCreate) return;
+    const freeRoom = findAvailableRoomForSlot(day, timeSlot, roomsList, scheduleItems);
+    const defRoom = freeRoom?.number || roomsList[0]?.number || "COL-101";
+    const defBuilding = (freeRoom?.building as BuildingType) || roomsList[0]?.building || "College Building";
+
     const firstSub = availableSubjects[0] || subjectsList[0];
-    const defFac = facultyList.find((f) => f.id === firstSub?.instructorId) || facultyList[0];
-    const defSec = sectionsList.find((s) => s.program === firstSub?.program) || sectionsList[0];
+    const defFac = facultyList.find((f) => {
+      if (firstSub?.instructorId && f.id === firstSub.instructorId) {
+        return !scheduleItems.some((s) => s.day.toLowerCase() === day.toLowerCase() && isTimeOverlapping(s.time, timeSlot) && (s.facultyId === f.id || s.faculty === f.name));
+      }
+      return false;
+    }) || facultyList.find((f) => !scheduleItems.some((s) => s.day.toLowerCase() === day.toLowerCase() && isTimeOverlapping(s.time, timeSlot) && (s.facultyId === f.id || s.faculty === f.name))) || facultyList[0];
+
+    const defSec = sectionsList.find((s) => {
+      const sLabel = s.course ? `${s.course} ${s.yearLevel || ''}-${s.section}`.trim() : s.section;
+      return !scheduleItems.some((sc) => sc.day.toLowerCase() === day.toLowerCase() && isTimeOverlapping(sc.time, timeSlot) && (sc.section === sLabel || sc.section === s.section));
+    }) || sectionsList[0];
     const defSecVal = defSec ? (defSec.course && defSec.section ? `${defSec.course} ${defSec.yearLevel || ''}-${defSec.section}`.trim() : defSec.section) : "BSIT 1-A";
-    const defRoom = roomsList[0]?.number || "room 101";
-    const defBuilding = roomsList[0]?.building || "College Building";
 
     setEditingSchedule(null);
-    const isCustom = !TIME_SLOTS.includes(timeSlot);
-    setIsCustomTime(isCustom);
+    const paired = getPairedDay(day);
+    setPairDayEnabled(Boolean(paired));
+    setDuplicateDays(paired ? [paired] : ["Friday"]);
     setForm({
       day,
       time: timeSlot,
@@ -1450,14 +1724,17 @@ export function SchedulesPage() {
               type="button"
               onClick={() => {
                 setEditingSchedule(null);
+                setPairDayEnabled(true);
+                setDuplicateDays(["Friday"]);
                 const firstSec = availableSections[0] || sectionsList[0];
                 const defSecVal = firstSec ? (firstSec.course && firstSec.section ? `${firstSec.course} ${firstSec.yearLevel || ''}-${firstSec.section}`.trim() : firstSec.section) : "BSIT 1-A";
                 const filteredSubs = availableSubjects.filter((s) => isSubjectMatchingSection(s, firstSec));
                 const firstSub = filteredSubs[0] || availableSubjects[0] || subjectsList[0];
                 const defFac = availableFaculty.find((f) => f.id === firstSub?.instructorId || f.name === firstSub?.instructor) || availableFaculty[0] || facultyList[0];
                 const isLab = Number(firstSub?.labHours || 0) > 0;
-                const defRoom = roomsList.find((r) => isLab ? (/lab/i.test(r.type || '') || /lab/i.test(r.building || '')) : true)?.number || roomsList[0]?.number || "COL-101";
-                const defBuilding = roomsList[0]?.building || "College Building";
+                const freeRoom = findAvailableRoomForSlot("Monday", "07:00 AM - 08:30 AM", roomsList, scheduleItems);
+                const defRoom = freeRoom?.number || roomsList.find((r) => isLab ? (/lab/i.test(r.type || '') || /lab/i.test(r.building || '')) : true)?.number || roomsList[0]?.number || "COL-101";
+                const defBuilding = (freeRoom?.building as BuildingType) || roomsList[0]?.building || "College Building";
                 setForm({
                   day: "Monday",
                   time: "07:00 AM - 08:30 AM",
@@ -1473,7 +1750,6 @@ export function SchedulesPage() {
                   isMajor: Boolean(firstSub?.isMajor),
                   program: firstSub?.program || firstSec?.program || selectedProgram.key || "BSIT",
                 });
-                setIsCustomTime(false);
                 setModalStep(1);
                 setIsOpen(true);
               }}
@@ -1757,7 +2033,7 @@ export function SchedulesPage() {
             {/* View Mode: Weekly Matrix Grid */}
             {viewMode === "grid" && (
               <>
-                <div className="table-wrap" style={{ marginTop: 16 }}>
+                <div className="table-wrap" style={{ marginTop: 12 }}>
             <table className="data-table" style={{ textAlign: "center" }}>
               <thead>
                 <tr>
@@ -1900,6 +2176,7 @@ export function SchedulesPage() {
                               onDelete={(item) => setScheduleToDelete(item)}
                               onView={(item) => setViewingSchedule(item)}
                               onAddAtSlot={handleOpenAddAtSlot}
+                              onDuplicate={handleDuplicate}
                             />
                           </td>
                         );
@@ -1939,28 +2216,42 @@ export function SchedulesPage() {
               </div>
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
-                {visibleSchedules.map((item) => (
-                  <div
-                    key={item.id}
-                    style={{
-                      background: item.modality === "Online" ? "rgba(52, 211, 153, 0.12)" : "var(--srcb-surface-elevated, #ffffff)",
-                      border: "1px solid var(--srcb-border)",
-                      borderLeft: `5px solid ${item.color || (item.modality === "Online" ? "#10b981" : "#2563eb")}`,
-                      borderRadius: 10,
-                      padding: "14px 16px",
-                      boxShadow: "0 2px 6px rgba(15, 23, 42, 0.05)",
-                      display: "flex",
-                      flexDirection: "column",
-                      justifyContent: "space-between",
-                      transition: "transform 150ms ease, box-shadow 150ms ease",
-                    }}
-                  >
-                    <div>
-                      {/* Card Header: Code & Modality */}
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                        <span style={{ fontWeight: 800, fontSize: "0.95rem", color: "var(--srcb-navy)" }}>
-                          {item.subjectCode}
-                        </span>
+                {visibleSchedules.map((item) => {
+                  const itemTheme = getProgramTheme(item);
+                  return (
+                    <div
+                      key={item.id}
+                      style={{
+                        background: item.modality === "Online" ? "rgba(52, 211, 153, 0.12)" : "var(--srcb-surface-elevated, #ffffff)",
+                        border: "1px solid var(--srcb-border)",
+                        borderLeft: `5px solid ${itemTheme.primary}`,
+                        borderRadius: 10,
+                        padding: "14px 16px",
+                        boxShadow: "0 2px 6px rgba(15, 23, 42, 0.05)",
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "space-between",
+                        transition: "transform 150ms ease, box-shadow 150ms ease",
+                      }}
+                    >
+                      <div>
+                        {/* Card Header: Code & Modality */}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ fontWeight: 800, fontSize: "0.95rem", color: "var(--srcb-navy)" }}>
+                              {item.subjectCode}
+                            </span>
+                            <span
+                              className="program-card-badge"
+                              style={{
+                                backgroundColor: itemTheme.badgeBg,
+                                color: itemTheme.badgeText,
+                              }}
+                              title={`Program: ${itemTheme.name}`}
+                            >
+                              {itemTheme.code}
+                            </span>
+                          </div>
                         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                           <span
                             className={`pill ${item.modality === "Online" ? "pill--emerald" : "pill--navy"}`}
@@ -2027,6 +2318,15 @@ export function SchedulesPage() {
                         <button
                           type="button"
                           className="secondary-button"
+                          onClick={() => handleDuplicate(item)}
+                          aria-label={`Duplicate schedule for ${item.subjectCode}`}
+                          style={{ padding: "5px 10px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: 4 }}
+                        >
+                          <Copy size={13} /> Duplicate
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary-button"
                           onClick={() => handleEdit(item)}
                           aria-label={`Edit schedule for ${item.subjectCode}`}
                           style={{ padding: "5px 10px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: 4 }}
@@ -2056,7 +2356,8 @@ export function SchedulesPage() {
                       </div>
                     )}
                   </div>
-                ))}
+                );
+              })}
               </div>
             )}
           </div>
@@ -2089,67 +2390,82 @@ export function SchedulesPage() {
               </div>
             ) : (
               <div className="grid-3" style={{ gap: 16 }}>
-                {filteredUnscheduled.map((sub) => (
-                  <div
-                    key={sub.code || sub.id}
-                    className="card"
-                    style={{
-                      borderLeft: "4px solid #f59e0b",
-                      display: "flex",
-                      flexDirection: "column",
-                      justifyContent: "space-between",
-                      padding: 16,
-                    }}
-                  >
-                    <div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                        <span style={{ fontWeight: 800, fontSize: "0.95rem", color: "var(--srcb-navy)" }}>
-                          {sub.code}
-                        </span>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          <span className={`pill ${sub.isMajor ? "pill--royal" : "pill--slate"}`} style={{ fontSize: "0.7rem" }}>
-                            {sub.isMajor ? "Major" : "Gen Ed"}
-                          </span>
-                          <span className="pill pill--amber" style={{ fontSize: "0.7rem" }}>
-                            Unscheduled
-                          </span>
+                {filteredUnscheduled.map((sub) => {
+                  const subTheme = getProgramTheme(sub);
+                  return (
+                    <div
+                      key={sub.code || sub.id}
+                      className="card"
+                      style={{
+                        borderLeft: `4px solid ${subTheme.primary}`,
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "space-between",
+                        padding: 16,
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ fontWeight: 800, fontSize: "0.95rem", color: "var(--srcb-navy)" }}>
+                              {sub.code}
+                            </span>
+                            <span
+                              className="program-card-badge"
+                              style={{
+                                backgroundColor: subTheme.badgeBg,
+                                color: subTheme.badgeText,
+                              }}
+                              title={`Program: ${subTheme.name}`}
+                            >
+                              {subTheme.code}
+                            </span>
+                          </div>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <span className={`pill ${sub.isMajor ? "pill--royal" : "pill--slate"}`} style={{ fontSize: "0.7rem" }}>
+                              {sub.isMajor ? "Major" : "Gen Ed"}
+                            </span>
+                            <span className="pill pill--amber" style={{ fontSize: "0.7rem" }}>
+                              Unscheduled
+                            </span>
+                          </div>
+                        </div>
+
+                        <h4 style={{ fontSize: "0.92rem", color: "var(--srcb-text)", margin: "0 0 8px 0", fontWeight: 600, lineHeight: 1.3 }}>
+                          {sub.name}
+                        </h4>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 10px", fontSize: "0.8rem", color: "var(--srcb-text-muted)", background: "var(--srcb-surface-alt, rgba(148, 163, 184, 0.08))", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--srcb-border)" }}>
+                          <div>
+                            <strong>Department:</strong> {sub.program || sub.department || "Academic"}
+                          </div>
+                          <div>
+                            <strong>Units:</strong> {sub.units || 3} Units
+                          </div>
+                          <div>
+                            <strong>Lec Hours:</strong> {sub.lecHours || sub.lectureHours || 3} hrs
+                          </div>
+                          <div>
+                            <strong>Lab Hours:</strong> {sub.labHours || 0} hrs
+                          </div>
                         </div>
                       </div>
 
-                      <h4 style={{ fontSize: "0.92rem", color: "var(--srcb-text)", margin: "0 0 8px 0", fontWeight: 600, lineHeight: 1.3 }}>
-                        {sub.name}
-                      </h4>
-
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 10px", fontSize: "0.8rem", color: "var(--srcb-text-muted)", background: "var(--srcb-surface-alt, rgba(148, 163, 184, 0.08))", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--srcb-border)" }}>
-                        <div>
-                          <strong>Department:</strong> {sub.program || sub.department || "Academic"}
+                      {canCreate && (
+                        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14, paddingTop: 10, borderTop: "1px solid var(--srcb-border)" }}>
+                          <button
+                            type="button"
+                            className="action-button"
+                            onClick={() => handleScheduleUnscheduledSubject(sub)}
+                            style={{ padding: "6px 14px", fontSize: "0.82rem", display: "inline-flex", alignItems: "center", gap: 6 }}
+                          >
+                            <CalendarRange size={14} /> Schedule Now
+                          </button>
                         </div>
-                        <div>
-                          <strong>Units:</strong> {sub.units || 3} Units
-                        </div>
-                        <div>
-                          <strong>Lec Hours:</strong> {sub.lecHours || sub.lectureHours || 3} hrs
-                        </div>
-                        <div>
-                          <strong>Lab Hours:</strong> {sub.labHours || 0} hrs
-                        </div>
-                      </div>
+                      )}
                     </div>
-
-                    {canCreate && (
-                      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14, paddingTop: 10, borderTop: "1px solid var(--srcb-border)" }}>
-                        <button
-                          type="button"
-                          className="action-button"
-                          onClick={() => handleScheduleUnscheduledSubject(sub)}
-                          style={{ padding: "6px 14px", fontSize: "0.82rem", display: "inline-flex", alignItems: "center", gap: 6 }}
-                        >
-                          <CalendarRange size={14} /> Schedule Now
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -2220,404 +2536,353 @@ export function SchedulesPage() {
 
         {/* STEP 1: Basic Schedule Information (WHAT & WHEN) */}
         {modalStep === 1 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {/* Subject Section Card */}
-            <div className="sched-form-card">
-              <div className="sched-form-card-header">
-                <div className="sched-form-card-title-wrap">
-                  <div className="sched-form-card-icon">
-                    <BookOpen size={16} />
-                  </div>
-                  <span className="sched-form-card-title">Curriculum Subject</span>
-                </div>
-                {selectedSubjectObj && (
-                  <span className="sched-form-card-badge">
-                    {selectedSubjectObj.units} Units {Number(selectedSubjectObj.labHours || 0) > 0 ? "· Lab Required" : "· Lecture"}
-                  </span>
-                )}
-              </div>
-
-              <div className="field-group" style={{ margin: 0 }}>
-                <label htmlFor="schedSubject">
-                  Academic Subject <span style={{ color: "#dc2626" }}>*</span>
-                </label>
-                <SearchableSelect
-                  id="schedSubject"
-                  value={form.subjectCode}
-                  onChange={(val) => handleSubjectChange(val)}
-                  options={subjectOptionsForStep1}
-                  placeholder="Search & select curriculum subject..."
-                  searchPlaceholder="Search by subject code, title, program..."
-                  emptyText="No matching academic subjects found"
-                />
-              </div>
-
-              {selectedSubjectObj && (
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "8px 12px",
-                    borderRadius: 8,
-                    background: "rgba(2, 132, 199, 0.06)",
-                    border: "1px solid rgba(2, 132, 199, 0.15)",
-                    fontSize: "0.78rem",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <span style={{ fontWeight: 700, color: "var(--srcb-navy)" }}>{selectedSubjectObj.code}</span>
-                  <span style={{ color: "var(--srcb-text-muted)" }}>•</span>
-                  <span>{selectedSubjectObj.name}</span>
-                  <span style={{ color: "var(--srcb-text-muted)" }}>•</span>
-                  <span className="pill pill--blue" style={{ fontSize: "0.7rem", padding: "1px 6px" }}>
-                    {selectedSubjectObj.isMajor ? "Major Subject" : "General Education"}
-                  </span>
-                  {selectedSubjectObj.program && (
-                    <span className="pill pill--slate" style={{ fontSize: "0.7rem", padding: "1px 6px" }}>
-                      {selectedSubjectObj.program}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Day & Time Card */}
-            <div className="sched-form-card">
-              <div className="sched-form-card-header">
-                <div className="sched-form-card-title-wrap">
-                  <div className="sched-form-card-icon">
-                    <CalendarDays size={16} />
-                  </div>
-                  <span className="sched-form-card-title">Schedule Timing & Duration</span>
-                </div>
-                {form.time && getTimeDurationStr(form.time) && (
-                  <span className="sched-duration-tag">
-                    <Clock size={12} />
-                    {getTimeDurationStr(form.time)}
-                  </span>
-                )}
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
-                <div className="field-group" style={{ margin: 0 }}>
-                  <label htmlFor="schedDay">
-                    Teaching Day <span style={{ color: "#dc2626" }}>*</span>
-                  </label>
-                  <select
-                    id="schedDay"
-                    value={form.day}
-                    onChange={(e) => setForm({ ...form, day: e.target.value })}
-                  >
-                    {DAYS.map((d) => (
-                      <option key={d} value={d}>
-                        {d}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="field-group" style={{ margin: 0 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <label htmlFor="schedTime" style={{ margin: 0 }}>
-                      Time Window <span style={{ color: "#dc2626" }}>*</span>
-                    </label>
-                    <div className="sched-segmented-tabs">
-                      <button
-                        type="button"
-                        className={`sched-segmented-tab ${!isCustomTime ? "is-active" : ""}`}
-                        onClick={() => setIsCustomTime(false)}
-                      >
-                        Standard Blocks
-                      </button>
-                      <button
-                        type="button"
-                        className={`sched-segmented-tab ${isCustomTime ? "is-active" : ""}`}
-                        onClick={() => setIsCustomTime(true)}
-                      >
-                        Custom Time
-                      </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div className="sched-modal-side-by-side">
+              {/* LEFT COLUMN: WHAT & HOW (Subject + Modality) */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {/* Subject Section Card */}
+                <div className="sched-form-card">
+                  <div className="sched-form-card-header">
+                    <div className="sched-form-card-title-wrap">
+                      <div className="sched-form-card-icon">
+                        <BookOpen size={16} />
+                      </div>
+                      <span className="sched-form-card-title">Curriculum Subject</span>
                     </div>
+                    {selectedSubjectObj && (
+                      <span className="sched-form-card-badge">
+                        {selectedSubjectObj.units} Units {Number(selectedSubjectObj.labHours || 0) > 0 ? "· Lab Required" : "· Lecture"}
+                      </span>
+                    )}
                   </div>
 
-                  {!isCustomTime ? (
-                    <select
-                      id="schedTime"
-                      value={form.time}
-                      onChange={(e) => {
-                        if (e.target.value === "__custom__") {
-                          setIsCustomTime(true);
-                        } else {
-                          setForm({ ...form, time: e.target.value });
-                        }
-                      }}
-                    >
-                      {!TIME_SLOTS.includes(form.time) && form.time && (
-                        <option value={form.time}>
-                          {form.time} (Current Selection)
-                        </option>
-                      )}
-                      <optgroup label="Standard Major & Lecture Blocks (1.5 Hours)">
-                        <option value="07:00 AM - 08:30 AM">07:00 AM - 08:30 AM (1.5 hrs)</option>
-                        <option value="08:30 AM - 10:00 AM">08:30 AM - 10:00 AM (1.5 hrs)</option>
-                        <option value="10:00 AM - 11:30 AM">10:00 AM - 11:30 AM (1.5 hrs)</option>
-                        <option value="01:00 PM - 02:30 PM">01:00 PM - 02:30 PM (1.5 hrs)</option>
-                        <option value="02:30 PM - 04:00 PM">02:30 PM - 04:00 PM (1.5 hrs)</option>
-                        <option value="04:00 PM - 05:30 PM">04:00 PM - 05:30 PM (1.5 hrs)</option>
-                        <option value="05:30 PM - 07:00 PM">05:30 PM - 07:00 PM (1.5 hrs)</option>
-                      </optgroup>
-                      <optgroup label="Laboratory Blocks (3.0 Hours)">
-                        <option value="07:00 AM - 10:00 AM">07:00 AM - 10:00 AM (3.0 hrs Lab)</option>
-                        <option value="10:00 AM - 01:00 PM">10:00 AM - 01:00 PM (3.0 hrs Lab)</option>
-                        <option value="01:00 PM - 04:00 PM">01:00 PM - 04:00 PM (3.0 hrs Lab)</option>
-                        <option value="04:00 PM - 07:00 PM">04:00 PM - 07:00 PM (3.0 hrs Lab)</option>
-                      </optgroup>
-                      <optgroup label="Single 30-Minute Interval Slots">
-                        {TIME_SLOTS.map((t) => (
-                          <option key={t} value={t}>
-                            {t}
-                          </option>
-                        ))}
-                      </optgroup>
-                      <option value="__custom__">⚙️ Specify Custom Range...</option>
-                    </select>
-                  ) : (
+                  <div className="field-group" style={{ margin: 0 }}>
+                    <label htmlFor="schedSubject">
+                      Academic Subject <span style={{ color: "#dc2626" }}>*</span>
+                    </label>
+                    <SearchableSelect
+                      id="schedSubject"
+                      value={form.subjectCode}
+                      onChange={(val) => handleSubjectChange(val)}
+                      options={subjectOptionsForStep1}
+                      placeholder="Search & select curriculum subject..."
+                      searchPlaceholder="Search by subject code, title, program..."
+                      emptyText="No matching academic subjects found"
+                    />
+                  </div>
+
+                  {selectedSubjectObj && (
                     <div
                       style={{
                         display: "flex",
-                        flexDirection: "column",
-                        gap: 10,
-                        background: "var(--srcb-surface-alt, rgba(0,0,0,0.02))",
-                        padding: 12,
-                        borderRadius: 8,
-                        border: "1px dashed var(--srcb-border)",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "6px 10px",
+                        borderRadius: 6,
+                        background: "rgba(2, 132, 199, 0.06)",
+                        border: "1px solid rgba(2, 132, 199, 0.15)",
+                        fontSize: "0.75rem",
+                        flexWrap: "wrap",
                       }}
                     >
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                        <div>
-                          <label style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)", display: "block", marginBottom: 4 }}>
-                            Start Time
-                          </label>
-                          <select
-                            value={form.time.split("-")[0]?.trim() || "07:00 AM"}
-                            onChange={(e) => {
-                              const newStart = e.target.value;
-                              const curEnd = form.time.split("-")[1]?.trim() || "08:30 AM";
-                              setForm({ ...form, time: `${newStart} - ${curEnd}` });
-                            }}
-                          >
-                            {TIME_POINTS.slice(0, -1).map((tp) => (
-                              <option key={tp} value={tp}>
-                                {tp}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)", display: "block", marginBottom: 4 }}>
-                            End Time
-                          </label>
-                          <select
-                            value={form.time.split("-")[1]?.trim() || "08:30 AM"}
-                            onChange={(e) => {
-                              const curStart = form.time.split("-")[0]?.trim() || "07:00 AM";
-                              const newEnd = e.target.value;
-                              setForm({ ...form, time: `${curStart} - ${newEnd}` });
-                            }}
-                          >
-                            {TIME_POINTS.slice(1).map((tp) => (
-                              <option key={tp} value={tp}>
-                                {tp}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                      <span style={{ fontWeight: 700, color: "var(--srcb-navy)" }}>{selectedSubjectObj.code}</span>
+                      <span style={{ color: "var(--srcb-text-muted)" }}>•</span>
+                      <span style={{ maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {selectedSubjectObj.name}
+                      </span>
+                      <span className={`pill ${selectedSubjectObj.isMajor ? "pill--blue" : "pill--amber"}`} style={{ fontSize: "0.68rem", padding: "1px 5px" }}>
+                        {selectedSubjectObj.isMajor ? "Major" : "Gen Ed (Universal)"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Modality & Facility Card */}
+                <div className="sched-form-card">
+                  <div className="sched-form-card-header">
+                    <div className="sched-form-card-title-wrap">
+                      <div className="sched-form-card-icon">
+                        <Building2 size={16} />
                       </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontSize: "0.74rem", color: "var(--srcb-text-muted)", whiteSpace: "nowrap" }}>
-                          Custom Label:
-                        </span>
-                        <input
-                          type="text"
-                          placeholder="e.g. 07:00 AM - 08:30 AM"
-                          value={form.time}
-                          onChange={(e) => setForm({ ...form, time: e.target.value })}
-                          style={{ fontSize: "0.78rem", padding: "6px 10px" }}
-                        />
+                      <span className="sched-form-card-title">Delivery Mode</span>
+                    </div>
+                  </div>
+
+                  <div className="sched-modality-grid">
+                    <button
+                      type="button"
+                      className={`sched-modality-card ${form.modality === "Face-to-Face" ? "is-selected" : ""}`}
+                      onClick={() => setForm({ ...form, modality: "Face-to-Face" })}
+                    >
+                      <div className="sched-modality-icon-wrap">
+                        <Building2 size={16} />
                       </div>
+                      <div className="sched-modality-details">
+                        <span className="sched-modality-name">Face-to-Face</span>
+                        <span className="sched-modality-sub">On-campus facility</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`sched-modality-card ${form.modality === "Online" ? "is-selected" : ""}`}
+                      onClick={() => setForm({ ...form, modality: "Online" })}
+                    >
+                      <div className="sched-modality-icon-wrap">
+                        <Monitor size={16} />
+                      </div>
+                      <div className="sched-modality-details">
+                        <span className="sched-modality-name">Online</span>
+                        <span className="sched-modality-sub">Virtual session</span>
+                      </div>
+                    </button>
+                  </div>
+
+                  {form.modality === "Online" ? (
+                    <div className="field-group" style={{ margin: 0 }}>
+                      <label htmlFor="schedOnlineLink" style={{ fontSize: "0.78rem" }}>Virtual Meeting Link</label>
+                      <input
+                        id="schedOnlineLink"
+                        placeholder="https://meet.google.com/xxx or Zoom"
+                        value={form.onlineLink}
+                        onChange={(e) => setForm({ ...form, onlineLink: e.target.value })}
+                        style={{ fontSize: "0.82rem", padding: "6px 10px" }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="field-group" style={{ margin: 0 }}>
+                      <label htmlFor="schedBuilding" style={{ fontSize: "0.78rem" }}>Preferred Campus Building</label>
+                      <select
+                        id="schedBuilding"
+                        value={form.building}
+                        onChange={(e) => handleBuildingChange(e.target.value as BuildingType)}
+                        style={{ fontSize: "0.82rem", padding: "6px 10px" }}
+                      >
+                        {buildingOptions.map((b) => (
+                          <option key={b} value={b}>
+                            {b}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   )}
                 </div>
               </div>
-            </div>
 
-            {/* Modality & Facility Card */}
-            <div className="sched-form-card">
-              <div className="sched-form-card-header">
-                <div className="sched-form-card-title-wrap">
-                  <div className="sched-form-card-icon">
-                    <Building2 size={16} />
-                  </div>
-                  <span className="sched-form-card-title">Delivery Mode & Location</span>
-                </div>
-              </div>
-
-              <div className="sched-modality-grid">
-                <button
-                  type="button"
-                  className={`sched-modality-card ${form.modality === "Face-to-Face" ? "is-selected" : ""}`}
-                  onClick={() => setForm({ ...form, modality: "Face-to-Face" })}
-                >
-                  <div className="sched-modality-icon-wrap">
-                    <Building2 size={18} />
-                  </div>
-                  <div className="sched-modality-details">
-                    <span className="sched-modality-name">Face-to-Face (On-Campus)</span>
-                    <span className="sched-modality-sub">Physical classroom & laboratory facilities</span>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  className={`sched-modality-card ${form.modality === "Online" ? "is-selected" : ""}`}
-                  onClick={() => setForm({ ...form, modality: "Online" })}
-                >
-                  <div className="sched-modality-icon-wrap">
-                    <Monitor size={18} />
-                  </div>
-                  <div className="sched-modality-details">
-                    <span className="sched-modality-name">Online (Virtual Class)</span>
-                    <span className="sched-modality-sub">Remote video conference session</span>
-                  </div>
-                </button>
-              </div>
-
-              {form.modality === "Online" ? (
-                <div className="field-group" style={{ margin: 0 }}>
-                  <label htmlFor="schedOnlineLink">Virtual Meeting Link / URL</label>
-                  <input
-                    id="schedOnlineLink"
-                    placeholder="https://meet.google.com/xxx or Zoom / Teams URL"
-                    value={form.onlineLink}
-                    onChange={(e) => setForm({ ...form, onlineLink: e.target.value })}
-                  />
-                </div>
-              ) : (
-                <div className="field-group" style={{ margin: 0 }}>
-                  <label htmlFor="schedBuilding">Preferred Campus Building</label>
-                  <select
-                    id="schedBuilding"
-                    value={form.building}
-                    onChange={(e) => handleBuildingChange(e.target.value as BuildingType)}
-                  >
-                    {buildingOptions.map((b) => (
-                      <option key={b} value={b}>
-                        {b}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-
-            {/* Proactive Availability Assessment (Real-time pre-check) */}
-            {form.subjectCode && form.day && form.time && (
-              <div className="sched-readiness-box">
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: "0.82rem", color: "var(--srcb-navy)" }}>
-                    <Sparkles size={15} color="var(--srcb-royal)" />
-                    <span>Real-time Resource Availability Check</span>
-                  </div>
-                  <span style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)" }}>
-                    {form.day} • {form.time}
-                  </span>
-                </div>
-
-                <div className="sched-readiness-grid">
-                  <div className={`sched-readiness-pill ${availableFacultyForSlot.length > 0 ? "is-ok" : "is-warning"}`}>
-                    {availableFacultyForSlot.length > 0 ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
-                    <div>
-                      <div style={{ fontWeight: 700 }}>Faculty</div>
-                      <div style={{ fontSize: "0.72rem", opacity: 0.85 }}>
-                        {availableFacultyForSlot.length > 0 ? `${availableFacultyForSlot.length} Available` : "No instructor free"}
+              {/* RIGHT COLUMN: WHEN & READINESS (Day + Paired Day + Time + Availability) */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {/* Day & Time Card */}
+                <div className="sched-form-card">
+                  <div className="sched-form-card-header">
+                    <div className="sched-form-card-title-wrap">
+                      <div className="sched-form-card-icon">
+                        <CalendarDays size={16} />
                       </div>
+                      <span className="sched-form-card-title">Schedule Timing & Duration</span>
                     </div>
-                  </div>
-
-                  <div
-                    className={`sched-readiness-pill ${
-                      form.modality === "Online" || availableRoomsForSlot.length > 0 ? "is-ok" : "is-warning"
-                    }`}
-                  >
-                    {form.modality === "Online" || availableRoomsForSlot.length > 0 ? (
-                      <CheckCircle2 size={16} />
-                    ) : (
-                      <AlertTriangle size={16} />
+                    {form.time && getTimeDurationStr(form.time) && (
+                      <span className="sched-duration-tag">
+                        <Clock size={12} />
+                        {getTimeDurationStr(form.time)}
+                      </span>
                     )}
-                    <div>
-                      <div style={{ fontWeight: 700 }}>Room</div>
-                      <div style={{ fontSize: "0.72rem", opacity: 0.85 }}>
-                        {form.modality === "Online"
-                          ? "Virtual Room"
-                          : availableRoomsForSlot.length > 0
-                            ? `${availableRoomsForSlot.length} Available`
-                            : "No room free"}
-                      </div>
-                    </div>
                   </div>
 
-                  <div className={`sched-readiness-pill ${availableSectionsForSlot.length > 0 ? "is-ok" : "is-warning"}`}>
-                    {availableSectionsForSlot.length > 0 ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
-                    <div>
-                      <div style={{ fontWeight: 700 }}>Section</div>
-                      <div style={{ fontSize: "0.72rem", opacity: 0.85 }}>
-                        {availableSectionsForSlot.length > 0
-                          ? `${availableSectionsForSlot.length} Section(s) Free`
-                          : "No section free"}
+                  <div className="field-group" style={{ margin: 0 }}>
+                    <label htmlFor="schedDay">
+                      Teaching Day <span style={{ color: "#dc2626" }}>*</span>
+                    </label>
+                    <select
+                      id="schedDay"
+                      value={form.day}
+                      onChange={(e) => {
+                        const newDay = e.target.value;
+                        setForm({ ...form, day: newDay });
+                        if (!editingSchedule) {
+                          const paired = getPairedDay(newDay);
+                          setPairDayEnabled(Boolean(paired));
+                          setDuplicateDays(paired ? [paired] : ["Friday"]);
+                        }
+                      }}
+                    >
+                      {DAYS.map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
+
+                    {/* Schedule Duplication Section */}
+                    {!editingSchedule && (
+                      <div className="sched-duplication-box">
+                        <div className="sched-duplication-header">
+                          <label className="sched-duplication-toggle" htmlFor="pairDayEnabledToggle">
+                            <input
+                              id="pairDayEnabledToggle"
+                              type="checkbox"
+                              checked={pairDayEnabled}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setPairDayEnabled(checked);
+                                if (checked && duplicateDays.length === 0) {
+                                  const paired = getPairedDay(form.day) || "Friday";
+                                  setDuplicateDays([paired]);
+                                }
+                              }}
+                            />
+                            <span className="sched-duplication-title">
+                              <Copy size={13} style={{ display: "inline-block", verticalAlign: "-2px", marginRight: 4 }} />
+                              Duplicate Schedule to Paired Day
+                            </span>
+                          </label>
+                          {getPairedDay(form.day) && (
+                            <span className="sched-dup-recommended">
+                              Recommended: {getPairedDay(form.day)}
+                            </span>
+                          )}
+                        </div>
+
+                        {pairDayEnabled && (
+                          <>
+                            <div className="sched-dup-days-grid">
+                              {DAYS.filter((d) => d !== form.day).map((d) => {
+                                const isSelected = duplicateDays.includes(d);
+                                const isDefaultPair = d === getPairedDay(form.day);
+                                return (
+                                  <button
+                                    key={d}
+                                    type="button"
+                                    className={`sched-dup-day-btn ${isSelected ? "selected" : ""}`}
+                                    onClick={() => {
+                                      if (isSelected) {
+                                        setDuplicateDays(duplicateDays.filter((x) => x !== d));
+                                      } else {
+                                        setDuplicateDays([...duplicateDays, d]);
+                                      }
+                                    }}
+                                  >
+                                    {d.slice(0, 3)}
+                                    {isDefaultPair && <span style={{ fontSize: "0.65rem", marginLeft: 2, opacity: 0.85 }}>★</span>}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            <div className="sched-dup-preview">
+                              {duplicateDays.length > 0 ? (
+                                <>
+                                  Will save matching session on <strong>{duplicateDays.join(", ")}</strong> at {form.time}
+                                </>
+                              ) : (
+                                <span style={{ color: "#eab308" }}>Select at least one day to duplicate to</span>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="field-group" style={{ margin: 0 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <label htmlFor="schedStartTime" style={{ margin: 0, fontWeight: 700, fontSize: "0.85rem" }}>
+                        Time Window <span style={{ color: "#dc2626" }}>*</span>
+                      </label>
+                      {getTimeDurationStr(form.time) && (
+                        <span className="sched-duration-chip" title="Total allocated class duration">
+                          <Clock size={11} /> {getTimeDurationStr(form.time)}
+                        </span>
+                      )}
+                    </div>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8 }}>
+                      <div>
+                        <label htmlFor="schedStartTime" style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)", display: "block", marginBottom: 3, fontWeight: 600 }}>
+                          Start Time
+                        </label>
+                        <select
+                          id="schedStartTime"
+                          value={form.time.split("-")[0]?.trim() || "07:00 AM"}
+                          onChange={(e) => {
+                            const newStart = e.target.value;
+                            const curEnd = form.time.split("-")[1]?.trim() || "08:30 AM";
+                            const startMin = parseTimeToMinutes(newStart);
+                            const endMin = parseTimeToMinutes(curEnd);
+                            let newEnd = curEnd;
+                            if (startMin >= endMin) {
+                              const targetMin = Math.min(startMin + 90, 21 * 60);
+                              const found = TIME_POINTS.find((tp) => parseTimeToMinutes(tp) >= targetMin) || TIME_POINTS[TIME_POINTS.length - 1];
+                              newEnd = found;
+                            }
+                            setForm({ ...form, time: `${newStart} - ${newEnd}` });
+                          }}
+                        >
+                          {TIME_POINTS.slice(0, -1).map((tp) => (
+                            <option key={tp} value={tp}>
+                              {tp}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", paddingTop: 18, color: "var(--srcb-text-muted)" }}>
+                        <ArrowRight size={14} />
+                      </div>
+
+                      <div>
+                        <label htmlFor="schedEndTime" style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)", display: "block", marginBottom: 3, fontWeight: 600 }}>
+                          End Time
+                        </label>
+                        <select
+                          id="schedEndTime"
+                          value={form.time.split("-")[1]?.trim() || "08:30 AM"}
+                          onChange={(e) => {
+                            const curStart = form.time.split("-")[0]?.trim() || "07:00 AM";
+                            const newEnd = e.target.value;
+                            setForm({ ...form, time: `${curStart} - ${newEnd}` });
+                          }}
+                        >
+                          {TIME_POINTS.map((tp) => {
+                            const curStart = form.time.split("-")[0]?.trim() || "07:00 AM";
+                            const startMin = parseTimeToMinutes(curStart);
+                            const endMin = parseTimeToMinutes(tp);
+                            if (endMin <= startMin) return null;
+                            const diff = endMin - startMin;
+                            const hrs = diff / 60;
+                            const diffLabel = hrs % 1 === 0 ? `${hrs}h` : `${hrs.toFixed(1)}h`;
+                            return (
+                              <option key={tp} value={tp}>
+                                {tp} ({diffLabel})
+                              </option>
+                            );
+                          })}
+                        </select>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {(availableSectionsForSlot.length === 0 ||
-                  availableFacultyForSlot.length === 0 ||
-                  (form.modality === "Face-to-Face" && availableRoomsForSlot.length === 0)) && (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 8,
-                      padding: "8px 12px",
-                      background: "rgba(245, 158, 11, 0.08)",
-                      border: "1px solid rgba(245, 158, 11, 0.25)",
-                      borderRadius: 6,
-                      color: "#b45309",
-                      fontSize: "0.78rem",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 2 }} />
-                    <div>
-                      {availableSectionsForSlot.length === 0 && (
-                        <div>Notice: No registered sections currently match this subject and time slot.</div>
-                      )}
-                      {availableFacultyForSlot.length === 0 && (
-                        <div>Notice: No instructors currently have registered availability at this time slot.</div>
-                      )}
-                      {form.modality === "Face-to-Face" && availableRoomsForSlot.length === 0 && (
-                        <div>Notice: Classrooms may be occupied at {form.day} {form.time}.</div>
-                      )}
-                      <div style={{ fontSize: "0.72rem", fontWeight: 400, marginTop: 4, color: "var(--srcb-text-muted)" }}>
-                        You can still proceed to Step 2 to override or assign any instructor, room, or section.
-                      </div>
-                    </div>
+                {/* Compact Availability Assessment */}
+                {form.subjectCode && form.day && form.time && (
+                  <div className="sched-compact-readiness-row">
+                    <span style={{ fontWeight: 700, color: "var(--srcb-navy)", display: "flex", alignItems: "center", gap: 4 }}>
+                      <Sparkles size={13} color="var(--srcb-royal)" /> Pre-check:
+                    </span>
+                    <span className={`sched-compact-chip ${availableFacultyForSlot.length > 0 ? "is-good" : "is-warning"}`}>
+                      {availableFacultyForSlot.length > 0 ? `✓ ${availableFacultyForSlot.length} Faculty Free` : "⚠ No Faculty Free"}
+                    </span>
+                    <span className={`sched-compact-chip ${form.modality === "Online" || availableRoomsForSlot.length > 0 ? "is-good" : "is-warning"}`}>
+                      {form.modality === "Online" ? "✓ Online" : availableRoomsForSlot.length > 0 ? `✓ ${availableRoomsForSlot.length} Rooms Free` : "⚠ No Rooms Free"}
+                    </span>
+                    <span className={`sched-compact-chip ${availableSectionsForSlot.length > 0 ? "is-good" : "is-warning"}`}>
+                      {availableSectionsForSlot.length > 0 ? `✓ ${availableSectionsForSlot.length} Sections Free` : "⚠ Check Section"}
+                    </span>
                   </div>
                 )}
               </div>
-            )}
+            </div>
 
-            {/* Modal Actions */}
-            <div className="table-actions" style={{ marginTop: 8, display: "flex", justifyContent: "flex-end", gap: 10 }}>
+            {/* Sticky Action Footer */}
+            <div className="modal-actions">
               <button
                 type="button"
                 className="secondary-button"
@@ -2649,25 +2914,28 @@ export function SchedulesPage() {
 
         {/* STEP 2: Resource Assignment ONLY (WHO, WHERE, FOR WHOM) */}
         {modalStep === 2 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {/* Step 1 Context Summary Bar */}
-            <div className="sched-context-banner">
+            <div className="sched-context-banner" style={{ padding: "8px 14px" }}>
               <div className="sched-context-tags">
                 <div className="sched-context-item">
-                  <BookOpen size={15} color="var(--srcb-royal)" />
+                  <BookOpen size={14} color="var(--srcb-royal)" />
                   <strong>Subject:</strong> <span>{form.subjectCode} — {form.subject}</span>
                 </div>
                 <div className="sched-context-item">
-                  <Calendar size={15} color="var(--srcb-royal)" />
-                  <strong>Schedule:</strong> <span>{form.day} • {form.time}</span>
-                  {getTimeDurationStr(form.time) && (
-                    <span className="pill pill--blue" style={{ fontSize: "0.68rem", padding: "1px 5px" }}>
-                      {getTimeDurationStr(form.time)}
-                    </span>
-                  )}
+                  <Calendar size={14} color="var(--srcb-royal)" />
+                  <strong>Schedule:</strong>{" "}
+                  <span>
+                    {pairDayEnabled && !editingSchedule && duplicateDays.length > 0
+                      ? `${form.day} & ${duplicateDays.join(", ")}`
+                      : pairDayEnabled && !editingSchedule && getPairedDay(form.day)
+                      ? `${form.day} & ${getPairedDay(form.day)}`
+                      : form.day}{" "}
+                    • {form.time}
+                  </span>
                 </div>
                 <div className="sched-context-item">
-                  <DoorOpen size={15} color="var(--srcb-royal)" />
+                  <DoorOpen size={14} color="var(--srcb-royal)" />
                   <strong>Modality:</strong> <span>{form.modality}</span>
                 </div>
               </div>
@@ -2675,327 +2943,290 @@ export function SchedulesPage() {
                 type="button"
                 className="secondary-button"
                 onClick={() => setModalStep(1)}
-                style={{ padding: "4px 10px", fontSize: "0.76rem" }}
+                style={{ padding: "3px 8px", fontSize: "0.74rem" }}
               >
                 <Edit2 size={12} />
                 <span>Edit Slot</span>
               </button>
             </div>
 
-            {/* Resource 1: Faculty */}
-            <div className="sched-form-card">
-              <div className="sched-form-card-header">
-                <div className="sched-form-card-title-wrap">
-                  <div className="sched-form-card-icon">
-                    <UserCheck size={16} />
-                  </div>
-                  <span className="sched-form-card-title">Assign Instructor / Faculty</span>
-                </div>
-                {form.faculty && (
-                  <span className="sched-form-card-badge" style={{ color: "var(--srcb-royal)" }}>
-                    Selected: {form.faculty}
-                  </span>
-                )}
-              </div>
-
-              <div className="field-group" style={{ margin: 0 }}>
-                <label htmlFor="schedFaculty">
-                  Available Faculty / Instructor <span style={{ color: "#dc2626" }}>*</span>
-                </label>
-                {availableFacultyForSlot.length === 0 ? (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "10px 14px",
-                      background: "rgba(239, 68, 68, 0.08)",
-                      border: "1px solid rgba(239, 68, 68, 0.25)",
-                      borderRadius: 6,
-                      color: "#dc2626",
-                      fontSize: "0.82rem",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <AlertTriangle size={15} />
-                    <span>No available faculty for this time slot.</span>
-                  </div>
-                ) : (
-                  <SearchableSelect
-                    id="schedFaculty"
-                    value={form.facultyId}
-                    onChange={(val) => {
-                      const fac = availableFaculty.find((f) => f.id === val);
-                      setForm({
-                        ...form,
-                        facultyId: val,
-                        faculty: fac ? fac.name : "",
-                      });
-                    }}
-                    options={facultyOptionsForStep2}
-                    placeholder="Search & select available instructor..."
-                    searchPlaceholder="Search instructors by name, department, status..."
-                    emptyText="No matching available instructors found"
-                  />
-                )}
-              </div>
-
-              {/* Part-Time Instructor Availability Window */}
-              {selectedFacultyMember && selectedFacultyMember.status === "Part-Time" && (
-                <div
-                  style={{
-                    padding: "10px 14px",
-                    background: "var(--srcb-surface)",
-                    borderRadius: 8,
-                    border: "1px solid var(--srcb-border)",
-                    borderLeft: "4px solid #f59e0b",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, color: "#d97706", fontSize: "0.82rem" }}>
-                      <Clock size={14} />
-                      <span>Part-Time Instructor Availability Schedule:</span>
+            <div className="sched-modal-side-by-side">
+              {/* LEFT COLUMN: Section & Faculty */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {/* Resource: Section */}
+                <div className="sched-form-card">
+                  <div className="sched-form-card-header">
+                    <div className="sched-form-card-title-wrap">
+                      <div className="sched-form-card-icon">
+                        <Users size={16} />
+                      </div>
+                      <span className="sched-form-card-title">Assign Student Section</span>
                     </div>
-                    <span className="pill pill--online" style={{ fontSize: "0.7rem" }}>Part-Time</span>
+                    {form.section && (
+                      <span className="sched-form-card-badge" style={{ color: "var(--srcb-royal)" }}>
+                        Enrolled: {selectedSectionHeadcount} Students
+                      </span>
+                    )}
                   </div>
-                  {(() => {
-                    const grouped = formatGroupedAvailability(selectedFacultyMember.availability);
-                    if (grouped.length === 0) {
-                      return <p style={{ margin: 0, color: "var(--srcb-text-muted)", fontSize: "0.78rem" }}>Standard working hours.</p>;
-                    }
-                    return (
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 6 }}>
-                        {grouped.map(({ day, formattedRange }) => {
-                          const isMatchingDay = day.toLowerCase() === form.day.toLowerCase();
+
+                  <div className="field-group" style={{ margin: 0 }}>
+                    <label htmlFor="schedSection">
+                      Student Section <span style={{ color: "#dc2626" }}>*</span>
+                    </label>
+                    <SearchableSelect
+                      id="schedSection"
+                      value={form.section}
+                      onChange={(val) => {
+                        const sec = availableSections.find(
+                          (s) => s.section === val || (s.course && `${s.course} ${s.yearLevel || ''}-${s.section}`.trim() === val)
+                        );
+                        setForm({
+                          ...form,
+                          section: val,
+                          program: sec?.program || sec?.course || form.program,
+                        });
+                      }}
+                      options={sectionOptionsForStep2}
+                      placeholder="Search & select student section..."
+                      searchPlaceholder="Search sections (e.g. BSIT 1-A)..."
+                      emptyText="No matching student sections found"
+                    />
+                  </div>
+                </div>
+
+                {/* Resource: Faculty */}
+                <div className="sched-form-card">
+                  <div className="sched-form-card-header">
+                    <div className="sched-form-card-title-wrap">
+                      <div className="sched-form-card-icon">
+                        <UserCheck size={16} />
+                      </div>
+                      <span className="sched-form-card-title">Assign Instructor</span>
+                    </div>
+                    {form.faculty && (
+                      <span className="sched-form-card-badge" style={{ color: "var(--srcb-royal)" }}>
+                        {form.faculty}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="field-group" style={{ margin: 0 }}>
+                    <label htmlFor="schedFaculty">
+                      Instructor / Faculty <span style={{ color: "#dc2626" }}>*</span>
+                    </label>
+                    <SearchableSelect
+                      id="schedFaculty"
+                      value={form.facultyId}
+                      onChange={(val) => {
+                        const fac = availableFaculty.find((f) => f.id === val);
+                        setForm({
+                          ...form,
+                          facultyId: val,
+                          faculty: fac ? fac.name : "",
+                        });
+                      }}
+                      options={facultyOptionsForStep2}
+                      placeholder="Search & select instructor..."
+                      searchPlaceholder="Search instructors..."
+                      emptyText="No matching instructors found"
+                    />
+                  </div>
+
+                  {/* Part-Time Instructor Availability Window */}
+                  {selectedFacultyMember && selectedFacultyMember.status === "Part-Time" && (
+                    <div
+                      style={{
+                        padding: "6px 10px",
+                        background: "var(--srcb-surface)",
+                        borderRadius: 6,
+                        border: "1px solid var(--srcb-border)",
+                        borderLeft: "3px solid #f59e0b",
+                        fontSize: "0.74rem",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 4, fontWeight: 700, color: "#d97706", marginBottom: 4 }}>
+                        <Clock size={12} />
+                        <span>Part-Time Availability Windows:</span>
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                        {formatGroupedAvailability(selectedFacultyMember.availability).map(({ day, formattedRange }) => {
+                          const isMatchingDay =
+                            day.toLowerCase() === form.day.toLowerCase() ||
+                            (pairDayEnabled && duplicateDays.some((d) => d.toLowerCase() === day.toLowerCase())) ||
+                            (pairDayEnabled && day.toLowerCase() === (getPairedDay(form.day) || "").toLowerCase());
                           return (
-                            <div
+                            <span
                               key={day}
                               style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                padding: "4px 8px",
+                                padding: "2px 6px",
+                                borderRadius: 4,
                                 background: isMatchingDay ? "rgba(245, 158, 11, 0.15)" : "rgba(148, 163, 184, 0.08)",
                                 border: `1px solid ${isMatchingDay ? "rgba(245, 158, 11, 0.4)" : "var(--srcb-border)"}`,
-                                borderRadius: 6,
-                                fontSize: "0.76rem",
+                                fontSize: "0.72rem",
                               }}
                             >
-                              <strong style={{ color: isMatchingDay ? "#d97706" : "var(--srcb-text)" }}>{day}:</strong>
-                              <span style={{ color: isMatchingDay ? "var(--srcb-text)" : "var(--srcb-text-muted)" }}>{formattedRange}</span>
-                            </div>
+                              <strong>{day}:</strong> {formattedRange}
+                            </span>
                           );
                         })}
                       </div>
-                    );
-                  })()}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-
-            {/* Resource 2: Room */}
-            <div className="sched-form-card">
-              <div className="sched-form-card-header">
-                <div className="sched-form-card-title-wrap">
-                  <div className="sched-form-card-icon">
-                    <DoorOpen size={16} />
-                  </div>
-                  <span className="sched-form-card-title">Assign Classroom or Facility</span>
-                </div>
-                {selectedRoomObj && form.modality !== "Online" && (
-                  <span className="sched-form-card-badge">
-                    Capacity: {selectedRoomObj.capacity} seats · {selectedRoomObj.type || "Classroom"}
-                  </span>
-                )}
               </div>
 
-              <div className="field-group" style={{ margin: 0 }}>
-                <label htmlFor="schedRoom">
-                  Available Room / Laboratory <span style={{ color: "#dc2626" }}>*</span>
-                </label>
-                {form.modality === "Online" ? (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "10px 14px",
-                      background: "rgba(16, 185, 129, 0.08)",
-                      border: "1px solid rgba(16, 185, 129, 0.25)",
-                      borderRadius: 6,
-                      color: "#059669",
-                      fontSize: "0.84rem",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <CheckCircle2 size={16} />
-                    <span>Virtual Classroom Mode — No physical facility reservation required</span>
+              {/* RIGHT COLUMN: Room & Validation */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {/* Resource: Room */}
+                <div className="sched-form-card">
+                  <div className="sched-form-card-header">
+                    <div className="sched-form-card-title-wrap">
+                      <div className="sched-form-card-icon">
+                        <DoorOpen size={16} />
+                      </div>
+                      <span className="sched-form-card-title">Assign Classroom</span>
+                    </div>
+                    {selectedRoomObj && form.modality !== "Online" && (
+                      <span className="sched-form-card-badge">
+                        Cap: {selectedRoomObj.capacity} seats · {selectedRoomObj.type || "Classroom"}
+                      </span>
+                    )}
                   </div>
-                ) : availableRoomsForSlot.length === 0 ? (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "10px 14px",
-                      background: "rgba(239, 68, 68, 0.08)",
-                      border: "1px solid rgba(239, 68, 68, 0.25)",
-                      borderRadius: 6,
-                      color: "#dc2626",
-                      fontSize: "0.82rem",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <AlertTriangle size={15} />
-                    <span>No available physical rooms for this time.</span>
-                  </div>
-                ) : (
-                  <>
-                    <SearchableSelect
-                      id="schedRoom"
-                      value={form.room}
-                      onChange={(val) => handleRoomChange(val)}
-                      options={roomOptionsForStep2}
-                      placeholder="Search & select available classroom or lab..."
-                      searchPlaceholder="Search rooms by number, building, type..."
-                      emptyText="No matching available rooms found"
-                    />
-                    {isRoomTooSmall && (
+
+                  <div className="field-group" style={{ margin: 0 }}>
+                    <label htmlFor="schedRoom">
+                      Classroom / Laboratory <span style={{ color: "#dc2626" }}>*</span>
+                    </label>
+                    {form.modality === "Online" ? (
                       <div
                         style={{
                           display: "flex",
                           alignItems: "center",
-                          gap: 8,
-                          padding: "10px 14px",
-                          background: "rgba(239, 68, 68, 0.08)",
-                          border: "1px solid rgba(239, 68, 68, 0.25)",
+                          gap: 6,
+                          padding: "8px 12px",
+                          background: "rgba(16, 185, 129, 0.08)",
+                          border: "1px solid rgba(16, 185, 129, 0.25)",
                           borderRadius: 6,
-                          color: "#dc2626",
-                          fontSize: "0.82rem",
+                          color: "#059669",
+                          fontSize: "0.8rem",
                           fontWeight: 600,
-                          marginTop: 6,
                         }}
                       >
-                        <AlertTriangle size={15} style={{ flexShrink: 0 }} />
-                        <span>
-                          ⚠ Room {form.room} capacity ({selectedRoomObj?.capacity}) is smaller than the section student headcount ({selectedSectionHeadcount}). Please select a room with at least {selectedSectionHeadcount} seats.
-                        </span>
+                        <CheckCircle2 size={15} />
+                        <span>Virtual Classroom Mode — No physical room needed</span>
                       </div>
+                    ) : (
+                      <>
+                        <SearchableSelect
+                          id="schedRoom"
+                          value={form.room}
+                          onChange={(val) => handleRoomChange(val)}
+                          options={roomOptionsForStep2}
+                          placeholder="Search & select classroom or lab..."
+                          searchPlaceholder="Search rooms..."
+                          emptyText="No matching rooms found"
+                        />
+                        {concurrentSlotSchedules.length > 0 && (
+                          <div className="sched-concurrent-alert" style={{ marginTop: 6, padding: "6px 10px", fontSize: "0.74rem" }}>
+                            <Sparkles size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+                            <div>
+                              <strong>Concurrent Slot:</strong> {concurrentSlotSchedules.length} class(es) running in other rooms ({concurrentSlotSchedules.map((cs) => cs.room).join(", ")}).
+                              {form.room && !concurrentSlotSchedules.some((cs) => cs.room.toLowerCase() === form.room.toLowerCase()) && (
+                                <span style={{ color: "#166534", fontWeight: 700, marginLeft: 4 }}>
+                                  ✓ Room {form.room} is clear.
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        {isRoomTooSmall && (
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                              padding: "6px 10px",
+                              background: "rgba(239, 68, 68, 0.08)",
+                              border: "1px solid rgba(239, 68, 68, 0.25)",
+                              borderRadius: 6,
+                              color: "#dc2626",
+                              fontSize: "0.75rem",
+                              fontWeight: 600,
+                              marginTop: 4,
+                            }}
+                          >
+                            <AlertTriangle size={14} style={{ flexShrink: 0 }} />
+                            <span>
+                              ⚠ Room capacity ({selectedRoomObj?.capacity}) is less than section size ({selectedSectionHeadcount}).
+                            </span>
+                          </div>
+                        )}
+                      </>
                     )}
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Resource 3: Section */}
-            <div className="sched-form-card">
-              <div className="sched-form-card-header">
-                <div className="sched-form-card-title-wrap">
-                  <div className="sched-form-card-icon">
-                    <Users size={16} />
                   </div>
-                  <span className="sched-form-card-title">Assign Student Section</span>
                 </div>
-                {form.section && (
-                  <span className="sched-form-card-badge" style={{ color: "var(--srcb-royal)" }}>
-                    Enrolled: {selectedSectionHeadcount} Students
-                  </span>
-                )}
-              </div>
 
-              <div className="field-group" style={{ margin: 0 }}>
-                <label htmlFor="schedSection">
-                  Available Student Section <span style={{ color: "#dc2626" }}>*</span>
-                </label>
-                {availableSectionsForSlot.length === 0 ? (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "10px 14px",
-                      background: "rgba(239, 68, 68, 0.08)",
-                      border: "1px solid rgba(239, 68, 68, 0.25)",
-                      borderRadius: 6,
-                      color: "#dc2626",
-                      fontSize: "0.82rem",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <AlertTriangle size={15} />
-                    <span>No available sections taking this subject at this time.</span>
-                  </div>
-                ) : (
-                  <SearchableSelect
-                    id="schedSection"
-                    value={form.section}
-                    onChange={(val) => {
-                      const sec = availableSections.find((s) => s.section === val || (s.course && `${s.course} ${s.yearLevel || ''}-${s.section}`.trim() === val));
-                      setForm({
-                        ...form,
-                        section: val,
-                        program: sec?.program || sec?.course || form.program,
-                      });
-                    }}
-                    options={sectionOptionsForStep2}
-                    placeholder="Search & select available student section..."
-                    searchPlaceholder="Search sections (e.g. BSIT 1-A, Year 1)..."
-                    emptyText="No matching available student sections found"
-                  />
-                )}
-              </div>
-            </div>
-
-            {/* Diagnostics and Conflict Warnings Box */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {/* Conflict Errors Box */}
-              {validationFeedback.errors.length > 0 && (
-                <div
-                  style={{
-                    padding: 12,
-                    background: "rgba(239, 68, 68, 0.08)",
-                    borderRadius: 8,
-                    border: "1px solid rgba(239, 68, 68, 0.3)",
-                    borderLeft: "4px solid #dc2626",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, color: "#dc2626", fontSize: "0.85rem" }}>
-                    <AlertTriangle size={16} />
-                    <span>Scheduling Conflicts Detected ({validationFeedback.errors.length})</span>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
-                    {validationFeedback.errors.map((err, i) => (
-                      <div key={i} style={{ fontSize: "0.78rem", color: "var(--srcb-text)" }}>
-                        • {err}
+                {/* Validation & Conflict Status Card */}
+                <div className="sched-form-card">
+                  <div className="sched-form-card-header">
+                    <div className="sched-form-card-title-wrap">
+                      <div className="sched-form-card-icon">
+                        <ShieldCheck size={16} />
                       </div>
-                    ))}
+                      <span className="sched-form-card-title">Validation & Conflict Diagnostics</span>
+                    </div>
                   </div>
-                </div>
-              )}
 
-              {/* Conflict-Free Notice */}
-              {validationFeedback.valid && validationFeedback.errors.length === 0 && form.subjectCode && form.section && form.faculty && (
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "10px 14px",
-                    background: "rgba(16, 185, 129, 0.08)",
-                    borderRadius: 8,
-                    border: "1px solid rgba(16, 185, 129, 0.28)",
-                    fontSize: "0.82rem",
-                    color: "#059669",
-                    fontWeight: 600,
-                  }}
-                >
-                  <ShieldCheck size={18} />
-                  <span>All slot resources verified conflict-free: Instructor, Room, and Section are ready.</span>
+                  {validationFeedback.errors.length > 0 ? (
+                    <div
+                      style={{
+                        padding: 10,
+                        background: "rgba(239, 68, 68, 0.08)",
+                        borderRadius: 6,
+                        border: "1px solid rgba(239, 68, 68, 0.25)",
+                        borderLeft: "3px solid #dc2626",
+                        fontSize: "0.76rem",
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, color: "#dc2626", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+                        <AlertTriangle size={14} />
+                        <span>Conflicts Detected ({validationFeedback.errors.length})</span>
+                      </div>
+                      {validationFeedback.errors.map((err, i) => (
+                        <div key={i} style={{ color: "var(--srcb-text)", marginTop: 2 }}>
+                          • {err}
+                        </div>
+                      ))}
+                    </div>
+                  ) : validationFeedback.valid && form.subjectCode && form.section && form.faculty ? (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "8px 12px",
+                        background: "rgba(16, 185, 129, 0.08)",
+                        borderRadius: 6,
+                        border: "1px solid rgba(16, 185, 129, 0.25)",
+                        fontSize: "0.78rem",
+                        color: "#059669",
+                        fontWeight: 600,
+                      }}
+                    >
+                      <ShieldCheck size={16} />
+                      <span>All resources verified: Instructor, Room, and Section are clear.</span>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: "0.75rem", color: "var(--srcb-text-muted)" }}>
+                      Select an available Section, Instructor, and Room to verify conflict-free scheduling.
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
 
-            {/* Modal Actions */}
-            <div className="table-actions" style={{ marginTop: 8, display: "flex", justifyContent: "space-between" }}>
+            {/* Sticky Action Footer */}
+            <div className="modal-actions" style={{ justifyContent: "space-between" }}>
               <button
                 type="button"
                 className="secondary-button"
@@ -3004,21 +3235,35 @@ export function SchedulesPage() {
                 <ArrowLeft size={16} />
                 <span>Back to Step 1</span>
               </button>
-              <button
-                type="button"
-                className="action-button"
-                disabled={
-                  loading ||
-                  !form.subjectCode ||
-                  !form.section ||
-                  !form.faculty ||
-                  (form.modality === "Face-to-Face" && !form.room)
-                }
-                onClick={handleSave}
-              >
-                <CheckCircle2 size={16} />
-                <span>{loading ? "Saving…" : (editingSchedule ? "Save Schedule Changes" : "Confirm & Schedule Block")}</span>
-              </button>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => {
+                    setIsOpen(false);
+                    setEditingSchedule(null);
+                    setModalStep(1);
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="action-button"
+                  disabled={
+                    loading ||
+                    !form.subjectCode ||
+                    !form.section ||
+                    !form.faculty ||
+                    (form.modality === "Face-to-Face" && !form.room) ||
+                    (!validationFeedback.valid && validationFeedback.errors.length > 0)
+                  }
+                  onClick={handleSave}
+                >
+                  <CheckCircle2 size={16} />
+                  <span>{loading ? "Saving…" : (editingSchedule ? "Save Schedule Changes" : "Confirm & Schedule Block")}</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -3029,6 +3274,7 @@ export function SchedulesPage() {
         isOpen={Boolean(viewingSchedule)}
         onClose={() => setViewingSchedule(null)}
         schedule={viewingSchedule}
+        onDuplicate={canCreate ? handleDuplicate : undefined}
       />
 
       {/* Delete Schedule Block Confirmation Modal (Heuristic 3 & 5) */}

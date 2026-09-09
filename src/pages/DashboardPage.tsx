@@ -430,7 +430,7 @@ export function DashboardPage() {
     attentionItems.push({
       code: `${metrics.conflicts} Schedule Conflict${Number(metrics.conflicts) === 1 ? "" : "s"} Detected`,
       reason: "Action Required: Resolve room, faculty, or time overlapping",
-      path: "/conflicts",
+      path: "/schedules?filter=conflict",
     });
   }
 

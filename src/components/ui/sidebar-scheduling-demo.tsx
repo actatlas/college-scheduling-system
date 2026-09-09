@@ -13,7 +13,6 @@ import {
   LogOut,
   DoorOpen,
   GraduationCap,
-  AlertTriangle,
   FileBarChart,
   UserCircle,
 } from "lucide-react";
@@ -69,11 +68,6 @@ export function SchedulingSidebarDemo() {
       label: "Faculty Directory",
       href: "/faculty",
       icon: <Users className="text-neutral-700 dark:text-neutral-200 h-5 w-5 flex-shrink-0" />,
-    },
-    {
-      label: "Conflict Diagnostics",
-      href: "/conflicts",
-      icon: <AlertTriangle className="text-neutral-700 dark:text-neutral-200 h-5 w-5 flex-shrink-0" />,
     },
     {
       label: "Reports & Analytics",

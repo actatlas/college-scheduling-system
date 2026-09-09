@@ -18,7 +18,6 @@ const pageTitles: Record<string, string> = {
   "/rooms": "Campus Rooms & Facilities",
   "/schedules": "Class Schedules & Timetable",
   "/exams": "Examination Schedules",
-  "/conflicts": "Conflict Diagnostics",
   "/reports": "Reports & Analytics",
   "/users": "User Management (ICT)",
   "/settings": "System Settings",

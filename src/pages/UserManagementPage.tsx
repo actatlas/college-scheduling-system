@@ -12,7 +12,6 @@ import {
   UserCheck,
   UserX,
   Plus,
-  Search,
   Edit2,
   Trash2,
   KeyRound,
@@ -81,6 +80,10 @@ export function UserManagementPage() {
     const s = searchParams.get("status");
     if (s) {
       setStatusFilter(s);
+    }
+    const q = searchParams.get("q") || searchParams.get("search");
+    if (q !== null) {
+      setQuery(q);
     }
   }, [searchParams]);
 

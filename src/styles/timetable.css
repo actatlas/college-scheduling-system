@@ -1032,3 +1032,437 @@
   box-shadow: 0 6px 18px rgba(15, 23, 42, 0.14);
 }
 
+/* ==========================================================================
+   Program Color Legend & Enhanced Multi-Room Scheduling Styles
+   ========================================================================== */
+
+.program-legend-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 14px;
+  background: var(--srcb-surface, #ffffff);
+  border: 1px solid var(--srcb-border, #e2e8f0);
+  border-radius: 10px;
+  margin-top: 14px;
+  margin-bottom: 4px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+.program-legend-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--srcb-navy, #0f2b5c);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-right: 4px;
+}
+
+.program-legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 20px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 140ms ease;
+  user-select: none;
+}
+
+.program-legend-chip:hover {
+  transform: translateY(-1px);
+  filter: brightness(0.96);
+}
+
+.program-legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Room Navigation Pills inside Stacked Cell */
+.stacked-room-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 4px 2px;
+  margin-bottom: 6px;
+  scrollbar-width: none;
+}
+
+.stacked-room-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.stacked-room-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 12px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid var(--srcb-border, #cbd5e1);
+  background: var(--srcb-surface, #ffffff);
+  color: var(--srcb-text-muted, #475569);
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.stacked-room-pill:hover {
+  background: var(--srcb-surface-alt, #f1f5f9);
+  color: var(--srcb-navy, #0f2b5c);
+}
+
+.stacked-room-pill.is-active {
+  background: var(--srcb-navy, #0f2b5c);
+  color: #ffffff;
+  border-color: var(--srcb-navy, #0f2b5c);
+  box-shadow: 0 2px 6px rgba(15, 43, 92, 0.25);
+}
+
+.stacked-room-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Quick Carousel Controls in Stack Header */
+.stacked-flipper {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--srcb-surface-alt, #f1f5f9);
+  border: 1px solid var(--srcb-border, #cbd5e1);
+  border-radius: 6px;
+  padding: 1px 3px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--srcb-navy, #0f2b5c);
+}
+
+.stacked-flipper-btn {
+  background: none;
+  border: none;
+  padding: 1px 3px;
+  cursor: pointer;
+  color: var(--srcb-navy, #0f2b5c);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  transition: background 120ms ease;
+}
+
+.stacked-flipper-btn:hover {
+  background: rgba(15, 43, 92, 0.12);
+}
+
+/* Program Card Accent Badge */
+.program-card-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.64rem;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  flex-shrink: 0;
+}
+
+/* Modal Concurrent Notification */
+.sched-concurrent-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(37, 99, 235, 0.07);
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  border-radius: 8px;
+  color: #1d4ed8;
+  font-size: 0.78rem;
+  margin-top: 8px;
+  line-height: 1.35;
+}
+
+html[data-theme="dark"] .program-legend-bar {
+  background: rgba(21, 23, 34, 0.95);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+html[data-theme="dark"] .stacked-room-pill {
+  background: rgba(30, 41, 59, 0.8);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+}
+
+html[data-theme="dark"] .stacked-room-pill.is-active {
+  background: #38bdf8;
+  color: #0f172a;
+  border-color: #38bdf8;
+}
+
+html[data-theme="dark"] .stacked-flipper {
+  background: rgba(30, 41, 59, 0.9);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #e2e8f0;
+}
+
+html[data-theme="dark"] .stacked-flipper-btn {
+  color: #38bdf8;
+}
+
+html[data-theme="dark"] .sched-concurrent-alert {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.3);
+  color: #7dd3fc;
+}
+
+/* Heuristic Zero-Scroll Modal 2-Column Layout */
+.sched-modal-side-by-side {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: stretch;
+}
+
+@media (max-width: 768px) {
+  .sched-modal-side-by-side {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sched-paired-day-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(37, 99, 235, 0.06);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  margin-top: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sched-paired-day-card:hover {
+  background: rgba(37, 99, 235, 0.1);
+  border-color: rgba(37, 99, 235, 0.35);
+}
+
+.sched-paired-day-card input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: var(--srcb-royal, #2563eb);
+  width: 16px;
+  height: 16px;
+}
+
+.sched-paired-day-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sched-paired-day-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--srcb-navy, #0f172a);
+}
+
+.sched-paired-day-sub {
+  font-size: 0.7rem;
+  color: var(--srcb-text-muted);
+}
+
+.sched-compact-readiness-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--srcb-surface-alt, #f8fafc);
+  border: 1px solid var(--srcb-border);
+  font-size: 0.74rem;
+}
+
+.sched-compact-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.72rem;
+}
+.sched-compact-chip.is-good {
+  background: rgba(22, 163, 74, 0.1);
+  color: #15803d;
+  border: 1px solid rgba(22, 163, 74, 0.25);
+}
+.sched-compact-chip.is-warning {
+  background: rgba(217, 119, 6, 0.1);
+  color: #b45309;
+  border: 1px solid rgba(217, 119, 6, 0.25);
+}
+
+.sched-duration-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--srcb-royal, #2563eb);
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+}
+
+html[data-theme="dark"] .sched-duration-chip {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.25);
+}
+
+html[data-theme="dark"] .sched-paired-day-card {
+  background: rgba(56, 189, 248, 0.08);
+  border-color: rgba(56, 189, 248, 0.25);
+}
+html[data-theme="dark"] .sched-paired-day-title {
+  color: #f1f5f9;
+}
+html[data-theme="dark"] .sched-compact-chip.is-good {
+  background: rgba(34, 197, 94, 0.15);
+  color: #86efac;
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+/* Schedule Duplication Component */
+.sched-duplication-box {
+  background: var(--srcb-surface-alt, #f8fafc);
+  border: 1px solid var(--srcb-border, #e2e8f0);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-top: 8px;
+}
+
+.sched-duplication-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.sched-duplication-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  color: var(--srcb-navy, #0f2b5c);
+  user-select: none;
+}
+
+.sched-duplication-toggle input[type="checkbox"] {
+  accent-color: var(--srcb-royal, #2563eb);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+.sched-dup-days-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.sched-dup-day-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  border: 1px solid var(--srcb-border, #cbd5e1);
+  background: var(--srcb-surface, #ffffff);
+  color: var(--srcb-text, #1e293b);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sched-dup-day-btn:hover {
+  background: var(--srcb-surface-alt, #f1f5f9);
+  border-color: var(--srcb-royal, #2563eb);
+}
+
+.sched-dup-day-btn.is-selected {
+  background: var(--srcb-royal, #2563eb);
+  border-color: var(--srcb-royal, #2563eb);
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.25);
+}
+
+.sched-dup-day-check {
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.sched-dup-recommended {
+  font-size: 0.6rem;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.25);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.sched-dup-preview {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  color: var(--srcb-royal, #2563eb);
+  font-size: 0.74rem;
+}
+
+html[data-theme="dark"] .sched-duplication-box {
+  background: rgba(30, 41, 59, 0.5);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+html[data-theme="dark"] .sched-dup-day-btn {
+  background: rgba(15, 23, 42, 0.8);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #e2e8f0;
+}
+
+html[data-theme="dark"] .sched-dup-day-btn.is-selected {
+  background: #38bdf8;
+  color: #0f172a;
+  border-color: #38bdf8;
+}
+
+html[data-theme="dark"] .sched-dup-preview {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.3);
+  color: #7dd3fc;
+}
+
+
+

@@ -16,6 +16,16 @@ const PROGRAM_COURSE_MAP = {
   BEED: ['TEP', 'BSED', 'BEED', 'EDUC', 'EDUCATION', 'TEACHER EDUCATION'],
 };
 
+function getProgramColor(progOrCode) {
+  const str = String(progOrCode || '').toUpperCase();
+  if (str.includes('ITP') || str.includes('BSIT') || str.includes('BSCS') || str.startsWith('IT') || str.startsWith('CS') || str.startsWith('CC')) return '#800000'; // Maroon
+  if (str.includes('BAP') || str.includes('BSBA') || str.includes('BSA') || str.startsWith('BA') || str.startsWith('ACT')) return '#d97706'; // Yellow
+  if (str.includes('CJEP') || str.includes('BSCRIM') || str.includes('CRIM') || str.startsWith('CRI') || str.startsWith('LEA')) return '#172554'; // Dark Blue
+  if (str.includes('TEP') || str.includes('BSED') || str.includes('BEED') || str.includes('EDUC') || str.startsWith('ED')) return '#2563eb'; // Blue
+  if (str.includes('HMP') || str.includes('BSHM') || str.includes('HM') || str.startsWith('HM')) return '#15803d'; // Green
+  return '#64748b';
+}
+
 function normalizeTime(value) {
   if (!value) return null;
   const str = String(value).trim();
@@ -688,10 +698,14 @@ async function createSchedule(payload, user) {
     user,
   });
 
+  const finalColor = color && color !== '#2563eb'
+    ? color
+    : getProgramColor(validated.subjectRow?.program_code || validated.sectionRow?.course_code || validSubjectCode);
+
   const res = await query(
     `INSERT INTO schedules (day, start_time, end_time, subject_code, section_id, faculty_id, room_number, color)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [validated.day, validated.start, validated.end, validSubjectCode, validSectionId, validFacultyId, validRoomNumber, color || '#2563eb']
+    [validated.day, validated.start, validated.end, validSubjectCode, validSectionId, validFacultyId, validRoomNumber, finalColor]
   );
 
   const insertObj = Array.isArray(res) ? res[0] : res;
@@ -705,7 +719,7 @@ async function createSchedule(payload, user) {
     room: validRoomNumber || rawRoom || '',
     facultyId: validFacultyId || '',
     sectionId: validSectionId ? String(validSectionId) : '',
-    color: color || '#2563eb'
+    color: finalColor
   };
 }
 
@@ -956,10 +970,12 @@ async function generateSchedules({ user } = {}) {
                   user,
                 });
 
+                const schedColor = getProgramColor(sub.program_code || sec.course_code || sub.code);
+
                 const res = await query(
                   `INSERT INTO schedules (day, start_time, end_time, subject_code, section_id, faculty_id, room_number, color)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                  [day, slot.start, slot.end, sub.code, sec.id, instructorId, roomToTry.number, '#0284c7']
+                  [day, slot.start, slot.end, sub.code, sec.id, instructorId, roomToTry.number, schedColor]
                 );
 
                 const insertObj = Array.isArray(res) ? res[0] : res;

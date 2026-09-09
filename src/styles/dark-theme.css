@@ -1300,7 +1300,9 @@ html[data-theme="dark"] .modal-title {
 }
 
 html[data-theme="dark"] .modal-card__footer,
-html[data-theme="dark"] .modal-footer {
+html[data-theme="dark"] .modal-footer,
+html[data-theme="dark"] .modal-actions {
+  background: #191a22;
   border-top: 1px solid var(--srcb-border-subtle);
 }
 

@@ -116,6 +116,42 @@ export interface SlotValidationResult {
   valid: boolean
   errors: string[]
   warnings: string[]
+  concurrentCount?: number
+  occupiedRoomsInSlot?: string[]
+}
+
+/**
+ * Finds the first available physical room that is not occupied during the requested day and time slot.
+ */
+export function findAvailableRoomForSlot(
+  day: string,
+  time: string,
+  roomsList: Array<{ number: string; building?: string; type?: string; status?: string; capacity?: number }>,
+  existingSchedules: ClassScheduleItem[] = [],
+  excludeId?: string
+): { number: string; building?: string; type?: string; capacity?: number } | null {
+  if (!day || !time || !roomsList || roomsList.length === 0) return null;
+
+  const occupiedRoomNumbers = new Set(
+    existingSchedules
+      .filter((s) => {
+        if (excludeId && String(s.id) === String(excludeId)) return false;
+        if (s.modality === 'Online') return false;
+        if (s.day.toLowerCase() !== day.toLowerCase()) return false;
+        return isTimeOverlapping(s.time, time);
+      })
+      .map((s) => String(s.room || '').toLowerCase().trim())
+      .filter(Boolean)
+  );
+
+  const available = roomsList.find((r) => {
+    const status = String(r.status || '').toLowerCase();
+    if (status === 'maintenance' || status === 'closed' || status === 'inactive') return false;
+    const num = String(r.number).toLowerCase().trim();
+    return !occupiedRoomNumbers.has(num);
+  });
+
+  return available || null;
 }
 
 export function validateScheduleSlot(
@@ -244,10 +280,32 @@ export function validateScheduleSlot(
     }
   }
 
+  // 6. Concurrent Multi-Room Slot Information
+  const concurrentSchedules = schedules.filter(
+    (s) =>
+      s.day.toLowerCase() === candidate.day.toLowerCase() &&
+      isTimeOverlapping(s.time, candidate.time)
+  )
+  const occupiedRooms = Array.from(
+    new Set(
+      concurrentSchedules
+        .filter((s) => s.modality !== 'Online' && s.room)
+        .map((s) => String(s.room).trim())
+    )
+  )
+
+  if (candidate.modality === 'Face-to-Face' && concurrentSchedules.length > 0 && errors.length === 0) {
+    warnings.push(
+      `Concurrent slot: ${concurrentSchedules.length} class${concurrentSchedules.length > 1 ? 'es' : ''} running at this time across distinct room${occupiedRooms.length > 1 ? 's' : ''} (${occupiedRooms.join(', ')}). Room ${candidate.room} is clear.`
+    )
+  }
+
   return {
     valid: errors.length === 0,
     errors,
     warnings,
+    concurrentCount: concurrentSchedules.length,
+    occupiedRoomsInSlot: occupiedRooms,
   }
 }
 
@@ -292,3 +350,53 @@ export function buildAiRecommendations(scheduleItems: ClassScheduleItem[]): AiRe
 
   return recommendations.slice(0, 4)
 }
+
+export const DAY_PAIRS: Record<string, string> = {
+  Monday: 'Friday',
+  Tuesday: 'Friday',
+  Wednesday: 'Saturday',
+  Thursday: 'Friday',
+  Friday: 'Monday',
+  Saturday: 'Wednesday',
+}
+
+export function getPairedDay(day: string): string | null {
+  if (!day) return null
+  return DAY_PAIRS[day] || 'Friday'
+}
+
+export function getDayPairLabel(day: string): string {
+  const paired = getPairedDay(day)
+  if (!paired) return day
+  if (day === 'Monday') return 'Monday & Friday (M-F)'
+  if (day === 'Tuesday') return 'Tuesday & Friday (T-F)'
+  if (day === 'Wednesday') return 'Wednesday & Saturday (W-Sa)'
+  if (day === 'Thursday') return 'Thursday & Friday (Th-F)'
+  if (day === 'Friday') return 'Friday & Monday (F-M)'
+  if (day === 'Saturday') return 'Saturday & Wednesday (Sa-W)'
+  return `${day} & ${paired}`
+}
+
+export function isGeneralSubject(sub: any): boolean {
+  if (!sub) return false
+  if (sub.isMajor === false) return true
+  const prog = String(sub.program || '').toUpperCase().trim()
+  if (prog === 'ALL' || prog === 'UNIVERSAL' || prog === 'GEN ED' || prog === 'GENERAL EDUCATION') return true
+  const dept = String(sub.department || '').toUpperCase().trim()
+  if (dept.includes('GENERAL EDUCATION') || dept === 'GEN ED') return true
+  const classification = String(sub.classification || '').toUpperCase().trim()
+  if (classification.includes('GENERAL EDUCATION')) return true
+  const code = String(sub.code || '').toUpperCase().trim()
+  if (/^GE\d+/i.test(code) || code.startsWith('RS') || code.startsWith('NSTP') || code.startsWith('PE') || code.startsWith('PATHFIT')) return true
+  return false
+}
+
+export function canProgramTakeSubject(sub: any, programCode?: string): boolean {
+  if (!sub) return false
+  if (isGeneralSubject(sub)) return true
+  if (!programCode || programCode === 'ALL') return true
+  const subProg = String(sub.program || '').toUpperCase().trim()
+  const targetProg = String(programCode).toUpperCase().trim()
+  return subProg === targetProg || subProg === 'ALL' || subProg === 'UNIVERSAL'
+}
+

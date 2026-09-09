@@ -52,11 +52,6 @@ const ExamSchedulesPage = lazy(() =>
     default: module.ExamSchedulesPage,
   })),
 );
-const ConflictPage = lazy(() =>
-  import("../pages/ConflictPage").then((module) => ({
-    default: module.ConflictPage,
-  })),
-);
 const ReportsPage = lazy(() =>
   import("../pages/ReportsPage").then((module) => ({
     default: module.ReportsPage,
@@ -185,7 +180,7 @@ export function AppRoutes() {
             <Route path="/faculty" element={<FacultyPage />} />
             <Route path="/programs" element={<ProgramsPage />} />
             <Route path="/courses" element={<CoursesPage />} />
-            <Route path="/conflicts" element={<ConflictPage />} />
+            <Route path="/conflicts" element={<Navigate to="/schedules?filter=conflict" replace />} />
             <Route path="/reports" element={<ReportsPage />} />
           </Route>
         </Route>

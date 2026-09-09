@@ -12,22 +12,27 @@ import {
   Sparkles,
   Info,
   CheckCircle2,
+  Copy,
 } from "lucide-react";
 import type { ClassScheduleItem } from "../../types";
+import { getProgramTheme } from "../../utils/programColors";
 
 interface ScheduleDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
   schedule: ClassScheduleItem | null;
+  onDuplicate?: (schedule: ClassScheduleItem) => void;
 }
 
 export const ScheduleDetailsModal: React.FC<ScheduleDetailsModalProps> = ({
   isOpen,
   onClose,
   schedule,
+  onDuplicate,
 }) => {
   if (!schedule) return null;
 
+  const progTheme = getProgramTheme(schedule);
   const startTime =
     schedule.startTime?.slice(0, 5) ||
     schedule.time?.split("-")[0]?.trim() ||
@@ -36,7 +41,7 @@ export const ScheduleDetailsModal: React.FC<ScheduleDetailsModalProps> = ({
     schedule.endTime?.slice(0, 5) ||
     schedule.time?.split("-")[1]?.trim() ||
     "09:30";
-  const programOrCourse = schedule.program || schedule.course || "BSIT";
+  const programOrCourse = schedule.program || schedule.course || progTheme.code;
   const yearLevel = schedule.yearLevel || "1st Year";
   const classMode =
     schedule.classMode ||
@@ -61,23 +66,36 @@ export const ScheduleDetailsModal: React.FC<ScheduleDetailsModalProps> = ({
             alignItems: "center",
             justifyContent: "space-between",
             padding: "10px 14px",
-            background: "rgba(56, 189, 248, 0.1)",
-            border: "1px solid rgba(56, 189, 248, 0.25)",
+            background: progTheme.lightBg,
+            border: `1px solid ${progTheme.lightBorder}`,
             borderRadius: 8,
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <CheckCircle2 size={18} color="#0284c7" />
-            <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--srcb-text)" }}>
-              Assigned Class Schedule
+            <CheckCircle2 size={18} color={progTheme.primary} />
+            <span style={{ fontSize: "0.85rem", fontWeight: 700, color: progTheme.lightText }}>
+              Assigned Schedule • {progTheme.name}
             </span>
           </div>
-          <span
-            className="pill pill--f2f"
-            style={{ fontSize: "0.75rem", padding: "3px 8px" }}
-          >
-            {schedule.modality || "Face-to-Face"}
-          </span>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <span
+              className="program-card-badge"
+              style={{
+                backgroundColor: progTheme.badgeBg,
+                color: progTheme.badgeText,
+                padding: "3px 8px",
+                fontSize: "0.72rem",
+              }}
+            >
+              {progTheme.code}
+            </span>
+            <span
+              className="pill pill--f2f"
+              style={{ fontSize: "0.75rem", padding: "3px 8px" }}
+            >
+              {schedule.modality || "Face-to-Face"}
+            </span>
+          </div>
         </div>
 
         {/* Primary Subject Info Card */}
@@ -86,6 +104,7 @@ export const ScheduleDetailsModal: React.FC<ScheduleDetailsModalProps> = ({
             padding: 14,
             background: "var(--srcb-surface)",
             border: "1px solid var(--srcb-border)",
+            borderLeft: `5px solid ${progTheme.primary}`,
             borderRadius: 8,
           }}
         >
@@ -95,8 +114,8 @@ export const ScheduleDetailsModal: React.FC<ScheduleDetailsModalProps> = ({
                 width: 36,
                 height: 36,
                 borderRadius: 8,
-                background: "rgba(2, 132, 199, 0.12)",
-                color: "#0284c7",
+                background: progTheme.lightBg,
+                color: progTheme.primary,
                 display: "grid",
                 placeItems: "center",
                 flexShrink: 0,
@@ -105,17 +124,29 @@ export const ScheduleDetailsModal: React.FC<ScheduleDetailsModalProps> = ({
               <BookOpen size={18} />
             </div>
             <div>
-              <span
-                style={{
-                  fontSize: "0.75rem",
-                  fontWeight: 700,
-                  color: "#0284c7",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.5px",
-                }}
-              >
-                {schedule.subjectCode}
-              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span
+                  style={{
+                    fontSize: "0.75rem",
+                    fontWeight: 700,
+                    color: progTheme.primary,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                  }}
+                >
+                  {schedule.subjectCode}
+                </span>
+                <span
+                  className="program-card-badge"
+                  style={{
+                    backgroundColor: progTheme.badgeBg,
+                    color: progTheme.badgeText,
+                    fontSize: "0.62rem",
+                  }}
+                >
+                  {progTheme.code}
+                </span>
+              </div>
               <h4
                 style={{
                   margin: "2px 0 0",
@@ -390,12 +421,25 @@ export const ScheduleDetailsModal: React.FC<ScheduleDetailsModalProps> = ({
         </div>
 
         {/* Action Footer */}
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
+          {onDuplicate && (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                onClose();
+                onDuplicate(schedule);
+              }}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+            >
+              <Copy size={14} /> Duplicate Schedule
+            </button>
+          )}
           <button
             type="button"
             className="action-button"
             onClick={onClose}
-            style={{ minWidth: 110 }}
+            style={{ minWidth: 100 }}
           >
             Close
           </button>

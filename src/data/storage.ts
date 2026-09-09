@@ -202,10 +202,10 @@ const defaultSubjects: SubjectItem[] = [
   { code: 'IT401', name: 'Capstone Project 1', units: 3, lectureHours: 3, labHours: 0, semester: '1st Semester', department: 'Information Technology', program: 'BSIT', isMajor: true, instructor: 'Dr. Alan Turing', instructorId: 'FAC-003' },
   { code: 'BA101', name: 'Principles of Management', units: 3, lectureHours: 3, labHours: 0, semester: '1st Semester', department: 'Business Administration', program: 'BSBA', isMajor: true, instructor: 'Prof. Mary Cruz', instructorId: 'FAC-004' },
   { code: 'BA201', name: 'Marketing Management', units: 3, lectureHours: 3, labHours: 0, semester: '1st Semester', department: 'Business Administration', program: 'BSBA', isMajor: true, instructor: 'Prof. Mary Cruz', instructorId: 'FAC-004' },
-  { code: 'GE101', name: 'Understanding the Self', units: 3, lectureHours: 3, labHours: 0, semester: '1st Semester', department: 'General Education', program: 'BSIT', isMajor: false, instructor: 'Mrs. Elena Ramos', instructorId: 'FAC-006' },
-  { code: 'GE102', name: 'Purposive Communication', units: 3, lectureHours: 3, labHours: 0, semester: '1st Semester', department: 'General Education', program: 'BSIT', isMajor: false, instructor: 'Mrs. Elena Ramos', instructorId: 'FAC-006' },
-  { code: 'GE103', name: 'Mathematics in the Modern World', units: 3, lectureHours: 3, labHours: 0, semester: '1st Semester', department: 'General Education', program: 'BSIT', isMajor: false, instructor: 'Dr. Alan Turing', instructorId: 'FAC-003' },
-  { code: 'RS1', name: 'Religious Studies 1 (Peace & Christian Ethics)', units: 3, lectureHours: 3, labHours: 0, semester: '1st Semester', department: 'General Education', program: 'BSIT', isMajor: false, instructor: 'Mr. Baltazar', instructorId: 'FAC-007' },
+  { code: 'GE101', name: 'Understanding the Self', units: 3, lectureHours: 3, labHours: 0, semester: '1st Semester', department: 'General Education', program: 'ALL', isMajor: false, instructor: 'Mrs. Elena Ramos', instructorId: 'FAC-006' },
+  { code: 'GE102', name: 'Purposive Communication', units: 3, lectureHours: 3, labHours: 0, semester: '1st Semester', department: 'General Education', program: 'ALL', isMajor: false, instructor: 'Mrs. Elena Ramos', instructorId: 'FAC-006' },
+  { code: 'GE103', name: 'Mathematics in the Modern World', units: 3, lectureHours: 3, labHours: 0, semester: '1st Semester', department: 'General Education', program: 'ALL', isMajor: false, instructor: 'Dr. Alan Turing', instructorId: 'FAC-003' },
+  { code: 'RS1', name: 'Religious Studies 1 (Peace & Christian Ethics)', units: 3, lectureHours: 3, labHours: 0, semester: '1st Semester', department: 'General Education', program: 'ALL', isMajor: false, instructor: 'Mr. Baltazar', instructorId: 'FAC-007' },
 ]
 
 const defaultSections: SectionItem[] = [
