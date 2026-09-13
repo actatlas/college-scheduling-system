@@ -6,7 +6,20 @@ import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
 import { ConfirmModal } from "../components/common/ConfirmModal";
 import { TableSkeleton } from "../components/common/Skeleton";
-import { Plus, Search, Edit2, Trash2, Users, AlertTriangle, X } from "lucide-react";
+import {
+  Plus,
+  Search,
+  Edit2,
+  Trash2,
+  Users,
+  AlertTriangle,
+  X,
+  Layers,
+  GraduationCap,
+  Calendar,
+  Clock,
+  Loader2,
+} from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { useProgramContext } from "../contexts/ProgramContext";
 import { useAcademicPeriod } from "../contexts/AcademicPeriodContext";
@@ -364,9 +377,13 @@ export function SectionsPage() {
       </section>
 
       {/* Add / Edit Section Modal */}
+      {/* Add / Edit Section Modal */}
       <Modal
         isOpen={isOpen && canEdit}
+        size="md"
+        icon={<Users size={20} />}
         title={editingSection ? "Edit Section Details" : "Register Class Section"}
+        eyebrow="Class Cohorts"
         description="Configure student cohort, academic program, year level, and enrollment details."
         onClose={() => {
           setIsOpen(false);
@@ -376,7 +393,7 @@ export function SectionsPage() {
         <div className="form-grid">
           <div className="field-group">
             <label htmlFor="sectionProgram">
-              Degree Course / Program <span style={{ color: "#dc2626" }}>*</span>
+              <GraduationCap size={13} /> Degree Course / Program <span className="required-asterisk">*</span>
             </label>
             <select
               id="sectionProgram"
@@ -400,7 +417,9 @@ export function SectionsPage() {
           </div>
 
           <div className="field-group">
-            <label htmlFor="sectionYear">Year Level</label>
+            <label htmlFor="sectionYear">
+              <Layers size={13} /> Year Level
+            </label>
             <select
               id="sectionYear"
               value={form.yearLevel}
@@ -415,12 +434,12 @@ export function SectionsPage() {
 
           <div className="field-group">
             <label htmlFor="sectionLabel">
-              Section Name / Label <span style={{ color: "#dc2626" }}>*</span>
+              <Layers size={13} /> Section Name / Label <span className="required-asterisk">*</span>
             </label>
             <input
               id="sectionLabel"
               value={form.section}
-              onChange={(e) => setForm({ ...form, section: e.target.value })}
+              onChange={(e) => setForm({ ...form, section: e.target.value.toUpperCase() })}
               placeholder="e.g. BSIT 1-A, BSBA 2-B"
               required
               aria-required="true"
@@ -428,38 +447,55 @@ export function SectionsPage() {
           </div>
 
           <div className="field-group">
-            <label htmlFor="sectionStudents">Student Headcount</label>
+            <label htmlFor="sectionStudents">
+              <Users size={13} /> Student Headcount
+            </label>
             <input
               id="sectionStudents"
               type="number"
+              min={1}
+              max={150}
               value={form.students}
               onChange={(e) => setForm({ ...form, students: e.target.value })}
+              placeholder="e.g. 40"
             />
           </div>
 
           <div className="field-group">
-            <label htmlFor="sectionSemester">Semester</label>
-            <input
+            <label htmlFor="sectionSemester">
+              <Calendar size={13} /> Semester
+            </label>
+            <select
               id="sectionSemester"
               value={form.semester}
               onChange={(e) => setForm({ ...form, semester: e.target.value })}
-            />
+            >
+              <option value="1st Semester">1st Semester</option>
+              <option value="2nd Semester">2nd Semester</option>
+              <option value="Summer">Summer</option>
+            </select>
           </div>
 
           <div className="field-group">
-            <label htmlFor="sectionSY">School Year</label>
-            <input
+            <label htmlFor="sectionSY">
+              <Clock size={13} /> School Year
+            </label>
+            <select
               id="sectionSY"
               value={form.schoolYear}
               onChange={(e) => setForm({ ...form, schoolYear: e.target.value })}
-            />
+            >
+              <option value="2026-2027">2026-2027</option>
+              <option value="2025-2026">2025-2026</option>
+              <option value="2027-2028">2027-2028</option>
+            </select>
           </div>
         </div>
 
-        <div className="table-actions" style={{ marginTop: 20 }}>
+        <div className="modal-actions">
           <button
             type="button"
-            className="secondary-button"
+            className="cancel-button"
             onClick={() => {
               setIsOpen(false);
               setEditingSection(null);
@@ -467,8 +503,14 @@ export function SectionsPage() {
           >
             Cancel
           </button>
-          <button type="button" className="action-button" disabled={loading} onClick={handleSave}>
-            {loading ? "Saving…" : "Save Section"}
+          <button
+            type="button"
+            className="action-button"
+            disabled={loading || !form.section.trim() || !form.course.trim()}
+            onClick={handleSave}
+          >
+            {loading && <Loader2 size={16} className="animate-spin" />}
+            <span>{loading ? "Saving…" : editingSection ? "Update Section" : "Register Section"}</span>
           </button>
         </div>
       </Modal>

@@ -5,7 +5,6 @@ import {
   Calendar,
   Clock,
   DoorOpen,
-  Building,
   UserCheck,
   GraduationCap,
   Layers,
@@ -54,12 +53,15 @@ export const ScheduleDetailsModal: React.FC<ScheduleDetailsModalProps> = ({
   return (
     <Modal
       isOpen={isOpen}
+      size="lg"
       onClose={onClose}
+      eyebrow="Academic Timetable"
+      icon={<BookOpen size={20} />}
       title="Assigned Class Schedule Details"
       description="Official Academic Schedule Assignment • Read-Only View"
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        {/* Assignment Verification Header Badge */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {/* Compact Integrated Subject Header Banner */}
         <div
           style={{
             display: "flex",
@@ -68,69 +70,35 @@ export const ScheduleDetailsModal: React.FC<ScheduleDetailsModalProps> = ({
             padding: "10px 14px",
             background: progTheme.lightBg,
             border: `1px solid ${progTheme.lightBorder}`,
-            borderRadius: 8,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <CheckCircle2 size={18} color={progTheme.primary} />
-            <span style={{ fontSize: "0.85rem", fontWeight: 700, color: progTheme.lightText }}>
-              Assigned Schedule • {progTheme.name}
-            </span>
-          </div>
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <span
-              className="program-card-badge"
-              style={{
-                backgroundColor: progTheme.badgeBg,
-                color: progTheme.badgeText,
-                padding: "3px 8px",
-                fontSize: "0.72rem",
-              }}
-            >
-              {progTheme.code}
-            </span>
-            <span
-              className="pill pill--f2f"
-              style={{ fontSize: "0.75rem", padding: "3px 8px" }}
-            >
-              {schedule.modality || "Face-to-Face"}
-            </span>
-          </div>
-        </div>
-
-        {/* Primary Subject Info Card */}
-        <div
-          style={{
-            padding: 14,
-            background: "var(--srcb-surface)",
-            border: "1px solid var(--srcb-border)",
             borderLeft: `5px solid ${progTheme.primary}`,
             borderRadius: 8,
+            gap: 12,
+            flexWrap: "wrap",
           }}
         >
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div
               style={{
-                width: 36,
-                height: 36,
+                width: 34,
+                height: 34,
                 borderRadius: 8,
-                background: progTheme.lightBg,
+                background: "rgba(255, 255, 255, 0.8)",
                 color: progTheme.primary,
                 display: "grid",
                 placeItems: "center",
                 flexShrink: 0,
+                boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
               }}
             >
-              <BookOpen size={18} />
+              <BookOpen size={17} />
             </div>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span
                   style={{
-                    fontSize: "0.75rem",
-                    fontWeight: 700,
+                    fontSize: "0.8rem",
+                    fontWeight: 800,
                     color: progTheme.primary,
-                    textTransform: "uppercase",
                     letterSpacing: "0.5px",
                   }}
                 >
@@ -141,260 +109,125 @@ export const ScheduleDetailsModal: React.FC<ScheduleDetailsModalProps> = ({
                   style={{
                     backgroundColor: progTheme.badgeBg,
                     color: progTheme.badgeText,
-                    fontSize: "0.62rem",
+                    fontSize: "0.64rem",
                   }}
                 >
                   {progTheme.code}
                 </span>
+                <span className="pill pill--f2f" style={{ fontSize: "0.7rem", padding: "1px 6px" }}>
+                  {schedule.modality || "Face-to-Face"}
+                </span>
               </div>
-              <h4
+              <div
                 style={{
-                  margin: "2px 0 0",
-                  fontSize: "1.05rem",
+                  fontSize: "0.95rem",
                   fontWeight: 700,
                   color: "var(--srcb-text)",
+                  lineHeight: 1.2,
+                  marginTop: 2,
                 }}
               >
                 {schedule.subject}
-              </h4>
+              </div>
             </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <CheckCircle2 size={16} color={progTheme.primary} />
+            <span style={{ fontSize: "0.78rem", fontWeight: 700, color: progTheme.lightText }}>
+              Verified Allocation
+            </span>
           </div>
         </div>
 
-        {/* Detailed Grid Info */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
-            gap: 12,
-          }}
-        >
-          {/* Section & Program */}
-          <div
-            style={{
-              padding: 12,
-              background: "var(--srcb-surface)",
-              border: "1px solid var(--srcb-border)",
-              borderRadius: 8,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <GraduationCap size={20} color="#0284c7" />
-            <div>
-              <div style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)", fontWeight: 600 }}>
-                SECTION / CLASS
+        {/* Streamlined 2-Column Specs Layout */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          {/* Left Column: Academic & Cohort Allocation */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div className="sched-detail-spec-row">
+              <div className="sched-detail-spec-icon">
+                <GraduationCap size={16} />
               </div>
-              <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "var(--srcb-text)" }}>
-                {schedule.section}
+              <div>
+                <div className="sched-detail-spec-label">Section / Class</div>
+                <div className="sched-detail-spec-val">{schedule.section}</div>
+              </div>
+            </div>
+
+            <div className="sched-detail-spec-row">
+              <div className="sched-detail-spec-icon">
+                <Layers size={16} />
+              </div>
+              <div>
+                <div className="sched-detail-spec-label">Program / Course</div>
+                <div className="sched-detail-spec-val">{programOrCourse}</div>
+              </div>
+            </div>
+
+            <div className="sched-detail-spec-row">
+              <div className="sched-detail-spec-icon">
+                <Sparkles size={16} />
+              </div>
+              <div>
+                <div className="sched-detail-spec-label">Year Level</div>
+                <div className="sched-detail-spec-val">{yearLevel}</div>
+              </div>
+            </div>
+
+            <div className="sched-detail-spec-row">
+              <div className="sched-detail-spec-icon">
+                <Calendar size={16} />
+              </div>
+              <div>
+                <div className="sched-detail-spec-label">Term &amp; Academic Year</div>
+                <div className="sched-detail-spec-val">{semester} • {academicYear}</div>
               </div>
             </div>
           </div>
 
-          {/* Program / Course */}
-          <div
-            style={{
-              padding: 12,
-              background: "var(--srcb-surface)",
-              border: "1px solid var(--srcb-border)",
-              borderRadius: 8,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <Layers size={20} color="#0284c7" />
-            <div>
-              <div style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)", fontWeight: 600 }}>
-                PROGRAM / COURSE
+          {/* Right Column: Schedule, Room & Faculty */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div className="sched-detail-spec-row">
+              <div className="sched-detail-spec-icon">
+                <Clock size={16} />
               </div>
-              <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "var(--srcb-text)" }}>
-                {programOrCourse}
+              <div>
+                <div className="sched-detail-spec-label">Scheduled Time &amp; Day</div>
+                <div className="sched-detail-spec-val">
+                  {schedule.day} • {startTime} - {endTime}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Year Level */}
-          <div
-            style={{
-              padding: 12,
-              background: "var(--srcb-surface)",
-              border: "1px solid var(--srcb-border)",
-              borderRadius: 8,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <Sparkles size={20} color="#0284c7" />
-            <div>
-              <div style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)", fontWeight: 600 }}>
-                YEAR LEVEL
+            <div className="sched-detail-spec-row">
+              <div className="sched-detail-spec-icon">
+                <DoorOpen size={16} />
               </div>
-              <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "var(--srcb-text)" }}>
-                {yearLevel}
+              <div>
+                <div className="sched-detail-spec-label">Room &amp; Building</div>
+                <div className="sched-detail-spec-val">
+                  {schedule.room || "Room 101"} ({schedule.building || "Campus Building"})
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Class Mode (Lecture / Laboratory) */}
-          <div
-            style={{
-              padding: 12,
-              background: "var(--srcb-surface)",
-              border: "1px solid var(--srcb-border)",
-              borderRadius: 8,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <BookOpen size={20} color="#0284c7" />
-            <div>
-              <div style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)", fontWeight: 600 }}>
-                CLASS MODE
+            <div className="sched-detail-spec-row">
+              <div className="sched-detail-spec-icon">
+                <UserCheck size={16} />
               </div>
-              <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "var(--srcb-text)" }}>
-                {classMode}
+              <div>
+                <div className="sched-detail-spec-label">Instructor / Faculty</div>
+                <div className="sched-detail-spec-val">{schedule.faculty}</div>
               </div>
             </div>
-          </div>
 
-          {/* Day */}
-          <div
-            style={{
-              padding: 12,
-              background: "var(--srcb-surface)",
-              border: "1px solid var(--srcb-border)",
-              borderRadius: 8,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <Calendar size={20} color="#0284c7" />
-            <div>
-              <div style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)", fontWeight: 600 }}>
-                DAY OF WEEK
+            <div className="sched-detail-spec-row">
+              <div className="sched-detail-spec-icon">
+                <BookOpen size={16} />
               </div>
-              <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "var(--srcb-text)" }}>
-                {schedule.day}
-              </div>
-            </div>
-          </div>
-
-          {/* Time Slot */}
-          <div
-            style={{
-              padding: 12,
-              background: "var(--srcb-surface)",
-              border: "1px solid var(--srcb-border)",
-              borderRadius: 8,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <Clock size={20} color="#0284c7" />
-            <div>
-              <div style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)", fontWeight: 600 }}>
-                SCHEDULED TIME
-              </div>
-              <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "var(--srcb-text)" }}>
-                {startTime} - {endTime}
-              </div>
-            </div>
-          </div>
-
-          {/* Room */}
-          <div
-            style={{
-              padding: 12,
-              background: "var(--srcb-surface)",
-              border: "1px solid var(--srcb-border)",
-              borderRadius: 8,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <DoorOpen size={20} color="#0284c7" />
-            <div>
-              <div style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)", fontWeight: 600 }}>
-                ASSIGNED ROOM
-              </div>
-              <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "var(--srcb-text)" }}>
-                {schedule.room || "Room 101"}
-              </div>
-            </div>
-          </div>
-
-          {/* Building */}
-          <div
-            style={{
-              padding: 12,
-              background: "var(--srcb-surface)",
-              border: "1px solid var(--srcb-border)",
-              borderRadius: 8,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <Building size={20} color="#0284c7" />
-            <div>
-              <div style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)", fontWeight: 600 }}>
-                BUILDING LOCATION
-              </div>
-              <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "var(--srcb-text)" }}>
-                {schedule.building || "College Building"}
-              </div>
-            </div>
-          </div>
-
-          {/* Instructor / Faculty */}
-          <div
-            style={{
-              padding: 12,
-              background: "var(--srcb-surface)",
-              border: "1px solid var(--srcb-border)",
-              borderRadius: 8,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <UserCheck size={20} color="#0284c7" />
-            <div>
-              <div style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)", fontWeight: 600 }}>
-                FACULTY INSTRUCTOR
-              </div>
-              <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "var(--srcb-text)" }}>
-                {schedule.faculty}
-              </div>
-            </div>
-          </div>
-
-          {/* Semester & Academic Year */}
-          <div
-            style={{
-              padding: 12,
-              background: "var(--srcb-surface)",
-              border: "1px solid var(--srcb-border)",
-              borderRadius: 8,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <Calendar size={20} color="#0284c7" />
-            <div>
-              <div style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)", fontWeight: 600 }}>
-                SEMESTER & A.Y.
-              </div>
-              <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "var(--srcb-text)" }}>
-                {semester} • {academicYear}
+              <div>
+                <div className="sched-detail-spec-label">Class Mode</div>
+                <div className="sched-detail-spec-val">{classMode}</div>
               </div>
             </div>
           </div>
@@ -404,25 +237,25 @@ export const ScheduleDetailsModal: React.FC<ScheduleDetailsModalProps> = ({
         <div
           style={{
             display: "flex",
-            alignItems: "flex-start",
+            alignItems: "center",
             gap: 8,
-            padding: "10px 12px",
+            padding: "8px 12px",
             background: "rgba(148, 163, 184, 0.08)",
             border: "1px solid var(--srcb-border)",
             borderRadius: 6,
-            fontSize: "0.78rem",
+            fontSize: "0.76rem",
             color: "var(--srcb-text-muted)",
           }}
         >
-          <Info size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+          <Info size={15} style={{ flexShrink: 0 }} />
           <span>
-            This schedule is an officially assigned timetable block. Only College Administrators and Program Heads can modify class allocations.
+            Officially assigned timetable block. Managed by College Administrators and Program Heads.
           </span>
         </div>
 
         {/* Action Footer */}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
-          {onDuplicate && (
+        <div className="modal-actions">
+          {onDuplicate ? (
             <button
               type="button"
               className="secondary-button"
@@ -434,6 +267,8 @@ export const ScheduleDetailsModal: React.FC<ScheduleDetailsModalProps> = ({
             >
               <Copy size={14} /> Duplicate Schedule
             </button>
+          ) : (
+            <div />
           )}
           <button
             type="button"

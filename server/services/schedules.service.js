@@ -26,6 +26,13 @@ function getProgramColor(progOrCode) {
   return '#64748b';
 }
 
+function isGeneralEducationSubject(code, programCode) {
+  const cleanProg = String(programCode || '').toUpperCase().trim();
+  if (cleanProg === 'ALL' || cleanProg === 'GEN' || cleanProg === 'UNIVERSAL' || cleanProg === 'GENERAL EDUCATION') return true;
+  const cleanCode = String(code || '').toUpperCase().trim();
+  return /^(GE|GEC|NSTP|PE|PATHFIT|RIZAL|MATH|ENG|FIL|SOC|HUM|HIST)\b/i.test(cleanCode);
+}
+
 function normalizeTime(value) {
   if (!value) return null;
   const str = String(value).trim();
@@ -86,10 +93,13 @@ async function validateSchedulePayload({
   room_number,
   modality = 'Face-to-Face',
   user = null,
+  is_combined_cohort = false,
+  isCombinedCohort = false,
 }) {
   const start = normalizeTime(start_time);
   const end = normalizeTime(end_time);
   const isOnline = String(modality || '').toLowerCase() === 'online' || String(room_number || '').toLowerCase().includes('virtual');
+  const isCombined = Boolean(is_combined_cohort || isCombinedCohort);
 
   if (!day || !start || !end || !subject_code) {
     const err = new Error('day, start_time, end_time and subject_code are required');
@@ -213,7 +223,7 @@ async function validateSchedulePayload({
   if (subjectRow && sectionRow) {
     const subProg = String(subjectRow.program_code || '').trim().toUpperCase();
     const secCourse = String(sectionRow.course_code || '').trim().toUpperCase();
-    const isGeneralEd = !subProg || ['ALL', 'GEN ED', 'GENERAL EDUCATION', 'GENED'].includes(subProg);
+    const isGeneralEd = !subProg || ['ALL', 'GEN ED', 'GENERAL EDUCATION', 'GENED'].includes(subProg) || isGeneralEducationSubject(subjectRow.code, subjectRow.program_code);
     const subAliases = PROGRAM_COURSE_MAP[subProg] || [subProg];
     const secAliases = PROGRAM_COURSE_MAP[secCourse] || [secCourse];
     const hasAliasMatch = isGeneralEd || secAliases.some((sa) => subAliases.some((sb) => sa === sb || sa.includes(sb) || sb.includes(sa)));
@@ -232,10 +242,12 @@ async function validateSchedulePayload({
     }
   }
 
-  // 7. Room Capacity Compatibility
-  if (roomRow && sectionRow && sectionRow.students) {
-    if (Number(roomRow.capacity) < Number(sectionRow.students)) {
-      const err = new Error(`Room ${roomRow.number} capacity (${roomRow.capacity}) is smaller than the section student headcount (${sectionRow.students}).`);
+  // 7. Room Capacity Check
+  if (roomRow && sectionRow && !isOnline && !isCombined) {
+    const roomCap = Number(roomRow.capacity) || 0;
+    const secStudents = Number(sectionRow.students) || 0;
+    if (roomCap > 0 && secStudents > 0 && secStudents > roomCap) {
+      const err = new Error(`Room capacity exceeded: Room ${roomRow.number} holds maximum ${roomCap} students, but section has ${secStudents} students.`);
       err.statusCode = 409;
       err.code = 'ROOM_CAPACITY_EXCEEDED';
       throw err;
@@ -254,103 +266,8 @@ async function validateSchedulePayload({
     }
   }
 
-  // 9. Faculty Availability Windows
-  if (teacherRow) {
-    const availabilityRows = await query(
-      `SELECT day_of_week, start_time, end_time
-       FROM teacher_availability
-       WHERE teacher_id = ?`,
-      [faculty_id],
-    );
+  // 9. Faculty Availability Windows removed per requirements (faculty can be scheduled at any time slot without availability constraints)
 
-    if (teacherRow.status === 'Part-Time') {
-      if (availabilityRows.length === 0) {
-        const err = new Error(`Part-Time instructor ${teacherRow.name} has no registered availability configured.`);
-        err.statusCode = 409;
-        err.code = 'FACULTY_UNAVAILABLE';
-        throw err;
-      }
-
-      const dayRows = availabilityRows.filter((entry) => {
-        const entryDay = String(entry.day_of_week || '').toLowerCase();
-        const targetDay = normalizedDay.toLowerCase();
-        return entryDay.includes(targetDay) || targetDay.includes(entryDay);
-      });
-
-      const intervals = dayRows.map((r) => ({
-        start: toMinutes(r.start_time),
-        end: toMinutes(r.end_time),
-      })).sort((a, b) => a.start - b.start);
-
-      const merged = [];
-      for (const iv of intervals) {
-        if (merged.length === 0) {
-          merged.push({ ...iv });
-        } else {
-          const prev = merged[merged.length - 1];
-          if (iv.start <= prev.end) {
-            prev.end = Math.max(prev.end, iv.end);
-          } else {
-            merged.push({ ...iv });
-          }
-        }
-      }
-
-      const startMin = toMinutes(start);
-      const endMin = toMinutes(end);
-      const matchesWindow = merged.some((m) => m.start <= startMin && m.end >= endMin);
-
-      if (!matchesWindow) {
-        const availableSlotsStr = availabilityRows
-          .map((r) => `${r.day_of_week} ${String(r.start_time).slice(0, 5)}-${String(r.end_time).slice(0, 5)}`)
-          .join(', ');
-        const err = new Error(`The requested schedule (${normalizedDay} ${start}-${end}) falls outside Part-Time instructor ${teacherRow.name}'s registered availability window (${availableSlotsStr}).`);
-        err.statusCode = 409;
-        err.code = 'FACULTY_UNAVAILABLE';
-        throw err;
-      }
-    } else if (teacherRow.status === 'Full-Time' && availabilityRows.length > 0 && !isOnline) {
-      // Full-Time faculty with explicitly configured availability rules by Admin (applies to physical classes)
-      const dayRows = availabilityRows.filter((entry) => {
-        const entryDay = String(entry.day_of_week || '').toLowerCase();
-        const targetDay = normalizedDay.toLowerCase();
-        return entryDay.includes(targetDay) || targetDay.includes(entryDay);
-      });
-
-      const intervals = dayRows.map((r) => ({
-        start: toMinutes(r.start_time),
-        end: toMinutes(r.end_time),
-      })).sort((a, b) => a.start - b.start);
-
-      const merged = [];
-      for (const iv of intervals) {
-        if (merged.length === 0) {
-          merged.push({ ...iv });
-        } else {
-          const prev = merged[merged.length - 1];
-          if (iv.start <= prev.end) {
-            prev.end = Math.max(prev.end, iv.end);
-          } else {
-            merged.push({ ...iv });
-          }
-        }
-      }
-
-      const startMin = toMinutes(start);
-      const endMin = toMinutes(end);
-      const matchesWindow = merged.some((m) => m.start <= startMin && m.end >= endMin);
-
-      if (!matchesWindow) {
-        const availableSlotsStr = availabilityRows
-          .map((r) => `${r.day_of_week} ${String(r.start_time).slice(0, 5)}-${String(r.end_time).slice(0, 5)}`)
-          .join(', ');
-        const err = new Error(`The requested schedule (${normalizedDay} ${start}-${end}) falls outside Full-Time instructor ${teacherRow.name}'s configured availability window (${availableSlotsStr}).`);
-        err.statusCode = 409;
-        err.code = 'FACULTY_UNAVAILABLE';
-        throw err;
-      }
-    }
-  }
 
   // 8. Timetable Overlap Conflicts (Room, Faculty, Section)
   const existingRows = await query(
@@ -365,14 +282,20 @@ async function validateSchedulePayload({
     if (String(row.day).toLowerCase() !== normalizedDay.toLowerCase()) continue;
     if (!timesOverlap(start, end, row.start_time, row.end_time || row.start_time)) continue;
 
-    if (!isOnline && room_number && row.room_number && String(row.room_number) === String(room_number)) {
+    // Combined cohort: if same teacher, same room, and both share the session
+    const isSharedCohort = isCombined && (
+      faculty_id && row.faculty_id && String(row.faculty_id) === String(faculty_id) &&
+      room_number && row.room_number && String(row.room_number) === String(room_number)
+    );
+
+    if (!isOnline && room_number && row.room_number && String(row.room_number) === String(room_number) && !isSharedCohort) {
       const err = new Error(`Room ${room_number} is already booked on ${normalizedDay} for an overlapping class (${String(row.start_time).slice(0, 5)}-${String(row.end_time).slice(0, 5)}).`);
       err.statusCode = 409;
       err.code = 'ROOM_CONFLICT';
       throw err;
     }
 
-    if (faculty_id && row.faculty_id && String(row.faculty_id) === String(faculty_id)) {
+    if (faculty_id && row.faculty_id && String(row.faculty_id) === String(faculty_id) && !isSharedCohort) {
       const err = new Error(`Faculty member ${teacherRow ? teacherRow.name : faculty_id} is already assigned to another class on ${normalizedDay} (${String(row.start_time).slice(0, 5)}-${String(row.end_time).slice(0, 5)}).`);
       err.statusCode = 409;
       err.code = 'FACULTY_CONFLICT';
@@ -696,6 +619,7 @@ async function createSchedule(payload, user) {
     room_number: validRoomNumber,
     modality: payload.modality || payload.classMode || (String(rawRoom || '').toLowerCase().includes('virtual') ? 'Online' : 'Face-to-Face'),
     user,
+    is_combined_cohort: Boolean(payload.is_combined_cohort || payload.isCombinedCohort),
   });
 
   const finalColor = color && color !== '#2563eb'
@@ -784,6 +708,7 @@ async function updateSchedule(id, payload, user) {
     room_number: validRoomNumber,
     modality: payload.modality || payload.classMode || (String(rawRoom || '').toLowerCase().includes('virtual') ? 'Online' : 'Face-to-Face'),
     user,
+    is_combined_cohort: Boolean(payload.is_combined_cohort || payload.isCombinedCohort),
   });
 
   await query(
@@ -858,7 +783,7 @@ async function deleteSchedule(id, user) {
 
 async function generateSchedules({ user } = {}) {
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-  const timeSlots = [
+  const minorTimeSlots = [
     { start: '08:00:00', end: '09:30:00' },
     { start: '09:30:00', end: '11:00:00' },
     { start: '10:00:00', end: '11:30:00' },
@@ -866,6 +791,16 @@ async function generateSchedules({ user } = {}) {
     { start: '13:00:00', end: '14:30:00' },
     { start: '14:30:00', end: '16:00:00' },
     { start: '16:00:00', end: '17:30:00' },
+  ];
+  const majorLectureTimeSlots = [
+    { start: '08:00:00', end: '10:00:00' },
+    { start: '10:00:00', end: '12:00:00' },
+    { start: '13:00:00', end: '15:00:00' },
+    { start: '15:00:00', end: '17:00:00' },
+  ];
+  const majorLabTimeSlots = [
+    { start: '08:00:00', end: '11:00:00' },
+    { start: '13:00:00', end: '16:00:00' },
   ];
 
   const sections = await query('SELECT id, course_code, year_level, section_label, students FROM sections ORDER BY id ASC');
@@ -924,7 +859,12 @@ async function generateSchedules({ user } = {}) {
         continue;
       }
 
-      const isLabSubject = Number(sub.lab_hours || 0) > 0;
+      const isGeneral = isGeneralEducationSubject(sub.code, sub.program_code);
+      const isLabSubject = !isGeneral && Number(sub.lab_hours || 0) > 0;
+      const targetTimeSlots = isGeneral
+        ? minorTimeSlots
+        : (isLabSubject ? [...majorLabTimeSlots, ...majorLectureTimeSlots] : majorLectureTimeSlots);
+
       const suitableRooms = rooms.filter((r) => {
         const capacityFits = Number(r.capacity) >= Number(sec.students || 20);
         const typeFits = !isLabSubject || /lab/i.test(r.type || '') || /lab/i.test(r.building || '');
@@ -954,10 +894,14 @@ async function generateSchedules({ user } = {}) {
 
         for (const day of days) {
           if (classScheduled) break;
-          for (const slot of timeSlots) {
+          for (const slot of targetTimeSlots) {
             if (classScheduled) break;
 
             for (const roomToTry of suitableRooms) {
+              const slotDurationHours = (toMinutes(slot.end) - toMinutes(slot.start)) / 60;
+              const isLabSlot = slotDurationHours >= 2.5;
+              const isRoomLab = /lab/i.test(roomToTry.type || '') || /lab/i.test(roomToTry.building || '');
+              if (isLabSlot && !isRoomLab) continue;
               try {
                 await validateSchedulePayload({
                   day,

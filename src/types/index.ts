@@ -96,6 +96,7 @@ export interface ClassScheduleItem {
   program?: string
   color: string
   status?: 'Confirmed' | 'Draft'
+  isCombinedCohort?: boolean
 }
 
 export interface ExamScheduleItem {

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
 import { UserManagementPage, ASSIGNED_ACADEMIC_PROGRAMS } from "../UserManagementPage";
 import { api } from "../../data/apiClient";
@@ -16,6 +16,10 @@ vi.mock("../../data/apiClient", () => ({
 }));
 
 describe("UserManagementPage - Program Head Creation & Assigned Academic Programs", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.setItem("userRole", "super_admin");
@@ -109,5 +113,34 @@ describe("UserManagementPage - Program Head Creation & Assigned Academic Program
     // Select CJEP
     fireEvent.change(programSelect, { target: { value: "CJEP" } });
     expect(programSelect.value).toBe("CJEP");
+  });
+
+  it("does not render link to faculty profile when creating teacher or program head accounts", async () => {
+    render(
+      <BrowserRouter>
+        <ToastProvider>
+          <NotificationProvider>
+            <UserManagementPage />
+          </NotificationProvider>
+        </ToastProvider>
+      </BrowserRouter>
+    );
+
+    const addBtn = await screen.findByRole("button", { name: /add new user account/i });
+    fireEvent.click(addBtn);
+
+    expect(await screen.findByText("User Registration")).toBeInTheDocument();
+
+    const roleSelect = screen.getByLabelText(/assigned system role/i);
+
+    // Check teacher role
+    fireEvent.change(roleSelect, { target: { value: "teacher" } });
+    expect(screen.queryByLabelText(/link to faculty/i)).toBeNull();
+    expect(screen.queryByText(/link to faculty profile/i)).toBeNull();
+
+    // Check program_head role
+    fireEvent.change(roleSelect, { target: { value: "program_head" } });
+    expect(screen.queryByLabelText(/link to faculty/i)).toBeNull();
+    expect(screen.queryByText(/link to faculty teaching profile/i)).toBeNull();
   });
 });

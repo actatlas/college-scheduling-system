@@ -6,7 +6,22 @@ import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
 import { ConfirmModal } from "../components/common/ConfirmModal";
 import { CardGridSkeleton } from "../components/common/Skeleton";
-import { Plus, Search, Edit2, Trash2, Building, AlertTriangle, X } from "lucide-react";
+import {
+  Plus,
+  Search,
+  Edit2,
+  Trash2,
+  Building,
+  Building2,
+  AlertTriangle,
+  X,
+  DoorOpen,
+  Hash,
+  Users,
+  Layers,
+  CheckCircle2,
+  Loader2,
+} from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import type { RoomItem, BuildingType } from "../types";
 
@@ -299,23 +314,26 @@ export function RoomsPage() {
       {/* Add / Edit Room Modal */}
       <Modal
         isOpen={isOpen && canEdit}
+        size="md"
+        icon={<DoorOpen size={20} />}
+        eyebrow="Campus Facilities"
+        title={editingRoom ? "Edit Classroom / Facility" : "Register New Room"}
+        description="Allocate rooms across College, SHS, and JHS buildings with capacity limits."
         onClose={() => {
           setIsOpen(false);
           setEditingRoom(null);
         }}
-        title={editingRoom ? "Edit Classroom / Facility" : "Register New Room"}
-        description="Allocate rooms across College, SHS, and JHS buildings with capacity limits."
       >
         <div className="form-grid">
           <div className="field-group">
             <label htmlFor="roomNumber">
-              Room Code / Number <span style={{ color: "#dc2626" }}>*</span>
+              <Hash size={13} /> Room Code / Number <span className="required-asterisk">*</span>
             </label>
             <input
               id="roomNumber"
               value={form.number}
               disabled={!!editingRoom}
-              onChange={(event) => setForm({ ...form, number: event.target.value })}
+              onChange={(event) => setForm({ ...form, number: event.target.value.toUpperCase() })}
               placeholder="e.g. COL-101, COMLAB-1, SHS-102"
               required
               aria-required="true"
@@ -323,7 +341,9 @@ export function RoomsPage() {
           </div>
 
           <div className="field-group">
-            <label htmlFor="roomBuilding">Campus Building</label>
+            <label htmlFor="roomBuilding">
+              <Building2 size={13} /> Campus Building
+            </label>
             <select
               id="roomBuilding"
               value={form.building}
@@ -336,17 +356,24 @@ export function RoomsPage() {
           </div>
 
           <div className="field-group">
-            <label htmlFor="roomCapacity">Student Capacity</label>
+            <label htmlFor="roomCapacity">
+              <Users size={13} /> Student Capacity
+            </label>
             <input
               id="roomCapacity"
               type="number"
               value={form.capacity}
+              min={1}
+              max={500}
               onChange={(event) => setForm({ ...form, capacity: event.target.value })}
+              placeholder="e.g. 45"
             />
           </div>
 
           <div className="field-group">
-            <label htmlFor="roomType">Room Type / Facility</label>
+            <label htmlFor="roomType">
+              <Layers size={13} /> Room Type / Facility
+            </label>
             <select
               id="roomType"
               value={form.type}
@@ -361,7 +388,9 @@ export function RoomsPage() {
           </div>
 
           <div className="field-group" style={{ gridColumn: "1 / -1" }}>
-            <label htmlFor="roomStatus">Operational Status</label>
+            <label htmlFor="roomStatus">
+              <CheckCircle2 size={13} /> Operational Status
+            </label>
             <select
               id="roomStatus"
               value={form.status}
@@ -374,10 +403,10 @@ export function RoomsPage() {
           </div>
         </div>
 
-        <div className="table-actions" style={{ marginTop: 20 }}>
+        <div className="modal-actions">
           <button
             type="button"
-            className="secondary-button"
+            className="cancel-button"
             onClick={() => {
               setIsOpen(false);
               setEditingRoom(null);
@@ -388,9 +417,9 @@ export function RoomsPage() {
           <button
             type="button"
             className="action-button"
-            disabled={loading}
+            disabled={loading || !form.number.trim()}
             onClick={async () => {
-              if (!form.number) {
+              if (!form.number.trim()) {
                 toast.push("Room number is required", "error");
                 return;
               }
@@ -398,7 +427,7 @@ export function RoomsPage() {
               try {
                 const payload = {
                   ...form,
-                  capacity: Number(form.capacity),
+                  capacity: Number(form.capacity) || 40,
                 };
                 if (editingRoom) {
                   await api.put(`/rooms/${encodeURIComponent(editingRoom.number)}`, payload);
@@ -417,7 +446,8 @@ export function RoomsPage() {
               }
             }}
           >
-            {loading ? "Saving…" : "Save Room"}
+            {loading && <Loader2 size={16} className="animate-spin" />}
+            <span>{loading ? "Saving…" : editingRoom ? "Update Room" : "Register Room"}</span>
           </button>
         </div>
       </Modal>

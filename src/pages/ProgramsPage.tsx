@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { api } from "../data/apiClient";
 import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
-import { Plus } from "lucide-react";
+import { Plus, GraduationCap, Hash, BookOpen, Loader2 } from "lucide-react";
 import { getProgramLogo } from "../utils/programLogos";
 import { CardGridSkeleton } from "../components/common/Skeleton";
 import { storage } from "../data/storage";
@@ -194,6 +194,8 @@ export function ProgramsPage() {
       {/* Enlarged Program Logo Modal */}
       <Modal
         isOpen={Boolean(selectedPreviewProgram)}
+        size="sm"
+        eyebrow="Academic Seal"
         title={selectedPreviewProgram?.name || "Program Logo"}
         description="Official Academic Program Seal · St. Rita's College of Balingasag"
         onClose={() => setSelectedPreviewProgram(null)}
@@ -204,7 +206,7 @@ export function ProgramsPage() {
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
-            padding: "20px 10px 10px",
+            padding: "10px 10px 0",
             textAlign: "center",
           }}
         >
@@ -218,15 +220,15 @@ export function ProgramsPage() {
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
-              marginBottom: "20px",
+              marginBottom: "16px",
             }}
           >
             <img
               src={selectedPreviewProgram?.logo}
               alt={`${selectedPreviewProgram?.name} Enlarged Logo`}
               style={{
-                width: "240px",
-                height: "240px",
+                width: "200px",
+                height: "200px",
                 objectFit: "contain",
                 filter: "drop-shadow(0 8px 16px rgba(0, 0, 0, 0.08))",
               }}
@@ -235,7 +237,7 @@ export function ProgramsPage() {
 
           <h3
             style={{
-              fontSize: "1.3rem",
+              fontSize: "1.2rem",
               fontWeight: 800,
               color: "var(--srcb-navy)",
               margin: "0 0 6px",
@@ -246,10 +248,10 @@ export function ProgramsPage() {
 
           <p
             style={{
-              fontSize: "0.9rem",
+              fontSize: "0.85rem",
               fontWeight: 600,
               color: "#0284c7",
-              margin: "0 0 20px",
+              margin: "0 0 16px",
               textTransform: "uppercase",
               letterSpacing: "0.04em",
             }}
@@ -257,28 +259,33 @@ export function ProgramsPage() {
             {selectedPreviewProgram?.focus}
           </p>
 
-          <button
-            type="button"
-            className="action-button"
-            onClick={() => setSelectedPreviewProgram(null)}
-            style={{ minWidth: "140px" }}
-          >
-            Close Preview
-          </button>
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="action-button"
+              onClick={() => setSelectedPreviewProgram(null)}
+              style={{ minWidth: "140px" }}
+            >
+              Close Preview
+            </button>
+          </div>
         </div>
       </Modal>
 
       {/* Add Program Modal */}
       <Modal
         isOpen={isOpen}
-        title="Add program"
-        description="Introduce a new academic program for the registrar catalog."
+        size="md"
+        icon={<GraduationCap size={20} />}
+        eyebrow="Registrar Catalog"
+        title="Register New Program"
+        description="Introduce a new collegiate academic program to the institutional catalog."
         onClose={() => setIsOpen(false)}
       >
         <div className="form-grid">
           <div className="field-group" style={{ gridColumn: "1 / -1" }}>
             <label htmlFor="programCode">
-              Program Code <span style={{ color: "#dc2626" }}>*</span>
+              <Hash size={13} /> Program Code <span className="required-asterisk">*</span>
             </label>
             <input
               id="programCode"
@@ -287,13 +294,13 @@ export function ProgramsPage() {
               aria-required="true"
               placeholder="e.g. BSIT, BSBA"
               onChange={(event) =>
-                setForm({ ...form, code: event.target.value })
+                setForm({ ...form, code: event.target.value.toUpperCase() })
               }
             />
           </div>
           <div className="field-group" style={{ gridColumn: "1 / -1" }}>
             <label htmlFor="programName">
-              Program Name <span style={{ color: "#dc2626" }}>*</span>
+              <BookOpen size={13} /> Program Name <span className="required-asterisk">*</span>
             </label>
             <input
               id="programName"
@@ -307,10 +314,10 @@ export function ProgramsPage() {
             />
           </div>
         </div>
-        <div className="table-actions">
+        <div className="modal-actions">
           <button
             type="button"
-            className="secondary-button"
+            className="cancel-button"
             onClick={() => setIsOpen(false)}
           >
             Cancel
@@ -318,21 +325,21 @@ export function ProgramsPage() {
           <button
             type="button"
             className="action-button"
-            disabled={loading}
+            disabled={loading || !form.code.trim() || !form.name.trim()}
             onClick={async () => {
-              if (!form.code || !form.name) {
+              if (!form.code.trim() || !form.name.trim()) {
                 toast.push("Program code and name are required", "error");
                 return;
               }
               setLoading(true);
               try {
                 await api.post("/programs", {
-                  code: form.code,
-                  name: form.name,
+                  code: form.code.toUpperCase().trim(),
+                  name: form.name.trim(),
                   focus: form.focus,
                 });
                 fetchPrograms();
-                toast.push("Program saved", "success");
+                toast.push("Program saved successfully", "success");
                 setIsOpen(false);
                 setForm({ code: "", name: "", focus: "" });
               } catch (err: any) {
@@ -345,7 +352,8 @@ export function ProgramsPage() {
               }
             }}
           >
-            {loading ? "Saving…" : "Save Program"}
+            {loading && <Loader2 size={16} className="animate-spin" />}
+            <span>{loading ? "Saving…" : "Save Program"}</span>
           </button>
         </div>
       </Modal>

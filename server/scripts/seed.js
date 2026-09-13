@@ -87,7 +87,8 @@ async function run() {
     await conn.query('INSERT INTO sections (course_code, year_level, section_label, adviser_id, students, semester_id, academic_year_id) VALUES (?, ?, ?, ?, ?, ?, ?)', ['BSCS', 1, 'A', 'T001', 30, 1, 1]);
 
     // 12. Subjects
-    await conn.query('INSERT INTO subjects (code, name, units, lecture_hours, lab_hours, semester_id, program_code, instructor_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', ['CS101', 'Intro to Programming', 3, 3, 0, 1, 'ITP', 'T001']);
+    await conn.query('INSERT INTO subjects (code, name, units, lecture_hours, lab_hours, semester_id, program_code, instructor_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', ['CS101', 'Intro to Programming', 3, 2, 3, 1, 'ITP', 'T001']);
+    await conn.query('INSERT INTO subjects (code, name, units, lecture_hours, lab_hours, semester_id, program_code, instructor_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', ['GE101', 'Understanding the Self', 3, 2, 0, 1, 'ALL', 'T001']);
 
     // 14. Rooms
     const roomsList = [

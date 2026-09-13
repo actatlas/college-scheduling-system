@@ -51,13 +51,16 @@ interface ReportSummary {
 
 export function ReportsPage() {
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState<"workload" | "rooms" | "cfl">("workload");
+  const [activeTab, setActiveTab] = useState<"workload" | "rooms" | "cfl" | "master-loading">("workload");
   const [summary, setSummary] = useState<ReportSummary | null>(null);
   const [facultyWorkload, setFacultyWorkload] = useState<FacultyWorkloadRow[]>([]);
   const [roomUtilization, setRoomUtilization] = useState<RoomUtilizationRow[]>([]);
   const [rawSchedules, setRawSchedules] = useState<any[]>([]);
+  const [subjectsList, setSubjectsList] = useState<any[]>([]);
   const [isFetching, setIsFetching] = useState(true);
   const [query, setQuery] = useState("");
+  const [masterProgramFilter, setMasterProgramFilter] = useState<string>("All");
+  const [masterStatusFilter, setMasterStatusFilter] = useState<string>("All");
 
   // Selected faculty for Certificate of Faculty Loading (CFL)
   const [selectedCflFacultyId, setSelectedCflFacultyId] = useState<string>("");
@@ -79,6 +82,9 @@ export function ReportsPage() {
       api.get("/schedules").then((res: any) => {
         setRawSchedules(res.data?.data || []);
       }),
+      api.get("/subjects").then((res: any) => {
+        setSubjectsList(res.data?.data || []);
+      }).catch(() => {}),
     ])
       .catch(() => {
         toast.push("Failed to load full reporting metrics", "error");
@@ -311,19 +317,64 @@ export function ReportsPage() {
             >
               <Award size={15} /> Certificate of Faculty Loading (CFL)
             </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab("master-loading")}
+              style={{
+                padding: "8px 16px",
+                borderRadius: 8,
+                border: "none",
+                background: activeTab === "master-loading" ? "var(--srcb-surface)" : "transparent",
+                color: activeTab === "master-loading" ? "var(--srcb-navy, #0d5499)" : "var(--srcb-text-muted)",
+                fontWeight: 700,
+                fontSize: "0.86rem",
+                cursor: "pointer",
+                boxShadow: activeTab === "master-loading" ? "var(--srcb-shadow-soft)" : "none",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <FileSpreadsheet size={15} /> Master Loading Document (SRCB)
+            </button>
           </div>
 
-          {activeTab !== "cfl" ? (
-            <div className="topbar__search" style={{ minWidth: 260 }}>
-              <Search size={16} color="var(--srcb-slate)" />
-              <input
-                type="text"
-                placeholder={activeTab === "workload" ? "Search faculty, department..." : "Search room, building, type..."}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
+          {activeTab === "master-loading" ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <select
+                value={masterProgramFilter}
+                onChange={(e) => setMasterProgramFilter(e.target.value)}
+                style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", fontSize: "0.84rem", fontWeight: 600 }}
+              >
+                <option value="All">All Academic Programs</option>
+                <option value="TEP">Teacher Education Program (TEP)</option>
+                <option value="BSHM">Hospitality Management (BSHM)</option>
+                <option value="CJEP">Criminal Justice (CJEP)</option>
+                <option value="BSBA">Business Administration (BSBA)</option>
+                <option value="BSIT">Information Technology (BSIT)</option>
+              </select>
+
+              <select
+                value={masterStatusFilter}
+                onChange={(e) => setMasterStatusFilter(e.target.value)}
+                style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", fontSize: "0.84rem", fontWeight: 600 }}
+              >
+                <option value="All">All Faculty Types</option>
+                <option value="Full-Time">Full-Time Faculty</option>
+                <option value="Part-Time">Part-Time Instructors</option>
+              </select>
+
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => window.print()}
+                style={{ padding: "8px 14px", display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: "0.84rem" }}
+              >
+                <Printer size={14} /> Print Document
+              </button>
             </div>
-          ) : (
+          ) : activeTab === "cfl" ? (
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: "0.84rem", fontWeight: 700, color: "var(--srcb-slate)" }}>Select Faculty Member:</span>
               <select
@@ -337,6 +388,16 @@ export function ReportsPage() {
                   </option>
                 ))}
               </select>
+            </div>
+          ) : (
+            <div className="topbar__search" style={{ minWidth: 260 }}>
+              <Search size={16} color="var(--srcb-slate)" />
+              <input
+                type="text"
+                placeholder={activeTab === "workload" ? "Search faculty, department..." : "Search room, building, type..."}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
             </div>
           )}
         </div>
@@ -590,6 +651,260 @@ export function ReportsPage() {
               <div style={{ borderBottom: "1px solid #000", width: "80%", margin: "0 auto 8px" }} />
               <strong style={{ fontSize: "0.85rem", display: "block" }}>Dean / Vice President</strong>
               <span style={{ fontSize: "0.75rem", color: "var(--srcb-text-muted)" }}>Office of Academic Affairs</span>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Tab 4: SRCB Official Master Faculty Loading Document (Pages 1-17 Format) */}
+      {activeTab === "master-loading" && (
+        <section
+          className="card"
+          style={{
+            padding: "36px 32px",
+            background: "#ffffff",
+            border: "2px solid #0f172a",
+            maxWidth: 1100,
+            margin: "0 auto",
+            color: "#0f172a",
+          }}
+        >
+          {/* Institutional Header Banner */}
+          <div style={{ textAlign: "center", borderBottom: "2px solid #0f172a", paddingBottom: 16, marginBottom: 24 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16, marginBottom: 8 }}>
+              <img src={Logo} alt="SRCB Logo" style={{ width: 64, height: 64, objectFit: "contain" }} />
+              <div>
+                <h2 style={{ margin: 0, fontSize: "1.3rem", fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.04em", color: "#0f172a" }}>
+                  St. Rita's College of Balingasag, Inc.
+                </h2>
+                <p style={{ margin: "2px 0 0", fontSize: "0.85rem", fontWeight: 600, color: "#475569" }}>
+                  Balingasag, Misamis Oriental 9005 • Higher Education Department
+                </p>
+                <p style={{ margin: "2px 0 0", fontSize: "0.78rem", color: "#64748b" }}>
+                  PAASCU Level I &amp; II Accredited Programs
+                </p>
+              </div>
+            </div>
+            <h3 style={{ margin: "10px 0 0", fontSize: "1.05rem", fontWeight: 800, textTransform: "uppercase", color: "#0d5499" }}>
+              Faculty Teaching Loading Document
+            </h3>
+            <p style={{ margin: "2px 0 0", fontSize: "0.84rem", fontWeight: 700, color: "#0f172a" }}>
+              First Semester SY 2026-2027
+            </p>
+          </div>
+
+          {/* Master Loading Table Content */}
+          {(() => {
+            // Group faculty by status and filter
+            const filteredFaculty = facultyWorkload.filter((f) => {
+              if (masterProgramFilter !== "All") {
+                const dep = String(f.department || "").toUpperCase();
+                if (!dep.includes(masterProgramFilter.toUpperCase())) return false;
+              }
+              if (masterStatusFilter !== "All") {
+                if (f.status !== masterStatusFilter) return false;
+              }
+              return true;
+            });
+
+            const fullTimeList = filteredFaculty.filter((f) => f.status === "Full-Time");
+            const partTimeList = filteredFaculty.filter((f) => f.status !== "Full-Time");
+
+            const renderFacultySection = (title: string, list: typeof filteredFaculty) => {
+              if (list.length === 0) return null;
+
+              return (
+                <div style={{ marginBottom: 32 }}>
+                  <div
+                    style={{
+                      background: "#0f172a",
+                      color: "#ffffff",
+                      padding: "8px 16px",
+                      fontWeight: 800,
+                      fontSize: "0.92rem",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.05em",
+                      marginBottom: 10,
+                      borderRadius: 4,
+                    }}
+                  >
+                    {title}
+                  </div>
+
+                  <table
+                    style={{
+                      width: "100%",
+                      borderCollapse: "collapse",
+                      border: "1.5px solid #000000",
+                      fontSize: "0.82rem",
+                    }}
+                  >
+                    <thead>
+                      <tr style={{ background: "#f1f5f9", textAlign: "center", fontWeight: 800 }}>
+                        <th style={{ border: "1px solid #000000", padding: "8px 6px", width: "18%" }}>NAME OF INSTRUCTOR</th>
+                        <th style={{ border: "1px solid #000000", padding: "8px 6px", width: "10%" }}>SUBJECT CODE</th>
+                        <th style={{ border: "1px solid #000000", padding: "8px 6px", width: "20%" }}>DESCRIPTION</th>
+                        <th style={{ border: "1px solid #000000", padding: "8px 6px", width: "7%" }}>Units</th>
+                        <th style={{ border: "1px solid #000000", padding: "8px 6px", width: "6%" }}>Sections</th>
+                        <th style={{ border: "1px solid #000000", padding: "8px 6px", width: "7%" }}>Students</th>
+                        <th style={{ border: "1px solid #000000", padding: "8px 6px", width: "10%" }}>Course-Year</th>
+                        <th style={{ border: "1px solid #000000", padding: "8px 6px", width: "10%" }}>Time</th>
+                        <th style={{ border: "1px solid #000000", padding: "8px 6px", width: "10%" }}>Day</th>
+                        <th style={{ border: "1px solid #000000", padding: "8px 6px", width: "8%" }}>Room</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {list.map((faculty, fIdx) => {
+                        const scheds = rawSchedules.filter(
+                          (s) =>
+                            String(s.facultyId || "") === String(faculty.id) ||
+                            String(s.faculty || "").toLowerCase() === faculty.name.toLowerCase()
+                        );
+
+                        // Find details from subjectsList
+                        const rows = scheds.length > 0 ? scheds : [null];
+                        const totalUnits = scheds.reduce((sum, s) => {
+                          const subObj = subjectsList.find((sub) => sub.code === (s?.subjectCode || s?.code));
+                          return sum + (Number(subObj?.units) || 3);
+                        }, 0);
+
+                        return (
+                          <>
+                            {rows.map((s, rIdx) => {
+                              const subObj = s ? subjectsList.find((sub) => sub.code === (s?.subjectCode || s?.code)) : null;
+                              const units = subObj?.units || 3;
+
+                              return (
+                                <tr key={`${faculty.id}-${s?.id || rIdx}`}>
+                                  {rIdx === 0 && (
+                                    <td
+                                      rowSpan={rows.length}
+                                      style={{
+                                        border: "1px solid #000000",
+                                        padding: "8px",
+                                        verticalAlign: "top",
+                                        fontWeight: 700,
+                                        background: "#fafafa",
+                                      }}
+                                    >
+                                      <div style={{ display: "flex", gap: 6 }}>
+                                        <span>{fIdx + 1}.</span>
+                                        <div>
+                                          <strong style={{ color: "#0f172a" }}>{faculty.name}</strong>
+                                          <div style={{ fontSize: "0.72rem", color: "#64748b", marginTop: 2 }}>
+                                            {faculty.department} • {faculty.status}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </td>
+                                  )}
+                                  <td style={{ border: "1px solid #000000", padding: "6px 8px", fontWeight: 700, textAlign: "center" }}>
+                                    {s?.subjectCode || s?.code || "—"}
+                                  </td>
+                                  <td style={{ border: "1px solid #000000", padding: "6px 8px" }}>
+                                    {s?.subject || s?.name || subObj?.name || "No classes currently scheduled"}
+                                  </td>
+                                  <td style={{ border: "1px solid #000000", padding: "6px 8px", textAlign: "center" }}>
+                                    {s ? units : "—"}
+                                  </td>
+                                  <td style={{ border: "1px solid #000000", padding: "6px 8px", textAlign: "center" }}>
+                                    {s ? 1 : "—"}
+                                  </td>
+                                  <td style={{ border: "1px solid #000000", padding: "6px 8px", textAlign: "center" }}>
+                                    {s?.students || s?.enrolled || "25"}
+                                  </td>
+                                  <td style={{ border: "1px solid #000000", padding: "6px 8px", textAlign: "center", fontWeight: 600 }}>
+                                    {s?.section || "—"}
+                                  </td>
+                                  <td style={{ border: "1px solid #000000", padding: "6px 8px", textAlign: "center", fontSize: "0.78rem" }}>
+                                    {s?.time || "—"}
+                                  </td>
+                                  <td style={{ border: "1px solid #000000", padding: "6px 8px", textAlign: "center", fontSize: "0.78rem" }}>
+                                    {s?.day ? (s.day.includes("Monday") ? "Mon. & Thurs." : s.day.includes("Tuesday") ? "Tues. & Fri." : s.day) : "—"}
+                                  </td>
+                                  <td style={{ border: "1px solid #000000", padding: "6px 8px", textAlign: "center", fontWeight: 700 }}>
+                                    {s?.room || "—"}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+
+                            {/* Subtotal row per faculty matching official format */}
+                            <tr style={{ background: "#f8fafc", fontWeight: 700 }}>
+                              <td colSpan={3} style={{ border: "1px solid #000000", padding: "6px 10px", textAlign: "right" }}>
+                                Subtotal Teaching Load ({faculty.name}):
+                              </td>
+                              <td style={{ border: "1px solid #000000", padding: "6px", textAlign: "center", color: "#0d5499" }}>
+                                {totalUnits} Units
+                              </td>
+                              <td colSpan={6} style={{ border: "1px solid #000000", padding: "6px 10px", fontSize: "0.76rem" }}>
+                                {faculty.status === "Full-Time" ? (
+                                  totalUnits > 24 ? (
+                                    <span style={{ color: "#b91c1c", fontWeight: 700 }}>Overload (+{totalUnits - 24} units beyond 24 unit limit)</span>
+                                  ) : (
+                                    <span style={{ color: "#15803d", fontWeight: 700 }}>Normal Full-Time Load ({totalUnits}/24 units)</span>
+                                  )
+                                ) : totalUnits > 12 ? (
+                                  <span style={{ color: "#b91c1c", fontWeight: 700 }}>Part-Time Overload (+{totalUnits - 12} units beyond 12 unit limit)</span>
+                                ) : (
+                                  <span style={{ color: "#15803d", fontWeight: 700 }}>Normal Part-Time Load ({totalUnits}/12 units)</span>
+                                )}
+                              </td>
+                            </tr>
+                          </>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            };
+
+            return (
+              <>
+                {renderFacultySection("FULLTIME FACULTY", fullTimeList)}
+                {renderFacultySection("PART - TIME INSTRUCTOR", partTimeList)}
+              </>
+            );
+          })()}
+
+          {/* Institutional Signatories Block Matching Document Pages 11 & 17 */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 1fr",
+              gap: 24,
+              marginTop: 48,
+              paddingTop: 24,
+              borderTop: "2px solid #0f172a",
+              textAlign: "center",
+            }}
+          >
+            <div>
+              <p style={{ margin: "0 0 40px", fontSize: "0.82rem", fontWeight: 700, color: "#64748b" }}>Prepared by:</p>
+              <div style={{ borderBottom: "1px solid #000000", width: "85%", margin: "0 auto 6px" }} />
+              <strong style={{ fontSize: "0.88rem", display: "block", color: "#0f172a", textTransform: "uppercase" }}>
+                JESTONI E. SALVAÑA / EUGENE D. SILVA
+              </strong>
+              <span style={{ fontSize: "0.76rem", color: "#64748b", fontWeight: 600 }}>Program Head</span>
+            </div>
+
+            <div>
+              <p style={{ margin: "0 0 40px", fontSize: "0.82rem", fontWeight: 700, color: "#64748b" }}>Noted by:</p>
+              <div style={{ borderBottom: "1px solid #000000", width: "85%", margin: "0 auto 6px" }} />
+              <strong style={{ fontSize: "0.88rem", display: "block", color: "#0f172a", textTransform: "uppercase" }}>
+                DR. CHARLES DARWIN O. GODINEZ
+              </strong>
+              <span style={{ fontSize: "0.76rem", color: "#64748b", fontWeight: 600 }}>Dean of College</span>
+            </div>
+
+            <div>
+              <p style={{ margin: "0 0 40px", fontSize: "0.82rem", fontWeight: 700, color: "#64748b" }}>Approved by:</p>
+              <div style={{ borderBottom: "1px solid #000000", width: "85%", margin: "0 auto 6px" }} />
+              <strong style={{ fontSize: "0.88rem", display: "block", color: "#0f172a", textTransform: "uppercase" }}>
+                S. MA. JESUSITA L. BERNATE, RVM
+              </strong>
+              <span style={{ fontSize: "0.76rem", color: "#64748b", fontWeight: 600 }}>School President / VP Academic Affairs</span>
             </div>
           </div>
         </section>

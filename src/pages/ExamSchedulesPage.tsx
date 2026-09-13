@@ -5,10 +5,11 @@ import { PageHeader } from "../components/common/PageHeader";
 import { Modal } from "../components/common/Modal";
 import { ConfirmModal } from "../components/common/ConfirmModal";
 import { CardGridSkeleton, TimetableSkeleton } from "../components/common/Skeleton";
+import { SubjectPalette } from "../components/schedule/SubjectPalette";
 import { useToast } from "../components/common/Toast";
 import { Tooltip } from "../components/common/Tooltip";
 import { SearchableSelect, type SearchableOption } from "../components/common/SearchableSelect";
-import { isTimeOverlapping } from "../utils/scheduling";
+import { isTimeOverlapping, isGeneralSubject } from "../utils/scheduling";
 import {
   Calendar,
   Clock,
@@ -35,6 +36,7 @@ import {
   UserCheck,
   ShieldCheck,
   Sparkles,
+  Loader2,
 } from "lucide-react";
 import { api } from "../data/apiClient";
 import { useProgramContext } from "../contexts/ProgramContext";
@@ -159,6 +161,8 @@ export function ExamSchedulesPage() {
   const [isDraggingGrid, setIsDraggingGrid] = useState(false);
   const [dragStart, setDragStart] = useState<{ dayDate: string; slotIdx: number } | null>(null);
   const [dragEnd, setDragEnd] = useState<{ dayDate: string; slotIdx: number } | null>(null);
+  const [isSubjectPaletteOpen, setIsSubjectPaletteOpen] = useState(true);
+  const [dropTarget, setDropTarget] = useState<{ dateStr: string; slot: string } | null>(null);
 
   // Selected session for detailed view inspection
   const [inspectedSession, setInspectedSession] = useState<ExamSessionDisplay | null>(null);
@@ -223,6 +227,8 @@ export function ExamSchedulesPage() {
       },
     ] as ExamAssignmentInput[],
   });
+
+  const [activeAssignmentIdx, setActiveAssignmentIdx] = useState(0);
 
   const toast = useToast();
 
@@ -510,6 +516,12 @@ export function ExamSchedulesPage() {
     return Array.from(subjectMap.values());
   }, [visibleExams]);
 
+  const scheduledExamSubjectCodes = useMemo(() => {
+    return new Set(
+      visibleExams.map((e) => (e.subjectCode || "").toUpperCase()).filter(Boolean)
+    );
+  }, [visibleExams]);
+
   // Available Terms with active exams for template copy
   const termsWithExams = useMemo(() => {
     const termSet = new Set<ExamTerm>();
@@ -530,10 +542,47 @@ export function ExamSchedulesPage() {
     return official && form.examDate === official;
   }, [isProgramHead, officialExamDates, form.term, form.examDate]);
 
+  // Check if active subject is a universal General Subject
+  const isCurrentSubjectGeneral = useMemo(() => {
+    if (!form.subjectCode) return false;
+    const subObj = availableSubjects.find((s) => s.code === form.subjectCode) || subjectsList.find((s) => s.code === form.subjectCode);
+    return isGeneralSubject(subObj || form.subjectCode);
+  }, [form.subjectCode, availableSubjects, subjectsList]);
+
+  // Check if an existing exam session already exists for this General Subject in this term
+  const existingGeneralExamSession = useMemo(() => {
+    if (!isCurrentSubjectGeneral || !form.subjectCode || !form.term) return null;
+    return (
+      exams.find(
+        (e) =>
+          e.id !== editingExam?.id &&
+          e.term === form.term &&
+          (e.subjectCode?.toUpperCase().trim() === form.subjectCode.toUpperCase().trim() ||
+            e.subject?.toUpperCase().trim() === form.subject?.toUpperCase().trim())
+      ) || null
+    );
+  }, [isCurrentSubjectGeneral, form.subjectCode, form.term, form.subject, exams, editingExam]);
+
+  // Time slot mismatch detector for General Subjects
+  const isGeneralSubjectTimeMismatched = useMemo(() => {
+    if (!isCurrentSubjectGeneral || !existingGeneralExamSession) return false;
+    const normFormTime = form.time.replace(/\s+/g, "").toUpperCase();
+    const normExistTime = existingGeneralExamSession.time.replace(/\s+/g, "").toUpperCase();
+    return form.examDate !== existingGeneralExamSession.examDate || normFormTime !== normExistTime;
+  }, [isCurrentSubjectGeneral, existingGeneralExamSession, form.examDate, form.time]);
+
   // Proactive Step 1 Resource Checking
   const availableSectionsForCurrentExam = useMemo(() => {
     if (!form.subjectCode) return [];
-    return availableSections.filter((sec) => {
+    // If it's a general subject, ALL collegiate sections across all programs are eligible!
+    const sourceSections = isCurrentSubjectGeneral
+      ? sectionsList.filter((sec) => {
+        const status = String(sec.status || "").toLowerCase();
+        return status !== "inactive" && status !== "archived";
+      })
+      : availableSections;
+
+    return sourceSections.filter((sec) => {
       const secName = sec.section || `${sec.course} ${sec.yearLevel || ""}-${sec.section}`.trim();
       const hasClashInOtherExams = exams.some(
         (e) =>
@@ -544,7 +593,7 @@ export function ExamSchedulesPage() {
       );
       return !hasClashInOtherExams;
     });
-  }, [availableSections, form.subjectCode, form.examDate, form.time, exams, editingExam]);
+  }, [availableSections, sectionsList, isCurrentSubjectGeneral, form.subjectCode, form.examDate, form.time, exams, editingExam]);
 
   const sectionsGroupedByProgram = useMemo(() => {
     const groups: { [prog: string]: SectionItem[] } = {};
@@ -592,6 +641,7 @@ export function ExamSchedulesPage() {
   const isExamStep1ResourcesAvailable = useMemo(() => {
     if (!form.subjectCode || !form.examDate || !form.time) return false;
     if (isProgramHead && !isFormDateMatchingOfficial) return false;
+    if (isGeneralSubjectTimeMismatched) return false;
     return (
       availableProctorsForStep1.length > 0 &&
       availableRoomsForStep1.length > 0 &&
@@ -603,6 +653,7 @@ export function ExamSchedulesPage() {
     form.time,
     isProgramHead,
     isFormDateMatchingOfficial,
+    isGeneralSubjectTimeMismatched,
     availableProctorsForStep1,
     availableRoomsForStep1,
     availableSectionsForCurrentExam,
@@ -653,22 +704,47 @@ export function ExamSchedulesPage() {
 
   // Modal Step 1 & 2 Handlers
   const handleSubjectSelect = (subCode: string) => {
-    const selectedSub = availableSubjects.find((s) => s.code === subCode);
+    const selectedSub = availableSubjects.find((s) => s.code === subCode) || subjectsList.find((s) => s.code === subCode);
     if (!selectedSub) return;
+    const isGen = isGeneralSubject(selectedSub || subCode);
+
+    // If an exam session already exists for this general subject in this term, sync to that session's time slot!
+    const existing = exams.find(
+      (e) =>
+        e.id !== editingExam?.id &&
+        e.term === form.term &&
+        (e.subjectCode?.toUpperCase().trim() === subCode.toUpperCase().trim() ||
+          e.subject?.toUpperCase().trim() === selectedSub.name.toUpperCase().trim())
+    );
+
     setForm((prev) => ({
       ...prev,
       subjectCode: selectedSub.code,
       subject: selectedSub.name,
       program: selectedSub.program || selectedProgram.key || "BSIT",
+      ...(isGen && existing ? { examDate: existing.examDate, time: existing.time } : {}),
     }));
   };
 
   const handleFormTermChange = (newTerm: ExamTerm) => {
     const officialDate = officialExamDates[newTerm] || "";
+    const isGen = isGeneralSubject(form.subjectCode);
+
+    const existing = isGen
+      ? exams.find(
+        (e) =>
+          e.id !== editingExam?.id &&
+          e.term === newTerm &&
+          (e.subjectCode?.toUpperCase().trim() === form.subjectCode.toUpperCase().trim() ||
+            e.subject?.toUpperCase().trim() === form.subject.toUpperCase().trim())
+      )
+      : null;
+
     setForm((prev) => ({
       ...prev,
       term: newTerm,
-      examDate: officialDate || prev.examDate,
+      examDate: existing ? existing.examDate : (officialDate || prev.examDate),
+      ...(existing ? { time: existing.time } : {}),
     }));
   };
 
@@ -693,11 +769,127 @@ export function ExamSchedulesPage() {
       toast.push("Please enter a valid time slot", "error");
       return;
     }
+    if (isGeneralSubjectTimeMismatched && existingGeneralExamSession) {
+      toast.push(
+        `Anti-Answer-Sharing Policy: All sections taking general subject ${form.subjectCode} must take the exam in the same time slot (${existingGeneralExamSession.time} on ${existingGeneralExamSession.examDate}).`,
+        "error"
+      );
+      return;
+    }
     if (!isExamStep1ResourcesAvailable) {
       toast.push("Required resources (proctors, rooms, or sections) are unavailable for this slot", "error");
       return;
     }
     setModalStep(2);
+  };
+
+  const handleAutoDistributeSections = () => {
+    if (availableSectionsForCurrentExam.length === 0) {
+      toast.push("No eligible sections available to schedule for this time slot.", "error");
+      return;
+    }
+
+    const alreadyAssignedSecs = new Set(form.assignments.flatMap((a) => a.sections));
+    const unassigned = availableSectionsForCurrentExam.filter((s) => {
+      const secName = s.section || `${s.course} ${s.yearLevel || ""}-${s.section}`.trim();
+      return !alreadyAssignedSecs.has(secName) && !alreadyAssignedSecs.has(s.section);
+    });
+
+    const targetSections = unassigned.length > 0 ? unassigned : availableSectionsForCurrentExam;
+
+    const freeRooms = roomsList.filter((room) => {
+      const status = String(room.status || "").toLowerCase();
+      if (status === "maintenance" || status === "closed" || status === "inactive") return false;
+      const clash = exams.some(
+        (e) =>
+          e.examDate === form.examDate &&
+          isTimeOverlapping(e.time, form.time) &&
+          e.id !== editingExam?.id &&
+          e.room === room.number
+      );
+      return !clash;
+    });
+
+    const freeProctors = availableFaculty.filter((fac) => {
+      const clash = exams.some(
+        (e) =>
+          e.examDate === form.examDate &&
+          isTimeOverlapping(e.time, form.time) &&
+          e.id !== editingExam?.id &&
+          ((e.proctorId && e.proctorId === fac.id) || (e.proctor && e.proctor === fac.name))
+      );
+      return !clash;
+    });
+
+    if (freeRooms.length === 0 || freeProctors.length === 0) {
+      toast.push("Not enough conflict-free classrooms or proctors free at this time slot.", "error");
+      return;
+    }
+
+    const newAssignments: ExamAssignmentInput[] = [];
+    let roomIdx = 0;
+    let proctorIdx = 0;
+    let currentRoomSections: string[] = [];
+    let currentRoomStudents = 0;
+    let currentRoom = freeRooms[roomIdx];
+    let currentProctor = freeProctors[proctorIdx];
+
+    for (const sec of targetSections) {
+      const secName = sec.section || `${sec.course} ${sec.yearLevel || ""}-${sec.section}`.trim();
+      const studentCount = Number(sec.students || 35);
+      const roomCapacity = Number(currentRoom?.capacity || 40);
+
+      if (
+        currentRoomSections.length > 0 &&
+        currentRoomStudents + studentCount > roomCapacity &&
+        roomIdx + 1 < freeRooms.length &&
+        proctorIdx + 1 < freeProctors.length
+      ) {
+        newAssignments.push({
+          program: currentRoomSections[0]?.split(" ")[0] || form.program,
+          room: currentRoom.number,
+          building: (currentRoom.building as BuildingType) || "College Building",
+          proctor: currentProctor.name,
+          proctorId: currentProctor.id,
+          sections: currentRoomSections,
+        });
+
+        roomIdx++;
+        proctorIdx++;
+        currentRoom = freeRooms[roomIdx];
+        currentProctor = freeProctors[proctorIdx];
+        currentRoomSections = [secName];
+        currentRoomStudents = studentCount;
+      } else {
+        currentRoomSections.push(secName);
+        currentRoomStudents += studentCount;
+      }
+    }
+
+    if (currentRoomSections.length > 0 && currentRoom && currentProctor) {
+      newAssignments.push({
+        program: currentRoomSections[0]?.split(" ")[0] || form.program,
+        room: currentRoom.number,
+        building: (currentRoom.building as BuildingType) || "College Building",
+        proctor: currentProctor.name,
+        proctorId: currentProctor.id,
+        sections: currentRoomSections,
+      });
+    }
+
+    if (newAssignments.length > 0) {
+      setForm((prev) => {
+        const keepExisting = unassigned.length > 0 && prev.assignments.some((a) => a.sections.length > 0);
+        return {
+          ...prev,
+          assignments: keepExisting ? [...prev.assignments, ...newAssignments] : newAssignments,
+        };
+      });
+      toast.push(
+        `⚡ Auto-distributed ${targetSections.length} section(s) across ${newAssignments.length} room(s) for ${form.time}!`,
+        "success"
+      );
+    }
   };
 
   const handleAddAssignmentRow = () => {
@@ -856,6 +1048,86 @@ export function ExamSchedulesPage() {
     setDragEnd(null);
   };
 
+  const handleDropOnExamCell = (dateStr: string, slot: string, dataStr: string) => {
+    setDropTarget(null);
+    if (!canManage || !dataStr) return;
+    try {
+      const payload = JSON.parse(dataStr);
+      if (payload.type === "new_subject") {
+        const sub = payload.subject;
+        const activeTerm = (termFilter !== "All" ? termFilter : "Midterm") as ExamTerm;
+        const officialDate = officialExamDates[activeTerm] || dateStr;
+
+        if (isProgramHead && !officialExamDates[activeTerm]) {
+          toast.push(`${activeTerm} examination date has not yet been configured by the Admin.`, "error");
+          return;
+        }
+
+        setEditingExam(null);
+        setIsAddingToExistingSession(false);
+        const [st, et] = slot.split("-");
+        const formattedTime = `${st.trim()} - ${et.trim()}`;
+
+        const defProg = sub.program || selectedProgram.key || "BSIT";
+        const defSec = sectionsList.find((s) => s.program === defProg) || sectionsList[0];
+        const defSecVal = defSec ? (defSec.course && defSec.section ? `${defSec.course} ${defSec.yearLevel || ''}-${defSec.section}`.trim() : defSec.section) : "";
+
+        setForm({
+          term: activeTerm,
+          examDate: isProgramHead ? officialDate : dateStr,
+          time: formattedTime,
+          subjectCode: sub.code || "",
+          subject: sub.name || "",
+          program: defProg,
+          assignments: [
+            {
+              program: defProg,
+              room: roomsList[0]?.number || "COL-101",
+              building: (roomsList[0]?.building as BuildingType) || "College Building",
+              proctor: "",
+              proctorId: "",
+              sections: defSecVal ? [defSecVal] : [],
+            },
+          ],
+        });
+        setModalStep(2);
+        setIsOpen(true);
+      }
+    } catch (err: any) {
+      toast.push(err?.message || "Failed to drop subject on exam slot", "error");
+    }
+  };
+
+  const handleScheduleExamForSubject = (sub: SubjectItem | any) => {
+    if (!canManage) return;
+    setEditingExam(null);
+    setIsAddingToExistingSession(false);
+    const activeTerm = (termFilter !== "All" ? termFilter : "Midterm") as ExamTerm;
+    const officialDate = officialExamDates[activeTerm] || "2026-10-15";
+    const defProg = sub.program || selectedProgram.key || "BSIT";
+
+    setForm({
+      term: activeTerm,
+      examDate: officialDate,
+      time: "08:00 AM - 10:00 AM",
+      subjectCode: sub.code || "",
+      subject: sub.name || "",
+      program: defProg,
+      assignments: [
+        {
+          program: defProg,
+          room: roomsList[0]?.number || "COL-101",
+          building: (roomsList[0]?.building as BuildingType) || "College Building",
+          proctor: "",
+          proctorId: "",
+          sections: [],
+        },
+      ],
+    });
+    setModalStep(2);
+    setIsOpen(true);
+  };
+
   // Open Create / Add Modal
   const handleOpenCreateModal = () => {
     setEditingExam(null);
@@ -963,6 +1235,25 @@ export function ExamSchedulesPage() {
       if (assignedRoomObj && totalStudents > 0 && Number(assignedRoomObj.capacity) < totalStudents) {
         toast.push(
           `Cannot schedule: Room ${a.room} capacity (${assignedRoomObj.capacity}) is smaller than assigned sections (${totalStudents} students).`,
+          "error"
+        );
+        return;
+      }
+    }
+
+    // Anti-Answer-Sharing Enforcement for General Education Subjects:
+    if (isCurrentSubjectGeneral) {
+      const conflicting = exams.find(
+        (e) =>
+          e.id !== editingExam?.id &&
+          e.term === form.term &&
+          (e.subjectCode?.toUpperCase().trim() === form.subjectCode.toUpperCase().trim() ||
+            e.subject?.toUpperCase().trim() === form.subject.toUpperCase().trim()) &&
+          (e.examDate !== form.examDate || e.time.replace(/\s+/g, "").toUpperCase() !== form.time.replace(/\s+/g, "").toUpperCase())
+      );
+      if (conflicting) {
+        toast.push(
+          `Security Policy: All sections taking general subject ${form.subjectCode} must take the exam in the same time slot (${conflicting.time} on ${conflicting.examDate}) to avoid answer sharing between sections.`,
           "error"
         );
         return;
@@ -1719,8 +2010,10 @@ export function ExamSchedulesPage() {
                 VIEW MODE 1: WEEKLY TIMETABLE GRID (CALENDAR)
                 =================================================== */}
             {viewMode === "grid" && (
-              <div className="table-wrap" style={{ marginTop: 16 }}>
-                <table className="data-table" style={{ textAlign: "center" }}>
+              <div className="timetable-workspace">
+                <div className="timetable-workspace-main">
+                  <div className="table-wrap timetable-calendar-container" style={{ marginTop: 0 }}>
+                    <table className="data-table timetable-calendar-grid" style={{ textAlign: "center" }}>
                   <thead>
                     <tr>
                       <th style={{ width: 120 }}>Time Slot</th>
@@ -1795,6 +2088,7 @@ export function ExamSchedulesPage() {
                             dragStart.dayDate === w.dateStr &&
                             slotIdx >= Math.min(dragStart.slotIdx, dragEnd.slotIdx) &&
                             slotIdx <= Math.max(dragStart.slotIdx, dragEnd.slotIdx);
+                          const isDropHover = dropTarget?.dateStr === w.dateStr && dropTarget?.slot === slot;
 
                           return (
                             <td
@@ -1802,14 +2096,35 @@ export function ExamSchedulesPage() {
                               onMouseDown={() => handleMouseDownCell(w.dateStr, slotIdx)}
                               onMouseEnter={() => handleMouseEnterCell(w.dateStr, slotIdx)}
                               onMouseUp={handleMouseUpCell}
+                              onDragOver={(e) => {
+                                if (!canManage) return;
+                                e.preventDefault();
+                                e.dataTransfer.dropEffect = "copy";
+                                if (dropTarget?.dateStr !== w.dateStr || dropTarget?.slot !== slot) {
+                                  setDropTarget({ dateStr: w.dateStr, slot });
+                                }
+                              }}
+                              onDragLeave={() => {
+                                if (dropTarget?.dateStr === w.dateStr && dropTarget?.slot === slot) {
+                                  setDropTarget(null);
+                                }
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                const dataStr = e.dataTransfer.getData("application/json");
+                                handleDropOnExamCell(w.dateStr, slot, dataStr);
+                              }}
+                              className={`schedule-grid-cell ${isDragTarget ? "drag-hover" : ""} ${isDropHover ? "drag-target-hover" : ""}`}
                               style={{
                                 verticalAlign: "top",
                                 padding: 6,
-                                background: isDragTarget
-                                  ? "rgba(14, 116, 144, 0.12)"
-                                  : cellSessions.length > 0
-                                    ? "var(--srcb-surface)"
-                                    : "transparent",
+                                background: isDropHover
+                                  ? "rgba(37, 99, 235, 0.14)"
+                                  : isDragTarget
+                                    ? "rgba(14, 116, 144, 0.12)"
+                                    : cellSessions.length > 0
+                                      ? "var(--srcb-surface)"
+                                      : "transparent",
                                 cursor: canManage ? "pointer" : "default",
                                 transition: "background 0.15s ease",
                                 minHeight: 90,
@@ -1823,38 +2138,41 @@ export function ExamSchedulesPage() {
                                     display: "flex",
                                     alignItems: "center",
                                     justifyContent: "center",
-                                    color: "var(--srcb-text-muted)",
+                                    color: isDropHover ? "var(--srcb-royal)" : "var(--srcb-text-muted)",
                                     fontSize: "0.72rem",
-                                    opacity: 0.4,
+                                    fontWeight: isDropHover ? 700 : 500,
+                                    opacity: isDropHover ? 1 : 0.4,
                                     borderRadius: 6,
-                                    border: isDragTarget ? "2px dashed var(--srcb-navy)" : "1px dashed transparent",
+                                    border: isDropHover
+                                      ? "2px dashed var(--srcb-royal)"
+                                      : isDragTarget
+                                        ? "2px dashed var(--srcb-navy)"
+                                        : "1px dashed transparent",
                                   }}
                                 >
-                                  {canManage ? "+ Schedule" : "—"}
+                                  {isDropHover ? "Drop to assign exam" : canManage ? "+ Schedule" : "—"}
                                 </div>
                               ) : (
                                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                                   {cellSessions.map((session) => {
                                     const totalAssignments = session.assignments.length;
                                     const totalSections = session.assignments.reduce(
-                                      (sum, a) => sum + a.sections.length,
+                                      (acc, a) => acc + (a.sections?.length || 0),
                                       0
                                     );
 
                                     return (
                                       <div
                                         key={session.sessionKey}
-                                        onClick={(ev) => {
-                                          ev.stopPropagation();
-                                          setInspectedSession(session);
-                                        }}
+                                        onClick={() => setInspectedSession(session)}
+                                        className="card"
                                         style={{
-                                          background: "var(--srcb-surface-elevated, #ffffff)",
-                                          border: "1px solid var(--srcb-border)",
-                                          borderLeft: "4px solid var(--srcb-navy)",
-                                          borderRadius: 6,
-                                          padding: "8px 10px",
-                                          textAlign: "left",
+                                          padding: 8,
+                                          borderLeft: "4px solid var(--srcb-royal)",
+                                          display: "flex",
+                                          flexDirection: "column",
+                                          justifyContent: "space-between",
+                                          background: "var(--srcb-surface-elevated)",
                                           boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
                                           cursor: "pointer",
                                         }}
@@ -1919,7 +2237,21 @@ export function ExamSchedulesPage() {
                   </tbody>
                 </table>
               </div>
-            )}
+            </div>
+            <SubjectPalette
+              subjects={availableSubjects}
+              scheduledSubjectCodes={scheduledExamSubjectCodes}
+              canSchedule={canManage}
+              onSelectSubject={(sub) => handleScheduleExamForSubject(sub)}
+              isExamMode={true}
+              isOpen={isSubjectPaletteOpen}
+              onToggleOpen={() => setIsSubjectPaletteOpen(!isSubjectPaletteOpen)}
+              title="Exam Subject Palette"
+              selectedProgramKey={selectedProgram.key}
+              side="right"
+            />
+          </div>
+        )}
 
             {/* ===================================================
                 VIEW MODE 2: GROUPED BY SUBJECT (EXPANDED)
@@ -2365,8 +2697,14 @@ export function ExamSchedulesPage() {
       {/* ===================================================
           OFFICIAL EXAMINATION PERIOD SETTINGS MODAL (ADMIN ONLY)
           =================================================== */}
+      {/* ===================================================
+          OFFICIAL EXAMINATION PERIOD SETTINGS MODAL (ADMIN ONLY)
+          =================================================== */}
       <Modal
         isOpen={isPeriodSettingsModalOpen && canEditOfficialDates}
+        size="md"
+        icon={<CalendarDays size={20} />}
+        eyebrow="Academic Term Settings"
         title="Official Examination Period Settings"
         description="Set the official calendar dates for Prelim, Midterm, Semi-Final, and Final examination periods. Program Heads and Coordinators will follow these dates."
         onClose={() => setIsPeriodSettingsModalOpen(false)}
@@ -2377,10 +2715,11 @@ export function ExamSchedulesPage() {
               display: "flex",
               alignItems: "center",
               gap: 8,
-              padding: "8px 12px",
-              background: "rgba(13, 84, 153, 0.08)",
-              borderRadius: 6,
-              fontSize: "0.8rem",
+              padding: "10px 14px",
+              backgroundColor: "rgba(22, 50, 105, 0.05)",
+              border: "1px solid rgba(22, 50, 105, 0.12)",
+              borderRadius: 8,
+              fontSize: "0.85rem",
               color: "var(--srcb-navy)",
             }}
           >
@@ -2391,7 +2730,7 @@ export function ExamSchedulesPage() {
           <div className="form-grid">
             <div className="field-group">
               <label htmlFor="settingPrelimDate">
-                Prelim Official Exam Date <span style={{ color: "#dc2626" }}>*</span>
+                <CalendarDays size={13} /> Prelim Official Exam Date <span className="required-asterisk">*</span>
               </label>
               <input
                 id="settingPrelimDate"
@@ -2404,7 +2743,7 @@ export function ExamSchedulesPage() {
 
             <div className="field-group">
               <label htmlFor="settingMidtermDate">
-                Midterm Official Exam Date <span style={{ color: "#dc2626" }}>*</span>
+                <CalendarDays size={13} /> Midterm Official Exam Date <span className="required-asterisk">*</span>
               </label>
               <input
                 id="settingMidtermDate"
@@ -2417,7 +2756,7 @@ export function ExamSchedulesPage() {
 
             <div className="field-group">
               <label htmlFor="settingSemiFinalDate">
-                Semi-Final Official Exam Date <span style={{ color: "#dc2626" }}>*</span>
+                <CalendarDays size={13} /> Semi-Final Official Exam Date <span className="required-asterisk">*</span>
               </label>
               <input
                 id="settingSemiFinalDate"
@@ -2430,7 +2769,7 @@ export function ExamSchedulesPage() {
 
             <div className="field-group">
               <label htmlFor="settingFinalDate">
-                Final Official Exam Date <span style={{ color: "#dc2626" }}>*</span>
+                <CalendarDays size={13} /> Final Official Exam Date <span className="required-asterisk">*</span>
               </label>
               <input
                 id="settingFinalDate"
@@ -2442,10 +2781,10 @@ export function ExamSchedulesPage() {
             </div>
           </div>
 
-          <div className="table-actions" style={{ marginTop: 16 }}>
+          <div className="modal-actions" style={{ marginTop: 24 }}>
             <button
               type="button"
-              className="secondary-button"
+              className="cancel-button"
               onClick={() => setIsPeriodSettingsModalOpen(false)}
             >
               Cancel
@@ -2456,8 +2795,17 @@ export function ExamSchedulesPage() {
               disabled={loading}
               onClick={handleSavePeriodSettings}
             >
-              <CheckCircle2 size={16} />
-              <span>{loading ? "Saving Dates..." : "Save Official Exam Dates"}</span>
+              {loading ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>Saving Dates…</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 size={16} />
+                  <span>Save Official Exam Dates</span>
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -2468,6 +2816,8 @@ export function ExamSchedulesPage() {
           =================================================== */}
       <Modal
         isOpen={Boolean(inspectedSession)}
+        size="lg"
+        icon={<BookOpen size={20} />}
         title={inspectedSession ? `${inspectedSession.subjectCode} - ${inspectedSession.subjectName}` : "Exam Session"}
         description={
           inspectedSession
@@ -2570,7 +2920,7 @@ export function ExamSchedulesPage() {
               ))}
             </div>
 
-            <div className="table-actions" style={{ marginTop: 16 }}>
+            <div className="modal-actions" style={{ marginTop: 20, justifyContent: canManage ? "space-between" : "flex-end" }}>
               {canManage && (
                 <button
                   type="button"
@@ -2591,7 +2941,7 @@ export function ExamSchedulesPage() {
                 className="action-button"
                 onClick={() => setInspectedSession(null)}
               >
-                Close
+                Close Details
               </button>
             </div>
           </div>
@@ -2603,6 +2953,9 @@ export function ExamSchedulesPage() {
           =================================================== */}
       <Modal
         isOpen={isOpen && canManage}
+        icon={<Calendar size={20} />}
+        size="xl"
+        eyebrow="Examination Timetable"
         title={
           modalStep === 1
             ? "Create Examination - Step 1: Basic Information"
@@ -2615,7 +2968,7 @@ export function ExamSchedulesPage() {
         description={
           modalStep === 1
             ? "Define the common academic subject, examination term, date, and shared time slot."
-            : "Assign a dedicated proctor, examination room, and section(s) for each student cohort."
+            : "Assign dedicated proctors, examination rooms, and sections for all student cohorts in this synchronized slot."
         }
         onClose={() => {
           setIsOpen(false);
@@ -2665,170 +3018,228 @@ export function ExamSchedulesPage() {
           </div>
         )}
 
-        {/* STEP 1: Basic Schedule Information */}
+        {/* STEP 1: Basic Schedule Information (Ergonomic 2-Column Grid) */}
         {modalStep === 1 && (
-          <div className="form-grid">
-            <div className="field-group" style={{ gridColumn: "1 / -1" }}>
-              <label htmlFor="examSubject">
-                Academic Subject <span style={{ color: "#dc2626" }}>*</span>
-              </label>
-              <SearchableSelect
-                id="examSubject"
-                value={form.subjectCode}
-                onChange={(val) => handleSubjectSelect(val)}
-                options={subjectSearchOptions}
-                placeholder="Search & select academic subject..."
-                searchPlaceholder="Search by subject code, title, department..."
-                emptyText="No matching subjects found"
-              />
-            </div>
-
-            <div className="field-group">
-              <label htmlFor="examTerm">Examination Term</label>
-              <select
-                id="examTerm"
-                value={form.term}
-                onChange={(e) => handleFormTermChange(e.target.value as ExamTerm)}
-              >
-                <option value="Prelim">Prelim</option>
-                <option value="Midterm">Midterm</option>
-                <option value="Semi-Final">Semi-Final</option>
-                <option value="Final">Final</option>
-              </select>
-            </div>
-
-            <div className="field-group">
-              <label htmlFor="examDate">
-                Official Exam Date <span style={{ color: "#dc2626" }}>*</span>
-              </label>
-              {canEditOfficialDates ? (
-                <input
-                  id="examDate"
-                  type="date"
-                  value={form.examDate}
-                  onChange={(e) => setForm({ ...form, examDate: e.target.value })}
-                  required
-                  aria-required="true"
-                />
-              ) : (
-                <div>
-                  <input
-                    id="examDate"
-                    type="date"
-                    value={form.examDate}
-                    readOnly
-                    disabled
-                    style={{ background: "var(--srcb-surface-alt, #f1f5f9)", cursor: "not-allowed", opacity: 0.9 }}
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div className="exam-modal-step1-grid">
+              {/* LEFT COLUMN: Subject & Period Selection */}
+              <div className="exam-modal-step1-col">
+                <div className="field-group" style={{ margin: 0 }}>
+                  <label htmlFor="examSubject">
+                    Academic Subject <span style={{ color: "#dc2626" }}>*</span>
+                  </label>
+                  <SearchableSelect
+                    id="examSubject"
+                    value={form.subjectCode}
+                    onChange={(val) => handleSubjectSelect(val)}
+                    options={subjectSearchOptions}
+                    placeholder="Search & select academic subject..."
+                    searchPlaceholder="Search by subject code, title, department..."
+                    emptyText="No matching subjects found"
                   />
-                  <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 4, fontSize: "0.74rem", color: "var(--srcb-navy)", fontWeight: 600 }}>
-                    <Lock size={12} />
-                    <span>Official Date: {officialExamDates[form.term] || "Not configured by Admin"}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="field-group" style={{ gridColumn: "1 / -1" }}>
-              <label htmlFor="examTime">
-                Time Slot <span style={{ color: "#dc2626" }}>*</span>
-              </label>
-              <input
-                id="examTime"
-                value={form.time}
-                onChange={(e) => setForm({ ...form, time: e.target.value })}
-                placeholder="e.g. 08:00 AM - 10:00 AM"
-                required
-                aria-required="true"
-              />
-            </div>
-
-            {/* Proactive Availability Assessment */}
-            {form.subjectCode && form.examDate && form.time && (
-              <div className="sched-readiness-box" style={{ gridColumn: "1 / -1" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: "0.82rem", color: "var(--srcb-navy)" }}>
-                    <Sparkles size={15} color="var(--srcb-royal)" />
-                    <span>Proactive Examination Resource Assessment</span>
-                  </div>
-                  <span style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)" }}>
-                    {form.examDate} • {form.time}
-                  </span>
                 </div>
 
-                <div className="sched-readiness-grid">
-                  <div className={`sched-readiness-pill ${availableProctorsForStep1.length > 0 ? "is-ok" : "is-warning"}`}>
-                    {availableProctorsForStep1.length > 0 ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                {isCurrentSubjectGeneral && (
+                  <div className="exam-sync-security-badge">
+                    <ShieldCheck size={18} style={{ flexShrink: 0 }} />
                     <div>
-                      <div style={{ fontWeight: 700 }}>Proctors</div>
-                      <div style={{ fontSize: "0.72rem", opacity: 0.85 }}>
-                        {availableProctorsForStep1.length > 0 ? `${availableProctorsForStep1.length} Available` : "No proctors free"}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className={`sched-readiness-pill ${availableRoomsForStep1.length > 0 ? "is-ok" : "is-warning"}`}>
-                    {availableRoomsForStep1.length > 0 ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
-                    <div>
-                      <div style={{ fontWeight: 700 }}>Rooms</div>
-                      <div style={{ fontSize: "0.72rem", opacity: 0.85 }}>
-                        {availableRoomsForStep1.length > 0 ? `${availableRoomsForStep1.length} Available` : "No rooms free"}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className={`sched-readiness-pill ${availableSectionsForCurrentExam.length > 0 ? "is-ok" : "is-warning"}`}>
-                    {availableSectionsForCurrentExam.length > 0 ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
-                    <div>
-                      <div style={{ fontWeight: 700 }}>Sections</div>
-                      <div style={{ fontSize: "0.72rem", opacity: 0.85 }}>
-                        {availableSectionsForCurrentExam.length > 0 ? `${availableSectionsForCurrentExam.length} Section(s) Free` : "No sections free"}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {!isExamStep1ResourcesAvailable && (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 8,
-                      padding: "10px 14px",
-                      background: "rgba(239, 68, 68, 0.08)",
-                      border: "1px solid rgba(239, 68, 68, 0.25)",
-                      borderRadius: 8,
-                      color: "#dc2626",
-                      fontSize: "0.8rem",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      {isProgramHead && !isOfficialDateConfiguredForTerm && (
-                        <div>• {form.term} examination date has not yet been configured by the Admin.</div>
-                      )}
-                      {isProgramHead && isOfficialDateConfiguredForTerm && !isFormDateMatchingOfficial && (
-                        <div>• {form.term} examinations are officially scheduled for {officialExamDates[form.term]}.</div>
-                      )}
-                      {availableSectionsForCurrentExam.length === 0 && (
-                        <div>• No available sections taking {form.subjectCode} at this time. All matching sections have overlapping schedules.</div>
-                      )}
-                      {availableProctorsForStep1.length === 0 && (
-                        <div>• No available proctors for this schedule. All qualified faculty are assigned to other examinations at this time.</div>
-                      )}
-                      {availableRoomsForStep1.length === 0 && (
-                        <div>• No available rooms for this schedule. All classrooms/labs are occupied for exams at {form.examDate} {form.time}.</div>
-                      )}
-                      <div style={{ fontSize: "0.74rem", fontWeight: 400, marginTop: 4, color: "var(--srcb-text-muted)" }}>
-                        Please adjust the Examination Date or Time Slot to proceed to resource assignment.
-                      </div>
+                      <strong>Universal General Subject (Synchronized Exam):</strong> All collegiate sections must take this exam simultaneously in the same time slot to avoid exam answer leaks across cohorts.
                     </div>
                   </div>
                 )}
-              </div>
-            )}
 
-            <div className="table-actions" style={{ gridColumn: "1 / -1", marginTop: 20 }}>
+                <div className="modal-grid-2col" style={{ gap: 10 }}>
+                  <div className="field-group" style={{ margin: 0 }}>
+                    <label htmlFor="examTerm">Examination Term</label>
+                    <select
+                      id="examTerm"
+                      value={form.term}
+                      onChange={(e) => handleFormTermChange(e.target.value as ExamTerm)}
+                    >
+                      <option value="Prelim">Prelim</option>
+                      <option value="Midterm">Midterm</option>
+                      <option value="Semi-Final">Semi-Final</option>
+                      <option value="Final">Final</option>
+                    </select>
+                  </div>
+
+                  <div className="field-group" style={{ margin: 0 }}>
+                    <label htmlFor="examDate">
+                      Official Exam Date <span style={{ color: "#dc2626" }}>*</span>
+                    </label>
+                    {canEditOfficialDates ? (
+                      <input
+                        id="examDate"
+                        type="date"
+                        value={form.examDate}
+                        onChange={(e) => setForm({ ...form, examDate: e.target.value })}
+                        required
+                        aria-required="true"
+                      />
+                    ) : (
+                      <div>
+                        <input
+                          id="examDate"
+                          type="date"
+                          value={form.examDate}
+                          readOnly
+                          disabled
+                          style={{ background: "var(--srcb-surface-alt, #f1f5f9)", cursor: "not-allowed", opacity: 0.9 }}
+                        />
+                        <div style={{ marginTop: 2, display: "flex", alignItems: "center", gap: 4, fontSize: "0.72rem", color: "var(--srcb-navy)", fontWeight: 600 }}>
+                          <Lock size={11} />
+                          <span>Official: {officialExamDates[form.term] || "Not configured"}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* RIGHT COLUMN: Time Slot & Proactive Readiness */}
+              <div className="exam-modal-step1-col">
+                <div className="field-group" style={{ margin: 0 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <label htmlFor="examTime" style={{ margin: 0 }}>
+                      Examination Time Slot <span style={{ color: "#dc2626" }}>*</span>
+                    </label>
+                    {isCurrentSubjectGeneral && existingGeneralExamSession && (
+                      <span className="pill pill--blue" style={{ fontSize: "0.7rem", fontWeight: 700 }}>
+                        🔒 Locked to Existing Session
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    id="examTime"
+                    value={form.time}
+                    onChange={(e) => setForm({ ...form, time: e.target.value })}
+                    placeholder="e.g. 08:00 AM - 10:00 AM"
+                    required
+                    aria-required="true"
+                    disabled={Boolean(isCurrentSubjectGeneral && existingGeneralExamSession)}
+                    style={isCurrentSubjectGeneral && existingGeneralExamSession ? { background: "var(--srcb-surface-alt)", cursor: "not-allowed" } : {}}
+                  />
+                  {!existingGeneralExamSession && (
+                    <div className="exam-time-presets">
+                      {EXAM_TIME_SLOTS.map((slot) => {
+                        const [s1, s2] = slot.split("-");
+                        const label = `${s1.trim()} - ${s2.trim()}`;
+                        const isSelected = form.time.includes(s1.trim()) || form.time === label;
+                        return (
+                          <button
+                            key={slot}
+                            type="button"
+                            className={`exam-time-preset-btn ${isSelected ? "is-active" : ""}`}
+                            onClick={() => setForm({ ...form, time: label })}
+                          >
+                            {slot}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Existing General Session Lock Notice */}
+                {isCurrentSubjectGeneral && existingGeneralExamSession && (
+                  <div className="exam-sync-lock-notice">
+                    <Lock size={15} style={{ flexShrink: 0, marginTop: 2 }} />
+                    <div>
+                      <strong>Synchronized Session Active:</strong> An examination for {form.subjectCode} is scheduled on {existingGeneralExamSession.examDate} at {existingGeneralExamSession.time}. All sections must take the exam in this same time slot to prevent sharing of answers.
+                    </div>
+                  </div>
+                )}
+
+                {/* Proactive Availability Assessment */}
+                {form.subjectCode && form.examDate && form.time && (
+                  <div className="sched-readiness-box" style={{ margin: 0, padding: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: "0.78rem", color: "var(--srcb-navy)" }}>
+                        <Sparkles size={14} color="var(--srcb-royal)" />
+                        <span>Resource Availability Check</span>
+                      </div>
+                      <span style={{ fontSize: "0.7rem", color: "var(--srcb-text-muted)" }}>
+                        {form.examDate} • {form.time}
+                      </span>
+                    </div>
+
+                    <div className="sched-readiness-grid" style={{ gap: 8 }}>
+                      <div className={`sched-readiness-pill ${availableProctorsForStep1.length > 0 ? "is-ok" : "is-warning"}`} style={{ padding: "6px 8px" }}>
+                        {availableProctorsForStep1.length > 0 ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: "0.76rem" }}>Proctors</div>
+                          <div style={{ fontSize: "0.68rem", opacity: 0.85 }}>
+                            {availableProctorsForStep1.length > 0 ? `${availableProctorsForStep1.length} Free` : "None free"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className={`sched-readiness-pill ${availableRoomsForStep1.length > 0 ? "is-ok" : "is-warning"}`} style={{ padding: "6px 8px" }}>
+                        {availableRoomsForStep1.length > 0 ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: "0.76rem" }}>Rooms</div>
+                          <div style={{ fontSize: "0.68rem", opacity: 0.85 }}>
+                            {availableRoomsForStep1.length > 0 ? `${availableRoomsForStep1.length} Free` : "None free"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className={`sched-readiness-pill ${availableSectionsForCurrentExam.length > 0 ? "is-ok" : "is-warning"}`} style={{ padding: "6px 8px" }}>
+                        {availableSectionsForCurrentExam.length > 0 ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: "0.76rem" }}>Sections</div>
+                          <div style={{ fontSize: "0.68rem", opacity: 0.85 }}>
+                            {availableSectionsForCurrentExam.length > 0 ? `${availableSectionsForCurrentExam.length} Eligible` : "None free"}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {!isExamStep1ResourcesAvailable && (
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: 6,
+                          padding: "6px 10px",
+                          marginTop: 6,
+                          background: "rgba(239, 68, 68, 0.08)",
+                          border: "1px solid rgba(239, 68, 68, 0.25)",
+                          borderRadius: 6,
+                          color: "#dc2626",
+                          fontSize: "0.74rem",
+                          fontWeight: 600,
+                        }}
+                      >
+                        <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          {isGeneralSubjectTimeMismatched && existingGeneralExamSession && (
+                            <div>• Must match existing general subject slot: {existingGeneralExamSession.examDate} at {existingGeneralExamSession.time}.</div>
+                          )}
+                          {isProgramHead && !isOfficialDateConfiguredForTerm && (
+                            <div>• {form.term} date not yet set by Admin.</div>
+                          )}
+                          {isProgramHead && isOfficialDateConfiguredForTerm && !isFormDateMatchingOfficial && (
+                            <div>• {form.term} exams must be on {officialExamDates[form.term]}.</div>
+                          )}
+                          {availableSectionsForCurrentExam.length === 0 && (
+                            <div>• No free sections taking {form.subjectCode} at this time.</div>
+                          )}
+                          {availableProctorsForStep1.length === 0 && (
+                            <div>• No proctors free for this slot.</div>
+                          )}
+                          {availableRoomsForStep1.length === 0 && (
+                            <div>• No classrooms free for this slot.</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="table-actions" style={{ marginTop: 8 }}>
               <button
                 type="button"
                 className="secondary-button"
@@ -2862,9 +3273,8 @@ export function ExamSchedulesPage() {
           </div>
         )}
 
-        {/* STEP 2: Enhanced Resource Assignment */}
+        {/* STEP 2: Enhanced Resource Assignment (Zero-Scroll Split-Pane Layout) */}
         {modalStep === 2 && (() => {
-          // Calculate Cohort Allocation Statistics
           const allAssignedSectionNames = Array.from(new Set(form.assignments.flatMap((a) => a.sections)));
           const assignedSectionsCount = availableSectionsForCurrentExam.filter((sec) => {
             const secLabel = sec.course && sec.section ? `${sec.course} ${sec.yearLevel || ""}-${sec.section}`.trim() : sec.section;
@@ -2872,12 +3282,15 @@ export function ExamSchedulesPage() {
           }).length;
           const unassignedCount = Math.max(0, availableSectionsForCurrentExam.length - assignedSectionsCount);
 
+          const safeActiveIdx = Math.min(activeAssignmentIdx, Math.max(0, form.assignments.length - 1));
+          const currentActiveAssignment = form.assignments[safeActiveIdx] || form.assignments[0];
+
           // Validation issues across assignments
           const assignmentValidationErrors: string[] = [];
           form.assignments.forEach((a, aIdx) => {
             const rowNum = aIdx + 1;
             if (!a.room) assignmentValidationErrors.push(`Assignment #${rowNum}: Please select an Examination Room.`);
-            if (!a.proctor) assignmentValidationErrors.push(`Assignment #${rowNum}: Please select a Proctor.`);
+            if (!a.proctorId && !a.proctor) assignmentValidationErrors.push(`Assignment #${rowNum}: Please select a Proctor.`);
             if (a.sections.length === 0) assignmentValidationErrors.push(`Assignment #${rowNum}: Please select at least one student section.`);
 
             const studentsCount = a.sections.reduce((sum, secName) => {
@@ -2895,501 +3308,432 @@ export function ExamSchedulesPage() {
           const isAllAssignmentsValid = assignmentValidationErrors.length === 0 && form.assignments.length > 0;
 
           return (
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {/* Context Summary Banner */}
-              <div className="sched-context-banner">
+              <div className="sched-context-banner" style={{ padding: "8px 14px" }}>
                 <div className="sched-context-tags">
                   <div className="sched-context-item">
-                    <BookOpen size={15} color="var(--srcb-royal)" />
+                    <BookOpen size={14} color="var(--srcb-royal)" />
                     <strong>Subject:</strong> <span>{form.subjectCode} — {form.subject}</span>
                   </div>
                   <div className="sched-context-item">
-                    <Calendar size={15} color="var(--srcb-royal)" />
-                    <strong>Official Schedule:</strong> <span>{form.examDate} • {form.time}</span>
+                    <Calendar size={14} color="var(--srcb-royal)" />
+                    <strong>Slot:</strong> <span>{form.examDate} • {form.time}</span>
                   </div>
-                  <div className="sched-context-item">
-                    <Layers size={15} color="var(--srcb-royal)" />
-                    <span className="pill pill--royal" style={{ fontSize: "0.72rem", padding: "2px 8px" }}>
-                      {form.term} Examination
-                    </span>
-                  </div>
-                </div>
-                {!isAddingToExistingSession && !editingExam && (
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={() => setModalStep(1)}
-                    style={{ padding: "4px 10px", fontSize: "0.76rem" }}
-                  >
-                    <Edit2 size={12} />
-                    <span>Edit Date / Time</span>
-                  </button>
-                )}
-              </div>
-
-              {/* Global Section Allocation Tracker */}
-              <div className="exam-allocation-tracker">
-                <div className="exam-allocation-stats">
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, color: "var(--srcb-navy)" }}>
-                    <Users size={16} color="var(--srcb-royal)" />
-                    <span>Section Allocation Progress:</span>
-                  </div>
-                  <span
-                    className={`pill ${unassignedCount === 0 ? "pill--emerald" : "pill--amber"}`}
-                    style={{ fontSize: "0.76rem", fontWeight: 700 }}
-                  >
-                    {unassignedCount === 0
-                      ? `✓ All ${availableSectionsForCurrentExam.length} Sections Allocated`
-                      : `⚠ ${assignedSectionsCount} of ${availableSectionsForCurrentExam.length} Sections Allocated (${unassignedCount} Remaining)`}
+                  <span className="pill pill--royal" style={{ fontSize: "0.72rem", padding: "2px 8px" }}>
+                    {form.term}
                   </span>
+                  {isCurrentSubjectGeneral && (
+                    <span className="pill pill--blue" style={{ fontSize: "0.72rem", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <ShieldCheck size={12} />
+                      <span>Synchronized General Subject ({form.time})</span>
+                    </span>
+                  )}
                 </div>
-                <div style={{ fontSize: "0.78rem", color: "var(--srcb-text-muted)" }}>
-                  Configuring <strong>{form.assignments.length}</strong> Room Assignment{form.assignments.length !== 1 ? "s" : ""}
+
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {!editingExam && (
+                    <button
+                      type="button"
+                      className="exam-auto-distribute-btn"
+                      onClick={handleAutoDistributeSections}
+                      title="Automatically allocate all unassigned sections into conflict-free rooms in this time slot"
+                    >
+                      <Sparkles size={13} />
+                      <span>⚡ Auto-Distribute Sections</span>
+                    </button>
+                  )}
+                  {!isAddingToExistingSession && !editingExam && (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => setModalStep(1)}
+                      style={{ padding: "4px 8px", fontSize: "0.74rem" }}
+                    >
+                      <Edit2 size={12} />
+                      <span>Edit Slot</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
-              {/* List of Assignment Cards */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                {form.assignments.map((assignment, idx) => {
-                  const availableProctors = getAvailableProctorsForAssignment(idx);
-                  const availableRooms = getAvailableRoomsForAssignment(idx);
+              {/* ZERO-SCROLL SPLIT-PANE 2-COLUMN LAYOUT */}
+              <div className="exam-modal-step2-split">
+                {/* LEFT PANE: Rooms & Proctors Configuration */}
+                <div className="exam-modal-pane">
+                  <div className="exam-modal-pane-header">
+                    <div className="exam-modal-pane-title">
+                      <DoorOpen size={15} color="var(--srcb-royal)" />
+                      <span>Assigned Classrooms &amp; Proctors ({form.assignments.length})</span>
+                    </div>
+                    {!editingExam && (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        style={{ padding: "3px 8px", fontSize: "0.72rem", fontWeight: 700 }}
+                        onClick={() => {
+                          handleAddAssignmentRow();
+                          setActiveAssignmentIdx(form.assignments.length);
+                        }}
+                      >
+                        <Plus size={13} />
+                        <span>Add Room</span>
+                      </button>
+                    )}
+                  </div>
 
-                  const proctorOptions: SearchableOption[] = availableProctors.map((f) => ({
-                    value: f.id,
-                    label: f.name,
-                    sublabel: `${f.department || "Academic Faculty"} • ${f.status}`,
-                    badge: f.status,
-                    badgeTone: f.status === "Full-Time" ? "emerald" : "amber",
-                    searchKeywords: [f.name, f.department || "", f.status || "", f.id],
-                  }));
+                  <div className="exam-modal-pane-scroll">
+                    {form.assignments.map((assignment, idx) => {
+                      const isActiveRoom = safeActiveIdx === idx;
+                      const availableProctors = getAvailableProctorsForAssignment(idx);
+                      const availableRooms = getAvailableRoomsForAssignment(idx);
 
-                  const roomOptions: SearchableOption[] = availableRooms.map((r) => ({
-                    value: r.number,
-                    label: `${r.number} - ${r.building}`,
-                    sublabel: `${r.type} • Capacity: ${r.capacity} seats`,
-                    badge: `Cap: ${r.capacity}`,
-                    badgeTone: "slate",
-                    searchKeywords: [r.number, r.building, r.type],
-                  }));
+                      const proctorOptions: SearchableOption[] = availableProctors.map((f) => ({
+                        value: f.id,
+                        label: f.name,
+                        sublabel: `${f.department || "Academic Faculty"} • ${f.status}`,
+                        badge: f.status,
+                        badgeTone: f.status === "Full-Time" ? "emerald" : "amber",
+                        searchKeywords: [f.name, f.department || "", f.status || "", f.id],
+                      }));
 
-                  // Capacity calculations for this specific assignment
-                  const totalStudentsInAssignment = assignment.sections.reduce((sum, secName) => {
-                    const sObj = sectionsList.find(
-                      (s) =>
-                        s.section === secName ||
-                        (s.course && `${s.course} ${s.yearLevel || ""}-${s.section}`.trim() === secName) ||
-                        secName.includes(s.section)
-                    );
-                    return sum + Number(sObj?.students || 35);
-                  }, 0);
+                      const roomOptions: SearchableOption[] = availableRooms.map((r) => ({
+                        value: r.number,
+                        label: `${r.number} - ${r.building}`,
+                        sublabel: `${r.type} • Capacity: ${r.capacity} seats`,
+                        badge: `Cap: ${r.capacity}`,
+                        badgeTone: "slate",
+                        searchKeywords: [r.number, r.building, r.type],
+                      }));
 
-                  const assignedRoomObj = roomsList.find((r) => r.number === assignment.room);
-                  const roomCapacity = Number(assignedRoomObj?.capacity || 0);
-                  const isTooSmall = Boolean(assignment.room && assignedRoomObj && totalStudentsInAssignment > 0 && roomCapacity < totalStudentsInAssignment);
-                  const remainingSeats = roomCapacity - totalStudentsInAssignment;
-                  const capacityPercent = roomCapacity > 0 ? Math.min(100, Math.round((totalStudentsInAssignment / roomCapacity) * 100)) : 0;
+                      const totalStudentsInAssignment = assignment.sections.reduce((sum, secName) => {
+                        const sObj = sectionsList.find(
+                          (s) =>
+                            s.section === secName ||
+                            (s.course && `${s.course} ${s.yearLevel || ""}-${s.section}`.trim() === secName) ||
+                            secName.includes(s.section)
+                        );
+                        return sum + Number(sObj?.students || 35);
+                      }, 0);
 
-                  return (
-                    <div key={idx} className="exam-assignment-card">
-                      {/* Assignment Card Header */}
-                      <div className="exam-assignment-card-header">
-                        <div className="exam-assignment-header-left">
-                          <span className="pill pill--navy" style={{ fontWeight: 800 }}>
-                            Assignment #{idx + 1}
-                          </span>
-                          {assignment.room && (
-                            <span className="pill pill--blue" style={{ fontSize: "0.74rem", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                              <DoorOpen size={12} />
-                              <span>Room {assignment.room}</span>
-                            </span>
-                          )}
-                          {assignment.proctor && (
-                            <span className="pill pill--slate" style={{ fontSize: "0.74rem", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                              <UserCheck size={12} />
-                              <span>Proctor: {assignment.proctor.split(" ")[0]}</span>
-                            </span>
-                          )}
-                        </div>
+                      const assignedRoomObj = roomsList.find((r) => r.number === assignment.room);
+                      const roomCapacity = Number(assignedRoomObj?.capacity || 0);
+                      const isTooSmall = Boolean(assignment.room && assignedRoomObj && totalStudentsInAssignment > 0 && roomCapacity < totalStudentsInAssignment);
+                      const remainingSeats = roomCapacity - totalStudentsInAssignment;
+                      const capacityPercent = roomCapacity > 0 ? Math.min(100, Math.round((totalStudentsInAssignment / roomCapacity) * 100)) : 0;
 
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          {/* Live Capacity Badge in Header */}
-                          {assignedRoomObj ? (
-                            <span
-                              className={`pill ${isTooSmall ? "pill--danger" : "pill--emerald"}`}
-                              style={{ fontSize: "0.74rem", fontWeight: 700 }}
-                            >
-                              {isTooSmall
-                                ? `⚠ Over Capacity (${totalStudentsInAssignment} / ${roomCapacity} seats)`
-                                : `✓ ${totalStudentsInAssignment} / ${roomCapacity} seats (${remainingSeats} seats available)`}
-                            </span>
-                          ) : (
-                            <span className="pill pill--slate" style={{ fontSize: "0.74rem" }}>
-                              {totalStudentsInAssignment} students selected
-                            </span>
-                          )}
-
-                          {form.assignments.length > 1 && !editingExam && (
-                            <button
-                              type="button"
-                              className="secondary-button"
-                              style={{ padding: "3px 8px", fontSize: "0.74rem", color: "#dc2626" }}
-                              onClick={() => handleRemoveAssignmentRow(idx)}
-                              title="Remove this room assignment"
-                            >
-                              <Trash2 size={13} />
-                              <span>Remove</span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Assignment Card Body */}
-                      <div className="exam-assignment-body">
-                        {/* Row 1: Venue & Proctor Selects */}
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
-                          {/* Proctor Select */}
-                          <div className="field-group" style={{ margin: 0 }}>
-                            <label htmlFor={`assign-proctor-${idx}`}>
-                              Teacher / Exam Proctor <span style={{ color: "#dc2626" }}>*</span>
-                            </label>
-                            {availableProctors.length === 0 ? (
-                              <div
-                                style={{
-                                  padding: "8px 12px",
-                                  background: "rgba(239, 68, 68, 0.08)",
-                                  border: "1px solid rgba(239, 68, 68, 0.25)",
-                                  borderRadius: 6,
-                                  color: "#dc2626",
-                                  fontSize: "0.8rem",
-                                  fontWeight: 600,
-                                }}
+                      return (
+                        <div
+                          key={idx}
+                          className="exam-assignment-compact-card"
+                          style={{
+                            borderColor: isActiveRoom ? "var(--srcb-royal, #2563eb)" : undefined,
+                            boxShadow: isActiveRoom ? "0 0 0 1px var(--srcb-royal, #2563eb)" : undefined,
+                          }}
+                          onClick={() => setActiveAssignmentIdx(idx)}
+                        >
+                          <div className="exam-assignment-compact-header">
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <span
+                                className={`pill ${isActiveRoom ? "pill--royal" : "pill--navy"}`}
+                                style={{ fontWeight: 800, fontSize: "0.72rem" }}
                               >
-                                No available proctors for this timeslot.
-                              </div>
-                            ) : (
-                              <SearchableSelect
-                                id={`assign-proctor-${idx}`}
-                                value={assignment.proctorId}
-                                onChange={(val) => handleAssignmentProctorChange(idx, val)}
-                                options={proctorOptions}
-                                placeholder="Select available proctor..."
-                                searchPlaceholder="Search faculty by name, status..."
-                                emptyText="No matching proctors found"
-                              />
-                            )}
+                                {isActiveRoom ? "▶ " : ""}Room #{idx + 1}
+                              </span>
+                              {assignment.room ? (
+                                <span className="pill pill--blue" style={{ fontSize: "0.72rem" }}>
+                                  {assignment.room}
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)" }}>
+                                  No room selected
+                                </span>
+                              )}
+                            </div>
+
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              {assignedRoomObj && (
+                                <span
+                                  className={`pill ${isTooSmall ? "pill--danger" : "pill--emerald"}`}
+                                  style={{ fontSize: "0.7rem", fontWeight: 700 }}
+                                >
+                                  {isTooSmall
+                                    ? `⚠ ${totalStudentsInAssignment}/${roomCapacity} seats`
+                                    : `${totalStudentsInAssignment}/${roomCapacity} seats (${remainingSeats} free)`}
+                                </span>
+                              )}
+                              {form.assignments.length > 1 && !editingExam && (
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  style={{ padding: "2px 6px", fontSize: "0.7rem", color: "#dc2626" }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRemoveAssignmentRow(idx);
+                                    setActiveAssignmentIdx((prev) => Math.max(0, Math.min(prev, form.assignments.length - 2)));
+                                  }}
+                                  title="Remove this room assignment"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              )}
+                            </div>
                           </div>
 
-                          {/* Room Select */}
-                          <div className="field-group" style={{ margin: 0 }}>
-                            <label htmlFor={`assign-room-${idx}`}>
-                              Assigned Room &amp; Venue <span style={{ color: "#dc2626" }}>*</span>
-                            </label>
-                            {availableRooms.length === 0 ? (
-                              <div
-                                style={{
-                                  padding: "8px 12px",
-                                  background: "rgba(239, 68, 68, 0.08)",
-                                  border: "1px solid rgba(239, 68, 68, 0.25)",
-                                  borderRadius: 6,
-                                  color: "#dc2626",
-                                  fontSize: "0.8rem",
-                                  fontWeight: 600,
-                                }}
-                              >
-                                No available rooms for this timeslot.
-                              </div>
-                            ) : (
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                            <div className="field-group" style={{ margin: 0 }}>
+                              <label style={{ fontSize: "0.72rem", margin: 0, fontWeight: 600 }}>
+                                Room &amp; Venue <span style={{ color: "#dc2626" }}>*</span>
+                              </label>
                               <SearchableSelect
                                 id={`assign-room-${idx}`}
                                 value={assignment.room}
                                 onChange={(val) => handleAssignmentRoomChange(idx, val)}
                                 options={roomOptions}
-                                placeholder="Select available room..."
-                                searchPlaceholder="Search room by number, building..."
-                                emptyText="No matching rooms found"
+                                placeholder="Select room..."
+                                searchPlaceholder="Search room..."
+                                emptyText="No rooms found"
                               />
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Row 2: Live Room Capacity Health Meter */}
-                        {assignedRoomObj && (
-                          <div className="exam-capacity-bar-wrap">
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.76rem" }}>
-                              <span style={{ fontWeight: 600, color: "var(--srcb-text)" }}>
-                                Room {assignment.room} Capacity Meter ({assignedRoomObj.type || "Classroom"}):
-                              </span>
-                              <span style={{ fontWeight: 700, color: isTooSmall ? "#dc2626" : "var(--srcb-navy)" }}>
-                                {totalStudentsInAssignment} / {roomCapacity} seats ({capacityPercent}%)
-                              </span>
                             </div>
 
-                            <div className="exam-capacity-bar-track">
+                            <div className="field-group" style={{ margin: 0 }}>
+                              <label style={{ fontSize: "0.72rem", margin: 0, fontWeight: 600 }}>
+                                Teacher / Proctor <span style={{ color: "#dc2626" }}>*</span>
+                              </label>
+                              <SearchableSelect
+                                id={`assign-proctor-${idx}`}
+                                value={assignment.proctorId}
+                                onChange={(val) => handleAssignmentProctorChange(idx, val)}
+                                options={proctorOptions}
+                                placeholder="Select proctor..."
+                                searchPlaceholder="Search proctor..."
+                                emptyText="No proctors found"
+                              />
+                            </div>
+                          </div>
+
+                          {assignedRoomObj && (
+                            <div className="exam-capacity-bar-track" style={{ height: 4, marginTop: 2 }}>
                               <div
                                 className="exam-capacity-bar-fill"
                                 style={{
                                   width: `${Math.min(100, capacityPercent)}%`,
-                                  background: isTooSmall
-                                    ? "#ef4444"
-                                    : capacityPercent > 85
-                                      ? "#f59e0b"
-                                      : "#10b981",
+                                  background: isTooSmall ? "#ef4444" : capacityPercent > 85 ? "#f59e0b" : "#10b981",
                                 }}
                               />
                             </div>
+                          )}
 
-                            {isTooSmall && (
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: 6,
-                                  color: "#dc2626",
-                                  fontSize: "0.75rem",
-                                  fontWeight: 600,
-                                  marginTop: 2,
-                                }}
-                              >
-                                <AlertTriangle size={13} style={{ flexShrink: 0 }} />
-                                <span>
-                                  ⚠ Headcount exceeds capacity by {totalStudentsInAssignment - roomCapacity} students. Choose a larger room or add another assignment below.
+                          {/* Assigned Sections in this Room */}
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
+                            <span style={{ fontSize: "0.7rem", color: "var(--srcb-text-muted)" }}>
+                              Sections ({assignment.sections.length}):
+                            </span>
+                            {assignment.sections.length === 0 ? (
+                              <span style={{ fontSize: "0.7rem", color: "#f59e0b", fontStyle: "italic" }}>
+                                Select cohorts from right pane
+                              </span>
+                            ) : (
+                              assignment.sections.map((secName) => (
+                                <span
+                                  key={secName}
+                                  className="pill pill--navy"
+                                  style={{ fontSize: "0.68rem", padding: "1px 6px", display: "inline-flex", alignItems: "center", gap: 3 }}
+                                >
+                                  <span>{secName}</span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleToggleSectionInAssignment(idx, secName);
+                                    }}
+                                    style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", color: "inherit", opacity: 0.8 }}
+                                    title={`Remove ${secName} from Room #${idx + 1}`}
+                                  >
+                                    ×
+                                  </button>
                                 </span>
-                              </div>
+                              ))
                             )}
                           </div>
-                        )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
 
-                        {/* Row 3: Section Cohorts Selector */}
-                        <div className="field-group" style={{ margin: 0 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                            <label style={{ margin: 0, fontWeight: 700, fontSize: "0.82rem" }}>
-                              Student Sections Assigned to Room {assignment.room || `#${idx + 1}`} <span style={{ color: "#dc2626" }}>*</span>
-                            </label>
-                            <span style={{ fontSize: "0.74rem", color: "var(--srcb-text-muted)" }}>
-                              {assignment.sections.length} section{assignment.sections.length !== 1 ? "s" : ""} selected ({totalStudentsInAssignment} students)
-                            </span>
-                          </div>
+                {/* RIGHT PANE: Section Cohort Matrix */}
+                <div className="exam-modal-pane">
+                  <div className="exam-modal-pane-header">
+                    <div className="exam-modal-pane-title">
+                      <Users size={15} color="var(--srcb-royal)" />
+                      <span>Section Allocation ({assignedSectionsCount}/{availableSectionsForCurrentExam.length} Allocated)</span>
+                    </div>
+                    <span
+                      className={`pill ${unassignedCount === 0 ? "pill--emerald" : "pill--amber"}`}
+                      style={{ fontSize: "0.7rem", fontWeight: 700 }}
+                    >
+                      {unassignedCount === 0 ? "✓ All Allocated" : `${unassignedCount} Remaining`}
+                    </span>
+                  </div>
 
-                          {availableSectionsForCurrentExam.length === 0 ? (
-                            <div
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 8,
-                                padding: "8px 12px",
-                                background: "rgba(239, 68, 68, 0.08)",
-                                borderRadius: 6,
-                                color: "#dc2626",
-                                fontSize: "0.8rem",
-                                fontWeight: 600,
-                              }}
-                            >
-                              <AlertTriangle size={14} />
-                              <span>No available sections taking {form.subjectCode} at this time.</span>
-                            </div>
-                          ) : (
-                            <div
-                              style={{
-                                display: "flex",
-                                flexDirection: "column",
-                                gap: 10,
-                                background: "var(--srcb-surface-alt, #f8fafc)",
-                                padding: 12,
-                                borderRadius: 8,
-                                border: "1px solid var(--srcb-border)",
-                                maxHeight: 220,
-                                overflowY: "auto",
-                              }}
-                            >
-                              {sectionsGroupedByProgram.map(({ program, sections }) => (
-                                <div key={program} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                                  <div
-                                    style={{
-                                      display: "flex",
-                                      justifyContent: "space-between",
-                                      alignItems: "center",
-                                      background: "var(--srcb-surface)",
-                                      padding: "4px 8px",
-                                      borderRadius: 6,
-                                      border: "1px solid var(--srcb-border-subtle, rgba(0,0,0,0.05))",
-                                    }}
-                                  >
-                                    <span style={{ fontSize: "0.76rem", fontWeight: 700, color: "var(--srcb-navy)" }}>
-                                      {program} Program Cohort
-                                    </span>
-                                    <button
-                                      type="button"
-                                      className="secondary-button"
-                                      style={{ padding: "2px 8px", fontSize: "0.68rem", fontWeight: 600 }}
-                                      onClick={() => handleAssignAllProgramSections(idx, program, sections)}
-                                    >
-                                      + Assign All {program} Sections
-                                    </button>
-                                  </div>
+                  <div style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)", padding: "2px 4px" }}>
+                    Clicking a section adds/removes it from <strong>Room #{safeActiveIdx + 1} ({currentActiveAssignment?.room || "Unassigned"})</strong>.
+                  </div>
 
-                                  <div className="exam-section-chip-grid">
-                                    {sections.map((sec) => {
-                                      const secLabel =
-                                        sec.course && sec.section
-                                          ? `${sec.course} ${sec.yearLevel || ""}-${sec.section}`.trim()
-                                          : sec.section;
-                                      const isChecked =
-                                        assignment.sections.includes(sec.section) ||
-                                        assignment.sections.includes(secLabel);
+                  <div className="exam-modal-pane-scroll">
+                    {sectionsGroupedByProgram.map(({ program, sections }) => (
+                      <div key={program} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            background: "var(--srcb-surface)",
+                            padding: "3px 8px",
+                            borderRadius: 6,
+                            border: "1px solid var(--srcb-border)",
+                          }}
+                        >
+                          <span style={{ fontSize: "0.74rem", fontWeight: 700, color: "var(--srcb-navy)" }}>
+                            {program} Cohort
+                          </span>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            style={{ padding: "2px 6px", fontSize: "0.68rem", fontWeight: 600 }}
+                            onClick={() => handleAssignAllProgramSections(safeActiveIdx, program, sections)}
+                          >
+                            + Assign All {program} to Room #{safeActiveIdx + 1}
+                          </button>
+                        </div>
 
-                                      const assignedInOtherIdx = form.assignments.findIndex(
-                                        (a, aIdx) =>
-                                          aIdx !== idx &&
-                                          (a.sections.includes(sec.section) || a.sections.includes(secLabel))
-                                      );
-                                      const isAssignedInOther = assignedInOtherIdx !== -1;
-                                      const otherAssignment = isAssignedInOther ? form.assignments[assignedInOtherIdx] : null;
+                        <div className="exam-section-chip-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 6 }}>
+                          {sections.map((sec) => {
+                            const secLabel =
+                              sec.course && sec.section
+                                ? `${sec.course} ${sec.yearLevel || ""}-${sec.section}`.trim()
+                                : sec.section;
 
-                                      return (
-                                        <div
-                                          key={sec.id || sec.section}
-                                          className={`exam-section-chip ${isChecked ? "is-selected" : ""} ${isAssignedInOther ? "is-disabled" : ""}`}
-                                          onClick={() => {
-                                            if (!isAssignedInOther) {
-                                              handleToggleSectionInAssignment(idx, secLabel, sec.course || sec.program);
-                                            }
-                                          }}
-                                          title={
-                                            isAssignedInOther
-                                              ? `Assigned to Room ${otherAssignment?.room || `#${assignedInOtherIdx + 1}`}`
-                                              : `Click to ${isChecked ? "remove" : "assign"} ${secLabel}`
-                                          }
-                                        >
-                                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                            <input
-                                              type="checkbox"
-                                              checked={isChecked}
-                                              disabled={isAssignedInOther}
-                                              readOnly
-                                              style={{ cursor: isAssignedInOther ? "not-allowed" : "pointer" }}
-                                            />
-                                            <div>
-                                              <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--srcb-navy)" }}>
-                                                {secLabel}
-                                              </div>
-                                              <div style={{ fontSize: "0.7rem", color: "var(--srcb-text-muted)" }}>
-                                                {isAssignedInOther
-                                                  ? `Assigned in Room ${otherAssignment?.room || `#${assignedInOtherIdx + 1}`}`
-                                                  : `${sec.students || 35} students enrolled`}
-                                              </div>
-                                            </div>
-                                          </div>
-                                          <span className="pill pill--blue" style={{ fontSize: "0.68rem", padding: "1px 6px" }}>
-                                            {sec.students || 35} Seats
-                                          </span>
-                                        </div>
-                                      );
-                                    })}
+                            const isCheckedInActive =
+                              currentActiveAssignment.sections.includes(sec.section) ||
+                              currentActiveAssignment.sections.includes(secLabel);
+
+                            const assignedInOtherIdx = form.assignments.findIndex(
+                              (a, aIdx) =>
+                                aIdx !== safeActiveIdx &&
+                                (a.sections.includes(sec.section) || a.sections.includes(secLabel))
+                            );
+                            const isAssignedInOther = assignedInOtherIdx !== -1;
+                            const otherAssignment = isAssignedInOther ? form.assignments[assignedInOtherIdx] : null;
+
+                            return (
+                              <div
+                                key={sec.id || sec.section}
+                                className={`exam-section-chip ${isCheckedInActive ? "is-selected" : ""}`}
+                                onClick={() => {
+                                  if (isAssignedInOther) {
+                                    // Move from other assignment to active assignment
+                                    handleToggleSectionInAssignment(assignedInOtherIdx, secLabel);
+                                    handleToggleSectionInAssignment(safeActiveIdx, secLabel, sec.course || sec.program);
+                                  } else {
+                                    handleToggleSectionInAssignment(safeActiveIdx, secLabel, sec.course || sec.program);
+                                  }
+                                }}
+                                style={{ padding: "6px 8px", fontSize: "0.76rem" }}
+                                title={
+                                  isAssignedInOther
+                                    ? `Currently in Room ${otherAssignment?.room || `#${assignedInOtherIdx + 1}`}. Click to move to Room #${safeActiveIdx + 1}.`
+                                    : `Click to ${isCheckedInActive ? "remove" : "assign"} ${secLabel} to Room #${safeActiveIdx + 1}`
+                                }
+                              >
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={isCheckedInActive}
+                                    readOnly
+                                    style={{ cursor: "pointer", width: 14, height: 14 }}
+                                  />
+                                  <div style={{ minWidth: 0, overflow: "hidden" }}>
+                                    <div style={{ fontSize: "0.76rem", fontWeight: 700, whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>
+                                      {secLabel}
+                                    </div>
+                                    <div style={{ fontSize: "0.66rem", color: "var(--srcb-text-muted)" }}>
+                                      {isAssignedInOther
+                                        ? `In Room ${otherAssignment?.room || `#${assignedInOtherIdx + 1}`}`
+                                        : `${sec.students || 35} students`}
+                                    </div>
                                   </div>
                                 </div>
-                              ))}
-                            </div>
-                          )}
+                                <span className="pill pill--blue" style={{ fontSize: "0.64rem", padding: "0px 5px" }}>
+                                  {sec.students || 35}
+                                </span>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    ))}
+                  </div>
+                </div>
               </div>
 
-              {/* Add Another Room Assignment Button */}
-              {!editingExam && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    style={{
-                      alignSelf: "flex-start",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      fontWeight: 700,
-                      fontSize: "0.84rem",
-                      padding: "10px 16px",
-                      borderRadius: 8,
-                      borderColor: "var(--srcb-navy)",
-                      color: "var(--srcb-navy)",
-                      background: "var(--srcb-surface)",
-                    }}
-                    onClick={handleAddAssignmentRow}
-                  >
-                    <Plus size={16} />
-                    <span>+ Add Another Room &amp; Proctor Assignment</span>
-                  </button>
-                  <span style={{ fontSize: "0.75rem", color: "var(--srcb-text-muted)" }}>
-                    💡 Tip: If cohorts exceed a single classroom&apos;s capacity, split sections across multiple rooms with dedicated proctors.
-                  </span>
-                </div>
-              )}
-
-              {/* Validation Checklist / Conflict-Free Banner */}
-              <div style={{ marginTop: 6 }}>
+              {/* Compact Validation / Conflict-Free Status Bar */}
+              <div>
                 {isAllAssignmentsValid ? (
                   <div
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 10,
-                      padding: "12px 16px",
+                      gap: 8,
+                      padding: "8px 12px",
                       background: "rgba(16, 185, 129, 0.08)",
-                      borderRadius: 8,
+                      borderRadius: 6,
                       border: "1px solid rgba(16, 185, 129, 0.28)",
                       color: "#059669",
-                      fontSize: "0.82rem",
+                      fontSize: "0.78rem",
                       fontWeight: 600,
                     }}
                   >
-                    <ShieldCheck size={18} style={{ flexShrink: 0 }} />
+                    <ShieldCheck size={16} style={{ flexShrink: 0 }} />
                     <span>
-                      All {form.assignments.length} examination room assignment(s) are conflict-free, verified within classroom capacity, and ready to schedule.
+                      All {form.assignments.length} examination room assignment(s) are conflict-free, verified within capacity, and synchronized to {form.time}.
                     </span>
                   </div>
                 ) : (
                   <div
                     style={{
-                      padding: 12,
+                      padding: "6px 10px",
                       background: "rgba(239, 68, 68, 0.08)",
-                      borderRadius: 8,
+                      borderRadius: 6,
                       border: "1px solid rgba(239, 68, 68, 0.25)",
-                      borderLeft: "4px solid #dc2626",
+                      borderLeft: "3px solid #dc2626",
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, color: "#dc2626", fontSize: "0.84rem" }}>
-                      <AlertTriangle size={15} />
-                      <span>Please resolve the following items to save the exam schedule:</span>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 6 }}>
-                      {assignmentValidationErrors.map((err, i) => (
-                        <div key={i} style={{ fontSize: "0.78rem", color: "var(--srcb-text)" }}>
-                          • {err}
-                        </div>
-                      ))}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, color: "#dc2626", fontSize: "0.78rem" }}>
+                      <AlertTriangle size={14} />
+                      <span>{assignmentValidationErrors[0] || "Please resolve assignment issues before saving"}</span>
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Modal Actions */}
-              <div className="table-actions" style={{ marginTop: 12, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+                {/* Sticky Modal Actions */}
+              <div className="modal-actions" style={{ marginTop: 14, justifyContent: "space-between" }}>
                 {!isAddingToExistingSession && !editingExam && (
                   <button
                     type="button"
                     className="secondary-button"
                     onClick={() => setModalStep(1)}
                   >
-                    <ArrowLeft size={16} />
+                    <ArrowLeft size={15} />
                     <span>Back to Exam Details</span>
                   </button>
                 )}
                 <div style={{ display: "flex", gap: 10, marginLeft: "auto" }}>
                   <button
                     type="button"
-                    className="secondary-button"
+                    className="cancel-button"
                     onClick={() => {
                       setIsOpen(false);
                       setEditingExam(null);
@@ -3408,9 +3752,12 @@ export function ExamSchedulesPage() {
                       cursor: isAllAssignmentsValid ? "pointer" : "not-allowed",
                     }}
                     onClick={handleSave}
-                    title={!isAllAssignmentsValid ? "Complete all required room, proctor, and section assignments first" : "Save and publish examination schedule"}
                   >
-                    <CheckCircle2 size={16} />
+                    {loading ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : (
+                      <CheckCircle2 size={15} />
+                    )}
                     <span>
                       {loading
                         ? "Saving…"
@@ -3419,7 +3766,7 @@ export function ExamSchedulesPage() {
                           : isAddingToExistingSession
                             ? "Add Assignment to Exam"
                             : form.assignments.length > 1
-                              ? `Save All ${form.assignments.length} Room Assignments`
+                              ? `Save All ${form.assignments.length} Rooms`
                               : "Save Examination Schedule"}
                     </span>
                   </button>
@@ -3435,6 +3782,9 @@ export function ExamSchedulesPage() {
           =================================================== */}
       <Modal
         isOpen={isUniversalCopyModalOpen && canManage}
+        size="lg"
+        eyebrow="Template Replication"
+        icon={<Copy size={20} />}
         title="Use Previous Examination Schedule (Template Copy)"
         description="Copy a completed examination schedule period (e.g. Prelim or Midterm) into a new period as a reusable template. Resources will be placed under the official target date."
         onClose={() => setIsUniversalCopyModalOpen(false)}
@@ -3442,8 +3792,10 @@ export function ExamSchedulesPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div className="form-grid">
             <div className="field-group">
-              <label htmlFor="uniCopySource">
-                Source Examination Period (Template) <span style={{ color: "#dc2626" }}>*</span>
+              <label htmlFor="uniCopySource" className="modal-field-label">
+                <CalendarDays size={14} />
+                <span>Source Examination Period (Template)</span>
+                <span className="required-asterisk">*</span>
               </label>
               <select
                 id="uniCopySource"
@@ -3463,8 +3815,10 @@ export function ExamSchedulesPage() {
             </div>
 
             <div className="field-group">
-              <label htmlFor="uniCopyTarget">
-                Target Examination Period <span style={{ color: "#dc2626" }}>*</span>
+              <label htmlFor="uniCopyTarget" className="modal-field-label">
+                <CalendarDays size={14} />
+                <span>Target Examination Period</span>
+                <span className="required-asterisk">*</span>
               </label>
               <select
                 id="uniCopyTarget"
@@ -3478,8 +3832,10 @@ export function ExamSchedulesPage() {
             </div>
 
             <div className="field-group" style={{ gridColumn: "1 / -1" }}>
-              <label htmlFor="uniCopyDate">
-                Target Official Examination Date <span style={{ color: "#dc2626" }}>*</span>
+              <label htmlFor="uniCopyDate" className="modal-field-label">
+                <Calendar size={14} />
+                <span>Target Official Examination Date</span>
+                <span className="required-asterisk">*</span>
               </label>
               {canEditOfficialDates ? (
                 <input
@@ -3558,10 +3914,11 @@ export function ExamSchedulesPage() {
             )}
           </div>
 
-          <div className="table-actions" style={{ marginTop: 16 }}>
+          <div className="modal-actions" style={{ marginTop: 16 }}>
             <button
               type="button"
-              className="secondary-button"
+              className="cancel-button"
+              disabled={loading}
               onClick={() => setIsUniversalCopyModalOpen(false)}
             >
               Cancel
@@ -3572,7 +3929,7 @@ export function ExamSchedulesPage() {
               disabled={loading || sourceTermExams.length === 0}
               onClick={handleApplyUniversalCopy}
             >
-              <CheckCircle2 size={16} />
+              {loading ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
               <span>
                 {loading ? "Applying Template..." : `Confirm & Apply ${sourceTermExams.length} Templates to ${universalCopyTargetTerm}`}
               </span>
@@ -3586,6 +3943,9 @@ export function ExamSchedulesPage() {
           =================================================== */}
       <Modal
         isOpen={isCopyModalOpen && canManage && Boolean(copyModalSession)}
+        size="lg"
+        eyebrow="Session Duplication"
+        icon={<Copy size={20} />}
         title={`Copy ${copyModalSession?.subjectCode} Schedule (Template Revalidation)`}
         description="Reuse the examination assignments from this schedule for another term. Proctors, rooms, and sections will be automatically positioned under the new official examination date."
         onClose={() => {
@@ -3617,7 +3977,11 @@ export function ExamSchedulesPage() {
 
             <div className="form-grid">
               <div className="field-group">
-                <label htmlFor="copyTargetTerm">Copy to Examination Term <span style={{ color: "#dc2626" }}>*</span></label>
+                <label htmlFor="copyTargetTerm" className="modal-field-label">
+                  <CalendarDays size={14} />
+                  <span>Copy to Examination Term</span>
+                  <span className="required-asterisk">*</span>
+                </label>
                 <select
                   id="copyTargetTerm"
                   value={copyForm.targetTerm}
@@ -3631,7 +3995,11 @@ export function ExamSchedulesPage() {
               </div>
 
               <div className="field-group">
-                <label htmlFor="copyTargetDate">Target Official Exam Date <span style={{ color: "#dc2626" }}>*</span></label>
+                <label htmlFor="copyTargetDate" className="modal-field-label">
+                  <Calendar size={14} />
+                  <span>Target Official Exam Date</span>
+                  <span className="required-asterisk">*</span>
+                </label>
                 {canEditOfficialDates ? (
                   <input
                     id="copyTargetDate"
@@ -3659,7 +4027,11 @@ export function ExamSchedulesPage() {
               </div>
 
               <div className="field-group" style={{ gridColumn: "1 / -1" }}>
-                <label htmlFor="copyTargetTime">Target Time Slot <span style={{ color: "#dc2626" }}>*</span></label>
+                <label htmlFor="copyTargetTime" className="modal-field-label">
+                  <Clock size={14} />
+                  <span>Target Time Slot</span>
+                  <span className="required-asterisk">*</span>
+                </label>
                 <input
                   id="copyTargetTime"
                   value={copyForm.targetTime}
@@ -3760,7 +4132,10 @@ export function ExamSchedulesPage() {
 
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                       <div className="field-group">
-                        <label style={{ fontSize: "0.74rem" }}>Proctor Assignment</label>
+                        <label className="modal-field-label" style={{ fontSize: "0.74rem" }}>
+                          <UserCheck size={13} />
+                          <span>Proctor Assignment</span>
+                        </label>
                         <select
                           value={a.proctorId}
                           onChange={(e) => handleCopyAssignmentProctorChange(idx, e.target.value)}
@@ -3778,7 +4153,10 @@ export function ExamSchedulesPage() {
                       </div>
 
                       <div className="field-group">
-                        <label style={{ fontSize: "0.74rem" }}>Room Assignment</label>
+                        <label className="modal-field-label" style={{ fontSize: "0.74rem" }}>
+                          <DoorOpen size={13} />
+                          <span>Room Assignment</span>
+                        </label>
                         <select
                           value={a.room}
                           onChange={(e) => handleCopyAssignmentRoomChange(idx, e.target.value)}
@@ -3800,10 +4178,11 @@ export function ExamSchedulesPage() {
               })}
             </div>
 
-            <div className="table-actions" style={{ marginTop: 16 }}>
+            <div className="modal-actions" style={{ marginTop: 24 }}>
               <button
                 type="button"
-                className="secondary-button"
+                className="cancel-button"
+                disabled={loading}
                 onClick={() => {
                   setIsCopyModalOpen(false);
                   setCopyModalSession(null);
@@ -3815,9 +4194,10 @@ export function ExamSchedulesPage() {
                 type="button"
                 className="action-button"
                 onClick={handleSaveCopiedExam}
-                disabled={loading}
+                disabled={loading || !copyForm.targetExamDate.trim() || !copyForm.targetTime.trim()}
               >
-                {loading ? "Copying..." : "Confirm & Create Copied Examination"}
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <Copy size={16} />}
+                <span>{loading ? "Copying..." : "Confirm & Create Copied Examination"}</span>
               </button>
             </div>
           </div>

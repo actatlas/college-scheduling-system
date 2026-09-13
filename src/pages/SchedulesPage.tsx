@@ -36,10 +36,10 @@ import {
   Monitor,
   ShieldCheck,
   Layers,
-  ChevronLeft,
-  ChevronRight,
   LayoutList,
   Copy,
+  Loader2,
+  Printer,
 } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
 import {
@@ -47,10 +47,12 @@ import {
   findAvailableRoomForSlot,
   formatGroupedAvailability,
   isTimeOverlapping,
-  parseTeacherAvailability,
   parseTimeToMinutes,
   isGeneralSubject,
   getPairedDay,
+  getExpectedSubjectDuration,
+  calculateEndTimeFromStart,
+  SRCB_STANDARD_TIME_SLOTS,
 } from "../utils/scheduling";
 import { getProgramTheme, getProgramColor } from "../utils/programColors";
 import { ScheduleDetailsModal } from "../components/schedule/ScheduleDetailsModal";
@@ -271,45 +273,117 @@ function isSubjectMatchingSection(sub: any, sec: any): boolean {
   return true;
 }
 
-interface ScheduleCluster {
+interface DayTimelineBlock {
+  key: string;
   startIdx: number;
+  span: number;
   endIdx: number;
+  slot: string;
   items: ClassScheduleItem[];
+  trackIndex: number;
+  totalTracks: number;
+  leftPercent: number;
+  widthPercent: number;
 }
 
-function buildDayScheduleClusters(daySchedules: ClassScheduleItem[]): ScheduleCluster[] {
+function buildDayTimelineBlocks(daySchedules: ClassScheduleItem[]): DayTimelineBlock[] {
   if (!daySchedules || daySchedules.length === 0) return [];
 
-  const itemsWithRange = daySchedules.map((item) => {
+  // 1. Group items that start in the exact same slot index (same start time)
+  // so concurrent subjects in the same time slot become a unified card deck
+  const slotMap = new Map<number, { startIdx: number; span: number; endIdx: number; slot: string; items: ClassScheduleItem[] }>();
+
+  for (const item of daySchedules) {
     const startIdx = Math.max(0, getScheduleStartSlotIdx(item.time));
     const span = Math.max(1, getScheduleRowSpan(item.time));
-    return {
-      item,
-      startIdx,
-      endIdx: Math.min(TIME_SLOTS.length, startIdx + span),
-    };
-  });
+    const endIdx = Math.min(TIME_SLOTS.length, startIdx + span);
+    const slotStr = TIME_SLOTS[startIdx] || "07:00 AM - 07:30 AM";
 
-  // Sort by startIdx ascending, then span descending
-  itemsWithRange.sort((a, b) => a.startIdx - b.startIdx || (b.endIdx - b.startIdx) - (a.endIdx - a.startIdx));
-
-  const clusters: ScheduleCluster[] = [];
-
-  for (const entry of itemsWithRange) {
-    const lastCluster = clusters[clusters.length - 1];
-    if (lastCluster && entry.startIdx < lastCluster.endIdx) {
-      lastCluster.endIdx = Math.max(lastCluster.endIdx, entry.endIdx);
-      lastCluster.items.push(entry.item);
+    if (!slotMap.has(startIdx)) {
+      slotMap.set(startIdx, { startIdx, span, endIdx, slot: slotStr, items: [item] });
     } else {
-      clusters.push({
-        startIdx: entry.startIdx,
-        endIdx: entry.endIdx,
-        items: [entry.item],
+      const existing = slotMap.get(startIdx)!;
+      existing.items.push(item);
+      if (span > existing.span) {
+        existing.span = span;
+        existing.endIdx = Math.min(TIME_SLOTS.length, startIdx + span);
+      }
+    }
+  }
+
+  const rawBlocks = Array.from(slotMap.values());
+
+  // 2. Sort by startIdx ascending, then span descending
+  rawBlocks.sort((a, b) => a.startIdx - b.startIdx || b.span - a.span);
+
+  // 3. Cluster overlapping blocks (blocks that overlap in time range [startIdx, endIdx))
+  const clusters: typeof rawBlocks[] = [];
+  for (const block of rawBlocks) {
+    let placed = false;
+    for (const cluster of clusters) {
+      // Check if this block overlaps with any block in the cluster
+      const overlaps = cluster.some((b) => block.startIdx < b.endIdx && b.startIdx < block.endIdx);
+      if (overlaps) {
+        cluster.push(block);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      clusters.push([block]);
+    }
+  }
+
+  // 4. Within each cluster, assign tracks (lanes)
+  const result: DayTimelineBlock[] = [];
+
+  for (const cluster of clusters) {
+    // Sort cluster blocks by startIdx
+    cluster.sort((a, b) => a.startIdx - b.startIdx || b.span - a.span);
+
+    // Track end times for each lane
+    const laneEndTimes: number[] = [];
+    const blockTracks: number[] = [];
+
+    for (const block of cluster) {
+      // Find the first lane where laneEndTime <= block.startIdx
+      let assignedLane = -1;
+      for (let l = 0; l < laneEndTimes.length; l++) {
+        if (laneEndTimes[l] <= block.startIdx) {
+          assignedLane = l;
+          laneEndTimes[l] = block.endIdx;
+          break;
+        }
+      }
+      if (assignedLane === -1) {
+        assignedLane = laneEndTimes.length;
+        laneEndTimes.push(block.endIdx);
+      }
+      blockTracks.push(assignedLane);
+    }
+
+    const totalTracks = Math.max(1, laneEndTimes.length);
+    const widthPercent = 100 / totalTracks;
+
+    for (let i = 0; i < cluster.length; i++) {
+      const block = cluster[i];
+      const trackIndex = blockTracks[i];
+      result.push({
+        key: `${block.startIdx}-${block.span}-${block.items[0]?.id || i}`,
+        startIdx: block.startIdx,
+        span: block.span,
+        endIdx: block.endIdx,
+        slot: block.slot,
+        items: block.items,
+        trackIndex,
+        totalTracks,
+        leftPercent: trackIndex * widthPercent,
+        widthPercent,
       });
     }
   }
 
-  return clusters;
+  return result;
 }
 
 interface StackedScheduleCellProps {
@@ -323,21 +397,19 @@ interface StackedScheduleCellProps {
   onDelete: (item: ClassScheduleItem) => void;
   onView: (item: ClassScheduleItem) => void;
   onAddAtSlot: (day: string, slotTime: string) => void;
-  onDuplicate?: (item: ClassScheduleItem) => void;
 }
 
 function StackedScheduleCell({
   day,
   slot,
   slotIdx: _slotIdx,
-  rowSpan,
+  rowSpan: _rowSpan,
   schedules,
   canCreate,
   onEdit,
   onDelete,
   onView,
   onAddAtSlot,
-  onDuplicate,
 }: StackedScheduleCellProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [frontCardId, setFrontCardId] = useState<string | null>(null);
@@ -351,15 +423,6 @@ function StackedScheduleCell({
     return found >= 0 ? found : schedules.length - 1;
   }, [schedules, frontCardId]);
 
-  const handlePrevCard = () => {
-    const nextIdx = (activeIdx - 1 + schedules.length) % schedules.length;
-    setFrontCardId(schedules[nextIdx].id);
-  };
-
-  const handleNextCard = () => {
-    const nextIdx = (activeIdx + 1) % schedules.length;
-    setFrontCardId(schedules[nextIdx].id);
-  };
 
   const distinctRooms = useMemo(() => {
     return Array.from(new Set(schedules.map((s) => s.room).filter(Boolean)));
@@ -393,72 +456,102 @@ function StackedScheduleCell({
         title={canCreate ? "Drag to reschedule to another slot" : "Click to view official assigned schedule details"}
         style={{
           borderLeft: `5px solid ${cardBorderColor}`,
-          borderRadius: 8,
+          borderRadius: 6,
           padding: isCompact ? "5px 7px" : "6px 8px",
           marginBottom: 0,
-          height: isCompact ? "auto" : "calc(100% - 4px)",
-          minHeight: !isCompact && rowSpan > 1 ? `${rowSpan * 38}px` : "42px",
+          height: "100%",
+          boxSizing: "border-box",
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
           textAlign: "left",
           cursor: canCreate ? "grab" : "pointer",
+          overflow: "hidden",
         }}
       >
-        <div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2, minHeight: 0, overflow: "hidden" }}>
+          {/* Institutional Matrix Subject (Room) Header */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 4 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-              <span className="schedule-card-code" style={{ fontWeight: 800, fontSize: isCompact ? "0.8rem" : "0.84rem" }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 4, flexWrap: "wrap", minWidth: 0 }}>
+              <span className="schedule-card-code" style={{ fontWeight: 900, fontSize: isCompact ? "0.82rem" : "0.88rem", letterSpacing: "-0.01em" }}>
                 {item.subjectCode}
               </span>
+              <span className="schedule-card-room" style={{ fontWeight: 800, fontSize: isCompact ? "0.76rem" : "0.82rem" }}>
+                ({item.room || "TBA"})
+              </span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
+              {canCreate && <GripVertical size={11} style={{ opacity: 0.6 }} />}
               <span
                 className="program-card-badge"
                 style={{
                   backgroundColor: progTheme.badgeBg,
                   color: progTheme.badgeText,
+                  fontSize: "0.6rem",
+                  fontWeight: 800,
+                  padding: "1px 4px",
+                  borderRadius: 3,
                 }}
                 title={`Program: ${progTheme.name}`}
               >
                 {progTheme.code}
               </span>
+              {item.classMode === "Laboratory" || String(item.roomType || "").toLowerCase().includes("lab") ? (
+                <span className="pill pill--purple" style={{ fontSize: "0.6rem", fontWeight: 700, padding: "1px 4px" }} title="Major Laboratory Session (3 Hours)">
+                  Lab 3h
+                </span>
+              ) : item.isMajor ? (
+                <span className="pill pill--blue" style={{ fontSize: "0.6rem", fontWeight: 700, padding: "1px 4px" }} title="Major Lecture Session (2 Hours)">
+                  Lec 2h
+                </span>
+              ) : (
+                <span className="pill pill--amber" style={{ fontSize: "0.6rem", fontWeight: 700, padding: "1px 4px" }} title="Minor / Gen Ed Session (1 Hour 30 Mins)">
+                  1.5h
+                </span>
+              )}
+              {item.modality === "Online" && (
+                <span
+                  className="pill pill--emerald"
+                  style={{ fontSize: "0.6rem", padding: "1px 4px" }}
+                >
+                  Online
+                </span>
+              )}
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
-              {canCreate && <GripVertical size={11} color="var(--srcb-text-muted, #94a3b8)" style={{ opacity: 0.6 }} />}
-              <span
-                className={`pill ${item.modality === "Online" ? "pill--emerald" : "pill--navy"}`}
-                style={{ fontSize: "0.62rem", padding: "1px 5px" }}
-              >
-                {item.modality}
-              </span>
-            </div>
-          </div>
-          <div className="schedule-card-subject" style={{ fontSize: isCompact ? "0.72rem" : "0.76rem", marginTop: 2, fontWeight: 600, lineHeight: 1.2 }}>
-            {item.subject}
-          </div>
-          <div className="schedule-card-meta" style={{ fontSize: "0.68rem", marginTop: 3, display: "flex", alignItems: "center", gap: 4 }}>
-            <Clock size={11} style={{ flexShrink: 0 }} /> {item.time}
-          </div>
-          <div className="schedule-card-meta" style={{ fontSize: "0.68rem", display: "flex", alignItems: "center", gap: 4 }}>
-            <GraduationCap size={11} style={{ flexShrink: 0 }} /> <strong>Sec:</strong> {item.section}
           </div>
           <div
-            className="schedule-card-meta"
+            className="schedule-card-subject"
             style={{
-              fontSize: "0.68rem",
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              fontWeight: 700,
-              color: "var(--srcb-text)",
+              fontSize: isCompact ? "0.7rem" : "0.74rem",
+              marginTop: 1,
+              fontWeight: 600,
+              lineHeight: 1.2,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
             }}
+            title={item.subject}
           >
-            <DoorOpen size={11} style={{ flexShrink: 0, color: progTheme.primary }} />
-            <span>
-              <strong>Room:</strong> {item.room} {item.building ? `(${item.building.split(" ")[0]})` : ""}
-            </span>
+            {item.subject}
           </div>
-          <div className="schedule-card-faculty" style={{ fontSize: "0.7rem", fontWeight: 700, marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}>
-            <UserCheck size={11} style={{ flexShrink: 0 }} /> {item.faculty}
+          <div style={{ display: "flex", flexDirection: "column", gap: 1, marginTop: 1 }}>
+            <div className="schedule-card-meta" style={{ fontSize: "0.68rem", display: "flex", alignItems: "center", gap: 4 }}>
+              <GraduationCap size={11} style={{ flexShrink: 0 }} />
+              <span><strong>Sec:</strong> {item.section}</span>
+              {item.isCombinedCohort && (
+                <span className="pill pill--cyan" style={{ fontSize: "0.58rem", padding: "0 4px", fontWeight: 700 }} title="Shared / Combined Cohort Session">
+                  Combined
+                </span>
+              )}
+            </div>
+            <div className="schedule-card-faculty" style={{ fontSize: "0.68rem", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+              <UserCheck size={11} style={{ flexShrink: 0 }} />
+              <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.faculty}</span>
+            </div>
+            <div className="schedule-card-meta schedule-card-time" style={{ fontSize: "0.65rem", display: "flex", alignItems: "center", gap: 4 }}>
+              <Clock size={10} style={{ flexShrink: 0 }} />
+              <span>{item.time}</span>
+            </div>
           </div>
 
           {item.modality === "Online" && item.onlineLink && (
@@ -467,12 +560,12 @@ function StackedScheduleCell({
               target="_blank"
               rel="noreferrer"
               style={{
-                fontSize: "0.68rem",
+                fontSize: "0.66rem",
                 color: "var(--srcb-green, #10b981)",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 3,
-                marginTop: 2,
+                marginTop: 1,
                 textDecoration: "underline",
                 fontWeight: 600,
               }}
@@ -483,22 +576,20 @@ function StackedScheduleCell({
         </div>
 
         {canCreate && (
-          <div className="schedule-card-actions" style={{ display: "flex", justifyContent: "flex-end", gap: 4, marginTop: 4, paddingTop: 3 }}>
-            {onDuplicate && (
-              <button
-                type="button"
-                className="icon-button icon-button--sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDuplicate(item);
-                }}
-                title="Duplicate Schedule Block"
-                aria-label={`Duplicate class block ${item.subjectCode}`}
-                style={{ width: 22, height: 22, padding: 0 }}
-              >
-                <Copy size={11} />
-              </button>
-            )}
+          <div className="schedule-card-actions" style={{ display: "flex", justifyContent: "flex-end", gap: 4, marginTop: 3, paddingTop: 3 }}>
+            <button
+              type="button"
+              className="icon-button icon-button--sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddAtSlot(day, item.time || slot);
+              }}
+              title={`Add another schedule to this time slot (${day} ${item.time || slot})`}
+              aria-label={`Add another schedule to slot ${day} ${item.time || slot}`}
+              style={{ width: 22, height: 22, padding: 0, color: "var(--srcb-royal, #2563eb)" }}
+            >
+              <Plus size={11} />
+            </button>
             <button
               type="button"
               className="icon-button icon-button--sm"
@@ -533,14 +624,16 @@ function StackedScheduleCell({
 
   if (!isStacked) {
     return (
-      <div className="stacked-schedule-container">
-        {renderCard(schedules[0])}
+      <div className="stacked-schedule-container" style={{ height: "100%", display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
+        <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
+          {renderCard(schedules[0])}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="stacked-schedule-container">
+    <div className="stacked-schedule-container" style={{ height: "100%", display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
       <div className="stacked-schedule-header">
         <span className="stacked-pill-badge" title={`${schedules.length} classes scheduled in this time slot`}>
           <Layers size={11} /> Stacked ({schedules.length})
@@ -564,34 +657,6 @@ function StackedScheduleCell({
         )}
 
         <div className="stacked-header-actions">
-          {!isExpanded && schedules.length > 1 && (
-            <div className="stacked-flipper" title="Cycle through concurrent room schedules">
-              <button
-                type="button"
-                className="stacked-flipper-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handlePrevCard();
-                }}
-                aria-label="Previous card in stack"
-              >
-                <ChevronLeft size={10} />
-              </button>
-              <span>{activeIdx + 1}/{schedules.length}</span>
-              <button
-                type="button"
-                className="stacked-flipper-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleNextCard();
-                }}
-                aria-label="Next card in stack"
-              >
-                <ChevronRight size={10} />
-              </button>
-            </div>
-          )}
-
           <button
             type="button"
             className="stacked-view-toggle-btn"
@@ -599,31 +664,17 @@ function StackedScheduleCell({
               e.stopPropagation();
               setIsExpanded((prev) => !prev);
             }}
-            title={isExpanded ? "Collapse to stacked cards" : "Expand cards vertically"}
+            title={isExpanded ? "Collapse to stacked view" : "Expand all cards"}
             aria-label="Toggle stack view mode"
           >
             {isExpanded ? <Layers size={10} /> : <LayoutList size={10} />}
             <span>{isExpanded ? "Stack" : "Expand"}</span>
           </button>
-
-          {canCreate && (
-            <button
-              type="button"
-              className="stacked-add-slot-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                onAddAtSlot(day, schedules[0]?.time || slot);
-              }}
-              title="Add another schedule to this time slot"
-            >
-              + Add
-            </button>
-          )}
         </div>
       </div>
 
       {/* Room Tabs Strip */}
-      <div className="stacked-room-tabs" aria-label="Room tabs for concurrent classes">
+      <div className="stacked-room-tabs" style={{ flexShrink: 0 }} aria-label="Room tabs for concurrent classes">
         {schedules.map((item, idx) => {
           const isFront = frontCardId ? frontCardId === item.id : idx === schedules.length - 1;
           const sTheme = getProgramTheme(item);
@@ -646,14 +697,23 @@ function StackedScheduleCell({
         })}
       </div>
 
-      <div className={`stacked-cards-stack ${isExpanded ? "mode-expanded" : "mode-stacked"}`}>
+      <div
+        className={`stacked-cards-stack ${isExpanded ? "mode-expanded" : "mode-stacked"}`}
+        style={{ flex: 1, minHeight: 0, position: "relative" }}
+      >
         {schedules.map((item, idx) => {
           const isFront = frontCardId ? frontCardId === item.id : idx === schedules.length - 1;
+          const currentActiveIdx = activeIdx >= 0 ? activeIdx : schedules.length - 1;
+          const stackDepth = isFront ? 0 : ((idx - currentActiveIdx + schedules.length) % schedules.length);
+
           return (
             <div
               key={item.id}
-              className={`stacked-card-wrapper ${isFront ? "is-front" : ""}`}
-              style={{ zIndex: isFront ? 20 + idx : idx + 1 }}
+              className={`stacked-card-wrapper ${isFront ? "is-front" : "is-behind"}`}
+              style={{
+                zIndex: isFront ? 20 : 15 - Math.min(stackDepth, 10),
+                ["--stack-depth" as any]: stackDepth,
+              }}
               onClick={() => setFrontCardId(item.id)}
             >
               {renderCard(item, true)}
@@ -676,6 +736,8 @@ export function SchedulesPage() {
     initialView === "unscheduled" ? "unscheduled" : initialView === "list" ? "list" : "grid"
   );
   const [query, setQuery] = useState(searchParams.get("q") || searchParams.get("search") || "");
+  const [matrixProgram, setMatrixProgram] = useState<string>("All");
+  const [matrixYearLevel, setMatrixYearLevel] = useState<string>("All");
 
   useEffect(() => {
     const v = searchParams.get("view") || searchParams.get("filter");
@@ -683,7 +745,7 @@ export function SchedulesPage() {
       setViewMode("unscheduled");
     } else if (v === "list") {
       setViewMode("list");
-    } else if (v === "grid") {
+    } else {
       setViewMode("grid");
     }
     const q = searchParams.get("q") || searchParams.get("search") || "";
@@ -706,6 +768,7 @@ export function SchedulesPage() {
 
   const [selectedDayFilter, setSelectedDayFilter] = useState<string>("All");
   const [selectedFacultyFilter, setSelectedFacultyFilter] = useState<string>("All");
+  const [durationFilter, setDurationFilter] = useState<string>("All");
   const [isOpen, setIsOpen] = useState(false);
   const [modalStep, setModalStep] = useState<1 | 2>(1);
   const [editingSchedule, setEditingSchedule] = useState<ClassScheduleItem | null>(null);
@@ -715,8 +778,8 @@ export function SchedulesPage() {
   const [dragStart, setDragStart] = useState<{ day: string; slotIdx: number } | null>(null);
   const [dragCurrent, setDragCurrent] = useState<{ day: string; slotIdx: number } | null>(null);
 
-  // Multi-Perspective Timetable State (Section vs Faculty vs Room)
-  const [perspectiveMode, setPerspectiveMode] = useState<"all" | "section" | "faculty" | "room">("all");
+  // Multi-Perspective Timetable State (Program vs Section vs Faculty vs Room)
+  const [perspectiveMode, setPerspectiveMode] = useState<"all" | "program" | "section" | "faculty" | "room">("all");
   const [selectedPerspectiveEntity, setSelectedPerspectiveEntity] = useState<string>("All");
 
   const toast = useToast();
@@ -733,7 +796,27 @@ export function SchedulesPage() {
   const [roomsList, setRoomsList] = useState<any[]>([]);
   const [sectionsList, setSectionsList] = useState<any[]>([]);
 
-  const [form, setForm] = useState({
+  interface ScheduleFormData {
+    day: string;
+    time: string;
+    subjectCode: string;
+    subject: string;
+    section: string;
+    facultyId: string;
+    faculty: string;
+    room: string;
+    pairedRoom: string;
+    building: BuildingType;
+    pairedBuilding: BuildingType;
+    modality: ClassModality;
+    onlineLink: string;
+    isMajor: boolean;
+    classMode: "Lecture" | "Laboratory";
+    program: string;
+    isCombinedCohort?: boolean;
+  }
+
+  const [form, setForm] = useState<ScheduleFormData>({
     day: "Monday",
     time: "07:00 AM - 08:30 AM",
     subjectCode: "",
@@ -742,14 +825,17 @@ export function SchedulesPage() {
     facultyId: "",
     faculty: "",
     room: "COL-101",
+    pairedRoom: "",
     building: "College Building" as BuildingType,
+    pairedBuilding: "College Building" as BuildingType,
     modality: "Face-to-Face" as ClassModality,
     onlineLink: "",
     isMajor: true,
+    classMode: "Lecture" as "Lecture" | "Laboratory",
     program: selectedProgram.key || "BSIT",
+    isCombinedCohort: false,
   });
-  const [pairDayEnabled, setPairDayEnabled] = useState(true);
-  const [duplicateDays, setDuplicateDays] = useState<string[]>(["Friday"]);
+  const [pairedEnabled, setPairedEnabled] = useState(true);
 
   const handleMouseDownCell = (day: string, slotIdx: number) => {
     if (!canCreate) return;
@@ -776,11 +862,18 @@ export function SchedulesPage() {
     const maxIdx = Math.max(dragStart.slotIdx, dragCurrent.slotIdx);
     const startSlotStr = TIME_SLOTS[minIdx].split("-")[0].trim();
     const endSlotStr = TIME_SLOTS[maxIdx].split("-")[1].trim();
-    const calculatedTime = `${startSlotStr} - ${endSlotStr}`;
     const day = dragStart.day;
 
-    const freeRoom = findAvailableRoomForSlot(day, calculatedTime, roomsList, scheduleItems);
     const firstSub = availableSubjects[0] || subjectsList[0];
+    const isFirstMajor = Boolean(firstSub?.isMajor) && !isGeneralSubject(firstSub);
+    const defMode: "Lecture" | "Laboratory" = isFirstMajor && Number(firstSub?.labHours || 0) > 0 ? "Laboratory" : "Lecture";
+    const duration = getExpectedSubjectDuration(firstSub, defMode);
+
+    // If single cell clicked, use the official institutional class duration (1.5h Minor, 2h Major Lec, 3h Major Lab)
+    const calculatedEnd = calculateEndTimeFromStart(startSlotStr, duration);
+    const calculatedTime = minIdx === maxIdx ? `${startSlotStr} - ${calculatedEnd}` : `${startSlotStr} - ${endSlotStr}`;
+
+    const freeRoom = findAvailableRoomForSlot(day, calculatedTime, roomsList, scheduleItems);
     const defFac = facultyList.find((f) => f.id === firstSub?.instructorId) || facultyList[0];
     const defSec = sectionsList.find((s) => s.program === firstSub?.program) || sectionsList[0];
     const defSecVal = defSec ? (defSec.course && defSec.section ? `${defSec.course} ${defSec.yearLevel || ''}-${defSec.section}`.trim() : defSec.section) : "BSIT 1-A";
@@ -788,9 +881,6 @@ export function SchedulesPage() {
     const defBuilding = (freeRoom?.building as BuildingType) || roomsList[0]?.building || "College Building";
 
     setEditingSchedule(null);
-    const paired = getPairedDay(day);
-    setPairDayEnabled(Boolean(paired));
-    setDuplicateDays(paired ? [paired] : ["Friday"]);
     setForm({
       day,
       time: calculatedTime,
@@ -800,12 +890,16 @@ export function SchedulesPage() {
       facultyId: defFac?.id || "",
       faculty: defFac?.name || "",
       room: defRoom,
+      pairedRoom: "",
       building: defBuilding,
+      pairedBuilding: defBuilding,
       modality: "Face-to-Face",
       onlineLink: "",
-      isMajor: Boolean(firstSub?.isMajor),
+      isMajor: isFirstMajor,
+      classMode: defMode,
       program: firstSub?.program || selectedProgram.key || "BSIT",
     });
+    setPairedEnabled(true);
 
     setIsDraggingGrid(false);
     setDragStart(null);
@@ -854,29 +948,54 @@ export function SchedulesPage() {
       } else if (payload.type === "new_subject") {
         const sub = payload.subject;
         const freeRoom = findAvailableRoomForSlot(day, slot, roomsList, scheduleItems);
-        const defFac = facultyList.find((f) => f.id === sub.instructorId) || facultyList[0];
-        const defSec = sectionsList.find((s) => s.program === sub.program) || sectionsList[0];
+        const defFac = facultyList.find((f) => {
+          if (sub.instructorId && f.id === sub.instructorId) {
+            return !scheduleItems.some((s) => s.day.toLowerCase() === day.toLowerCase() && isTimeOverlapping(s.time, slot) && (s.facultyId === f.id || s.faculty === f.name));
+          }
+          return false;
+        }) || facultyList.find((f) => !scheduleItems.some((s) => s.day.toLowerCase() === day.toLowerCase() && isTimeOverlapping(s.time, slot) && (s.facultyId === f.id || s.faculty === f.name))) || facultyList[0];
+
+        const defSec = sectionsList.find((s) => {
+          if (sub.program && s.program && s.program !== sub.program) return false;
+          const sLabel = s.course ? `${s.course} ${s.yearLevel || ''}-${s.section}`.trim() : s.section;
+          return !scheduleItems.some((sc) => sc.day.toLowerCase() === day.toLowerCase() && isTimeOverlapping(sc.time, slot) && (sc.section === sLabel || sc.section === s.section));
+        }) || sectionsList.find((s) => {
+          const sLabel = s.course ? `${s.course} ${s.yearLevel || ''}-${s.section}`.trim() : s.section;
+          return !scheduleItems.some((sc) => sc.day.toLowerCase() === day.toLowerCase() && isTimeOverlapping(sc.time, slot) && (sc.section === sLabel || sc.section === s.section));
+        }) || sectionsList[0];
+
         const defSecVal = defSec ? (defSec.course && defSec.section ? `${defSec.course} ${defSec.yearLevel || ''}-${defSec.section}`.trim() : defSec.section) : "BSIT 1-A";
         const defRoom = freeRoom?.number || roomsList[0]?.number || "COL-101";
         const defBuilding = (freeRoom?.building as BuildingType) || roomsList[0]?.building || "College Building";
 
+        const isSubMajor = Boolean(sub?.isMajor) && !isGeneralSubject(sub);
+        const defSubMode: "Lecture" | "Laboratory" = isSubMajor && Number(sub?.labHours || 0) > 0 ? "Laboratory" : "Lecture";
+        const duration = getExpectedSubjectDuration(sub, defSubMode);
+        const [startSlot] = slot.split("-").map((t) => t.trim());
+        const calculatedEnd = calculateEndTimeFromStart(startSlot || "07:00 AM", duration);
+        const finalSlotTime = startSlot && calculatedEnd ? `${startSlot} - ${calculatedEnd}` : slot;
+
         setEditingSchedule(null);
         setForm({
           day,
-          time: slot,
+          time: finalSlotTime,
           subjectCode: sub.code || "",
           subject: sub.name || "",
           section: defSecVal,
           facultyId: defFac?.id || "",
           faculty: defFac?.name || "",
           room: defRoom,
+          pairedRoom: "",
           building: defBuilding,
+          pairedBuilding: defBuilding,
           modality: "Face-to-Face",
           onlineLink: "",
-          isMajor: Boolean(sub.isMajor),
+          isMajor: isSubMajor,
+          classMode: defSubMode,
           program: sub.program || selectedProgram.key || "BSIT",
         });
-        setModalStep(1);
+        setPairedEnabled(true);
+        setModalStep(2);
         setIsOpen(true);
       }
     } catch (err: any) {
@@ -1003,24 +1122,7 @@ export function SchedulesPage() {
       });
       if (hasClash) return false;
 
-      // 2. Check Part-Time and registered availability rules
-      if (fac.status === "Part-Time" && fac.availability) {
-        const parsedAvail = parseTeacherAvailability(fac.availability);
-        const dayEntry = parsedAvail.find((d) => d.day.toLowerCase() === form.day.toLowerCase());
-        if (!dayEntry || !dayEntry.slots || dayEntry.slots.length === 0) return false;
-
-        const [candStart] = form.time.split("-").map((t) => t.trim());
-        const isSlotListed = dayEntry.slots.some((slot) => {
-          const [sStart] = slot.split("-").map((t) => t.trim());
-          return (
-            slot.includes(form.time) ||
-            form.time.includes(slot) ||
-            (sStart && candStart && sStart.slice(0, 2) === candStart.slice(0, 2))
-          );
-        });
-        if (!isSlotListed) return false;
-      }
-
+      // Faculty availability window constraints removed per requirements (faculty are available unless they have an overlapping class clash)
       return true;
     });
   }, [availableFaculty, scheduleItems, form.day, form.time, editingSchedule]);
@@ -1048,15 +1150,16 @@ export function SchedulesPage() {
       });
       if (hasClash) return false;
 
-      // Room type rules: laboratory subjects require lab room
-      if (requiresLab) {
+      // Room type rules: Laboratory sessions require lab rooms
+      const isLabSession = form.classMode === "Laboratory" || (requiresLab && form.classMode !== "Lecture");
+      if (isLabSession) {
         const isLab = /lab/i.test(rm.type || "") || /lab/i.test(rm.building || "");
         if (!isLab) return false;
       }
 
       return true;
     });
-  }, [roomsList, scheduleItems, form.day, form.time, form.modality, form.subjectCode, subjectsList, editingSchedule]);
+  }, [roomsList, scheduleItems, form.day, form.time, form.modality, form.subjectCode, form.classMode, subjectsList, editingSchedule]);
 
   // Requirement 6 & 11: Step 2 - Available Sections for selected Subject, Day & Time
   const availableSectionsForSlot = useMemo(() => {
@@ -1181,6 +1284,45 @@ export function SchedulesPage() {
     });
   }, [availableSectionsForSlot, availableSections, sectionsList]);
 
+  const pairedDay = useMemo(() => {
+    return getPairedDay(form.day);
+  }, [form.day]);
+
+  const pairedClassMode: "Lecture" | "Laboratory" = useMemo(() => {
+    if (form.isMajor) {
+      return form.classMode === "Lecture" ? "Laboratory" : "Lecture";
+    }
+    return "Lecture";
+  }, [form.isMajor, form.classMode]);
+
+  const pairedDuration = useMemo(() => {
+    if (form.isMajor) {
+      return pairedClassMode === "Laboratory" ? 180 : 120;
+    }
+    return 90;
+  }, [form.isMajor, pairedClassMode]);
+
+  const pairedTime = useMemo(() => {
+    const startPart = form.time.split("-")[0]?.trim() || "07:00 AM";
+    const endPart = calculateEndTimeFromStart(startPart, pairedDuration);
+    return `${startPart} - ${endPart}`;
+  }, [form.time, pairedDuration]);
+
+  const pairedRoomOptionsForStep2: SearchableOption[] = useMemo(() => {
+    return roomsList.map((r) => {
+      const isLab = /lab/i.test(r.type || "") || /lab/i.test(r.building || "") || /lab/i.test(r.number || "");
+      const isPreferred = pairedClassMode === "Laboratory" ? isLab : !isLab;
+      return {
+        value: r.number,
+        label: `${r.number} - ${r.building || "Campus"}${isPreferred ? " ★ Recommended" : ""}`,
+        sublabel: `${r.type || "Classroom"} · Capacity: ${r.capacity} students · ${isLab ? "Lab Facility" : "Standard Classroom"}`,
+        badge: isLab ? "Laboratory" : `Cap: ${r.capacity}`,
+        badgeTone: isLab ? "purple" : "slate",
+        searchKeywords: [r.number, r.building || "", r.type || "", String(r.capacity)],
+      };
+    });
+  }, [roomsList, pairedClassMode]);
+
   const isStep1ResourcesAvailable = useMemo(() => {
     return Boolean(form.subjectCode && form.day && form.time);
   }, [form.subjectCode, form.day, form.time]);
@@ -1213,9 +1355,17 @@ export function SchedulesPage() {
     }
 
     // Adapt / validate faculty selection for the new slot
+    const isCurrentFacultyOccupied = scheduleItems.some((s) => {
+      if (editingSchedule && String(s.id) === String(editingSchedule.id)) return false;
+      if (s.day.toLowerCase() !== form.day.toLowerCase()) return false;
+      const isMatch = (s.facultyId && form.facultyId && String(s.facultyId) === String(form.facultyId)) ||
+        (s.faculty && form.faculty && s.faculty.toLowerCase().trim() === form.faculty.toLowerCase().trim());
+      return isMatch && isTimeOverlapping(s.time, form.time);
+    });
+
     const facCandidates = availableFacultyForSlot.length > 0 ? availableFacultyForSlot : availableFaculty.length > 0 ? availableFaculty : facultyList;
-    if (!facCandidates.some((f) => f.id === form.facultyId || f.name === form.faculty)) {
-      const firstFac = facCandidates[0];
+    if (isCurrentFacultyOccupied || !facCandidates.some((f) => f.id === form.facultyId || f.name === form.faculty)) {
+      const firstFac = availableFacultyForSlot[0] || facCandidates[0];
       if (firstFac) {
         setForm((prev) => ({ ...prev, facultyId: firstFac.id, faculty: firstFac.name }));
       } else {
@@ -1225,9 +1375,16 @@ export function SchedulesPage() {
 
     // Adapt / validate room selection for the new slot
     if (form.modality === "Face-to-Face") {
+      const isCurrentRoomOccupied = scheduleItems.some((s) => {
+        if (editingSchedule && String(s.id) === String(editingSchedule.id)) return false;
+        if (s.modality === "Online") return false;
+        if (s.day.toLowerCase() !== form.day.toLowerCase()) return false;
+        return s.room && form.room && s.room.toLowerCase().trim() === form.room.toLowerCase().trim() && isTimeOverlapping(s.time, form.time);
+      });
+
       const roomCandidates = availableRoomsForSlot.length > 0 ? availableRoomsForSlot : availableRoomsForBuilding.length > 0 ? availableRoomsForBuilding : roomsList;
-      if (!roomCandidates.some((r) => r.number === form.room)) {
-        const firstRoom = roomCandidates[0];
+      if (isCurrentRoomOccupied || !roomCandidates.some((r) => r.number === form.room)) {
+        const firstRoom = availableRoomsForSlot[0] || roomCandidates[0];
         if (firstRoom) {
           setForm((prev) => ({ ...prev, room: firstRoom.number, building: (firstRoom.building as BuildingType) || prev.building }));
         } else {
@@ -1237,9 +1394,20 @@ export function SchedulesPage() {
     }
 
     // Adapt / validate section selection for the new slot & subject
+    const isCurrentSectionOccupied = scheduleItems.some((s) => {
+      if (editingSchedule && String(s.id) === String(editingSchedule.id)) return false;
+      if (s.day.toLowerCase() !== form.day.toLowerCase()) return false;
+      const sSec = s.section || '';
+      const isMatch = form.section && (
+        sSec.toLowerCase().trim() === form.section.toLowerCase().trim() ||
+        sSec.toLowerCase().includes(form.section.toLowerCase().trim())
+      );
+      return isMatch && isTimeOverlapping(s.time, form.time);
+    });
+
     const secCandidates = availableSectionsForSlot.length > 0 ? availableSectionsForSlot : availableSections.length > 0 ? availableSections : sectionsList;
-    if (!secCandidates.some((s) => s.section === form.section || (s.course && `${s.course} ${s.yearLevel || ''}-${s.section}`.trim() === form.section))) {
-      const firstSec = secCandidates[0];
+    if (isCurrentSectionOccupied || !secCandidates.some((s) => s.section === form.section || (s.course && `${s.course} ${s.yearLevel || ''}-${s.section}`.trim() === form.section))) {
+      const firstSec = availableSectionsForSlot[0] || secCandidates[0];
       if (firstSec) {
         const secVal = firstSec.course ? `${firstSec.course} ${firstSec.yearLevel || ''}-${firstSec.section}`.trim() : firstSec.section;
         setForm((prev) => ({ ...prev, section: secVal }));
@@ -1254,23 +1422,32 @@ export function SchedulesPage() {
   const handleScheduleUnscheduledSubject = (sub: any) => {
     if (!canCreate) return;
     setEditingSchedule(null);
-    setPairDayEnabled(true);
-    setDuplicateDays(["Friday"]);
+    const isMajor = Boolean(sub?.isMajor) && !isGeneralSubject(sub);
+    const mode: "Lecture" | "Laboratory" = isMajor && Number(sub?.labHours || 0) > 0 ? "Laboratory" : "Lecture";
+    const duration = isMajor ? (mode === "Laboratory" ? 180 : 120) : 90;
+    const calculatedEndTime = calculateEndTimeFromStart("07:00 AM", duration);
+    const labRoom = roomsList.find((r) => /lab/i.test(r.type || "") || /lab/i.test(r.number || ""));
+    const defPairedRoom = mode === "Lecture" ? (labRoom?.number || "COL-101") : "COL-101";
+
     setForm({
       day: "Monday",
-      time: "07:00 AM - 08:30 AM",
+      time: `07:00 AM - ${calculatedEndTime}`,
       subjectCode: sub.code || "",
       subject: sub.name || "",
       section: "",
       facultyId: "",
       faculty: "",
       room: "COL-101",
+      pairedRoom: defPairedRoom,
       building: "College Building" as BuildingType,
+      pairedBuilding: "College Building" as BuildingType,
       modality: "Face-to-Face",
       onlineLink: "",
-      isMajor: Boolean(sub.isMajor),
+      isMajor,
+      classMode: mode,
       program: sub.program || selectedProgram.key || "BSIT",
     });
+    setPairedEnabled(true);
     setModalStep(1);
     setIsOpen(true);
   };
@@ -1279,12 +1456,52 @@ export function SchedulesPage() {
     const sub = subjectsList.find((s) => s.code === code);
     if (!sub) return;
 
+    const isMajor = Boolean(sub.isMajor) && !isGeneralSubject(sub);
+    const mode: "Lecture" | "Laboratory" = isMajor ? (form.classMode || "Lecture") : "Lecture";
+    const duration = isMajor ? (mode === "Laboratory" ? 180 : 120) : 90;
+    const startPart = form.time.split("-")[0]?.trim() || "07:00 AM";
+    const endPart = calculateEndTimeFromStart(startPart, duration);
+
+    let defPairedRoom = form.pairedRoom;
+    if (isMajor && mode === "Lecture") {
+      const labRoom = roomsList.find((r) => /lab/i.test(r.type || "") || /lab/i.test(r.number || ""));
+      if (labRoom) defPairedRoom = labRoom.number;
+    }
+
     setForm((prev) => ({
       ...prev,
       subjectCode: sub.code,
       subject: sub.name,
-      isMajor: Boolean(sub.isMajor),
+      isMajor,
+      classMode: mode,
+      time: `${startPart} - ${endPart}`,
+      pairedRoom: defPairedRoom || prev.pairedRoom,
       program: sub.program || prev.program,
+    }));
+  };
+
+  const handleClassModeChange = (mode: "Lecture" | "Laboratory") => {
+    const isMajor = form.isMajor;
+    const duration = isMajor ? (mode === "Laboratory" ? 180 : 120) : 90;
+    const startPart = form.time.split("-")[0]?.trim() || "07:00 AM";
+    const endPart = calculateEndTimeFromStart(startPart, duration);
+
+    // Auto-pick paired room if opposite is lab
+    const oppositeMode: "Lecture" | "Laboratory" = mode === "Lecture" ? "Laboratory" : "Lecture";
+    let nextPairedRoom = form.pairedRoom;
+    if (oppositeMode === "Laboratory") {
+      const labRoom = roomsList.find((r) => /lab/i.test(r.type || "") || /lab/i.test(r.number || ""));
+      if (labRoom) nextPairedRoom = labRoom.number;
+    } else {
+      const lecRoom = roomsList.find((r) => !/lab/i.test(r.type || "") && !/lab/i.test(r.number || ""));
+      if (lecRoom) nextPairedRoom = lecRoom.number;
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      classMode: mode,
+      time: `${startPart} - ${endPart}`,
+      pairedRoom: nextPairedRoom || prev.pairedRoom,
     }));
   };
 
@@ -1330,6 +1547,7 @@ export function SchedulesPage() {
         section: form.section,
         building: form.building,
         modality: form.modality,
+        isCombinedCohort: form.isCombinedCohort,
       },
       scheduleItems,
       facultyList
@@ -1345,6 +1563,7 @@ export function SchedulesPage() {
     form.section,
     form.building,
     form.modality,
+    form.isCombinedCohort,
     editingSchedule,
     scheduleItems,
     facultyList,
@@ -1356,8 +1575,10 @@ export function SchedulesPage() {
       return;
     }
     setEditingSchedule(item);
-    setPairDayEnabled(false);
-    setDuplicateDays([]);
+    const isMajor = Boolean(item.isMajor);
+    const resolvedMode: "Lecture" | "Laboratory" =
+      (item.classMode as "Lecture" | "Laboratory") ||
+      (String(item.roomType || "").toLowerCase().includes("lab") ? "Laboratory" : "Lecture");
     setForm({
       day: item.day,
       time: item.time,
@@ -1367,12 +1588,17 @@ export function SchedulesPage() {
       facultyId: item.facultyId || "",
       faculty: item.faculty,
       room: item.room,
+      pairedRoom: "",
       building: item.building as BuildingType,
+      pairedBuilding: item.building as BuildingType,
       modality: item.modality || "Face-to-Face",
       onlineLink: item.onlineLink || "",
-      isMajor: Boolean(item.isMajor),
+      isMajor,
+      classMode: resolvedMode,
       program: item.program || selectedProgram.key || "BSIT",
+      isCombinedCohort: Boolean((item as any).isCombinedCohort),
     });
+    setPairedEnabled(false);
     setModalStep(1);
     setIsOpen(true);
   };
@@ -1380,7 +1606,11 @@ export function SchedulesPage() {
   const handleDuplicate = (item: ClassScheduleItem) => {
     if (!canCreate) return;
     setEditingSchedule(null);
-    const targetDay = item.day === "Monday" || item.day === "Tuesday" ? "Friday" : (getPairedDay(item.day) || "Friday");
+    const targetDay = getPairedDay(item.day) || (item.day === "Monday" ? "Thursday" : "Friday");
+    const isMajor = Boolean(item.isMajor);
+    const resolvedMode: "Lecture" | "Laboratory" =
+      (item.classMode as "Lecture" | "Laboratory") ||
+      (String(item.roomType || "").toLowerCase().includes("lab") ? "Laboratory" : "Lecture");
     setForm({
       day: targetDay,
       time: item.time,
@@ -1390,14 +1620,16 @@ export function SchedulesPage() {
       facultyId: item.facultyId || "",
       faculty: item.faculty,
       room: item.room,
+      pairedRoom: "",
       building: (item.building as BuildingType) || "College Building",
+      pairedBuilding: (item.building as BuildingType) || "College Building",
       modality: item.modality || "Face-to-Face",
       onlineLink: item.onlineLink || "",
-      isMajor: Boolean(item.isMajor),
+      isMajor,
+      classMode: resolvedMode,
       program: item.program || selectedProgram.key || "BSIT",
     });
-    setPairDayEnabled(false);
-    setDuplicateDays([]);
+    setPairedEnabled(true);
     setModalStep(1);
     setIsOpen(true);
     toast.push(`Duplicating schedule for ${item.subjectCode} to ${targetDay}.`, "info");
@@ -1427,7 +1659,7 @@ export function SchedulesPage() {
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (addAnother = false) => {
     if (!form.subjectCode || !form.section || !form.faculty) {
       toast.push("Please select Subject, Section, and Faculty", "error");
       return;
@@ -1467,6 +1699,7 @@ export function SchedulesPage() {
         facultyId: form.facultyId,
         room: resolvedRoom,
         building: resolvedBuilding,
+        classMode: form.classMode,
         modality: form.modality,
         onlineLink: form.onlineLink,
         isMajor: form.isMajor,
@@ -1477,7 +1710,9 @@ export function SchedulesPage() {
           subjectCode: form.subjectCode,
         }),
         status: "Confirmed",
-      };
+        isCombinedCohort: form.isCombinedCohort,
+        is_combined_cohort: form.isCombinedCohort,
+      } as any;
 
       if (editingSchedule) {
         await api.put(`/schedules/${encodeURIComponent(editingSchedule.id)}`, payload);
@@ -1494,55 +1729,58 @@ export function SchedulesPage() {
       } else {
         await api.post("/schedules", payload);
 
-        // Schedule Duplication (e.g., Monday -> Friday, Tuesday -> Friday)
-        const targetDuplicateDays = (
-          duplicateDays.length > 0
-            ? duplicateDays
-            : getPairedDay(form.day)
-            ? [getPairedDay(form.day)!]
-            : []
-        ).filter((d) => d !== form.day);
+        // Automatic Paired-Day Schedule Creation (e.g., Monday Lecture 2h -> Thursday Lab 3h)
+        let pairedSaved = false;
+        let pairedErrorMsg: string | null = null;
 
-        const successfullyDuplicatedDays: string[] = [];
-        const failedDuplicateErrors: string[] = [];
+        if (pairedEnabled && pairedDay && pairedDay.toLowerCase() !== form.day.toLowerCase()) {
+          const [pStartPart, pEndPart] = pairedTime.split("-").map((t) => t.trim());
+          const resolvedPairedRoom = form.pairedRoom || resolvedRoom;
+          const resolvedPairedBuilding =
+            (roomsList.find((r) => r.number === resolvedPairedRoom)?.building as BuildingType) || resolvedBuilding;
 
-        if (pairDayEnabled && targetDuplicateDays.length > 0) {
-          for (const targetDay of targetDuplicateDays) {
-            const duplicatedPayload = {
-              ...payload,
-              id: undefined,
-              day: targetDay,
-            };
-            try {
-              await api.post("/schedules", duplicatedPayload);
-              successfullyDuplicatedDays.push(targetDay);
-            } catch (dupErr: any) {
-              console.warn(`Could not duplicate schedule to ${targetDay}:`, dupErr);
-              const errMsg = dupErr?.response?.data?.error || dupErr?.message || "Slot conflict";
-              failedDuplicateErrors.push(`${targetDay} (${errMsg})`);
-            }
+          const pairedPayload = {
+            ...payload,
+            id: undefined,
+            day: pairedDay,
+            classMode: pairedClassMode,
+            time: pairedTime,
+            start_time: pStartPart,
+            end_time: pEndPart,
+            room: resolvedPairedRoom,
+            building: resolvedPairedBuilding,
+          };
+          try {
+            await api.post("/schedules", pairedPayload);
+            pairedSaved = true;
+          } catch (dupErr: any) {
+            console.warn(`Could not automatically create paired schedule on ${pairedDay}:`, dupErr);
+            pairedErrorMsg = dupErr?.response?.data?.error || dupErr?.message || "Slot conflict";
           }
         }
 
-        if (successfullyDuplicatedDays.length > 0) {
+        if (pairedSaved && pairedDay) {
+          const detailMsg = form.isMajor
+            ? `${form.day} (${form.classMode === "Laboratory" ? "Lab 3h" : "Lecture 2h"}: ${form.time}) & ${pairedDay} (${pairedClassMode === "Laboratory" ? "Lab 3h" : "Lecture 2h"}: ${pairedTime})`
+            : `${form.day} & ${pairedDay} (${form.time})`;
           toast.push(
-            `Successfully scheduled on ${form.day} & also saved on ${successfullyDuplicatedDays.join(", ")} (${form.time})`,
+            `Successfully scheduled: ${detailMsg}`,
             "success"
           );
           addNotification({
-            title: "Duplicated Classes Scheduled",
-            message: `${form.subjectCode} (${form.section}) scheduled on ${form.day} & also saved on ${successfullyDuplicatedDays.join(", ")} at ${form.time}.`,
+            title: "Paired Classes Scheduled",
+            message: `${form.subjectCode} (${form.section}) scheduled on ${detailMsg}.`,
             type: "success",
             link: "/schedules",
             targetRole: "admin,program_head,teacher",
             targetProgram: form.program,
             targetTeacherId: form.facultyId,
           });
-          if (failedDuplicateErrors.length > 0) {
-            toast.push(`Some duplicate days could not be saved: ${failedDuplicateErrors.join(", ")}`, "info");
-          }
-        } else if (failedDuplicateErrors.length > 0) {
-          toast.push(`Created on ${form.day}, but duplicate on ${failedDuplicateErrors.join(", ")} failed`, "info");
+        } else if (pairedErrorMsg && pairedDay) {
+          toast.push(
+            `Created on ${form.day}, but paired session on ${pairedDay} had a conflict (${pairedErrorMsg})`,
+            "info"
+          );
         } else {
           toast.push("Class schedule created successfully", "success");
           addNotification({
@@ -1557,10 +1795,39 @@ export function SchedulesPage() {
         }
       }
 
-      setIsOpen(false);
-      setEditingSchedule(null);
-      setModalStep(1);
-      fetchSchedules();
+      if (addAnother && !editingSchedule) {
+        toast.push(
+          `Scheduled ${form.subjectCode}! Pick another subject for ${form.day} ${form.time}.`,
+          "success"
+        );
+        await fetchSchedules();
+
+        const curDay = form.day;
+        const curTime = form.time;
+        const updatedList = [...scheduleItems, payload as any];
+        const nextFreeRoom = findAvailableRoomForSlot(curDay, curTime, roomsList, updatedList);
+        const nextDefRoom = nextFreeRoom?.number || roomsList[0]?.number || "COL-101";
+        const nextDefBuilding = (nextFreeRoom?.building as BuildingType) || roomsList[0]?.building || "College Building";
+
+        setForm((prev) => ({
+          ...prev,
+          day: curDay,
+          time: curTime,
+          subjectCode: "",
+          subject: "",
+          room: nextDefRoom,
+          building: nextDefBuilding,
+          section: "",
+          facultyId: "",
+          faculty: "",
+        }));
+        setModalStep(1);
+      } else {
+        setIsOpen(false);
+        setEditingSchedule(null);
+        setModalStep(1);
+        fetchSchedules();
+      }
     } catch (err: any) {
       const errMsg = err?.response?.data?.message || err?.response?.data?.error || err?.message || "Failed to save schedule";
       toast.push(errMsg, "error");
@@ -1571,8 +1838,34 @@ export function SchedulesPage() {
 
   const visibleSchedules = useMemo(() => {
     return scheduleItems.filter((item) => {
-      // Perspective filter: By Section, By Faculty, or By Room
-      if (perspectiveMode === "section" && selectedPerspectiveEntity !== "All") {
+      // Perspective filter: By Program, By Section, By Faculty, or By Room
+      if (perspectiveMode === "program") {
+        if (matrixProgram !== "All") {
+          const progAliases = PROGRAM_COURSE_MAP[matrixProgram] || [matrixProgram];
+          const itemProg = String(item.program || "").toUpperCase();
+          const itemSec = String(item.section || "").toUpperCase();
+          const itemCode = String(item.subjectCode || "").toUpperCase();
+          const matches =
+            progAliases.some((a) => itemProg.includes(a) || itemSec.includes(a) || itemCode.includes(a)) ||
+            isGeneralSubject(item);
+          if (!matches) return false;
+        }
+        if (matrixYearLevel !== "All") {
+          const secStr = String(item.section || "").toLowerCase();
+          const yl = matrixYearLevel;
+          const matchesYear =
+            secStr.includes(`${yl}-`) ||
+            secStr.includes(` ${yl} `) ||
+            secStr.includes(`-${yl}`) ||
+            secStr.includes(`${yl}st`) ||
+            secStr.includes(`${yl}nd`) ||
+            secStr.includes(`${yl}rd`) ||
+            secStr.includes(`${yl}th`) ||
+            secStr.endsWith(` ${yl}`) ||
+            secStr.endsWith(`${yl}`);
+          if (!matchesYear) return false;
+        }
+      } else if (perspectiveMode === "section" && selectedPerspectiveEntity !== "All") {
         if (!item.section || !item.section.toLowerCase().includes(selectedPerspectiveEntity.toLowerCase())) {
           return false;
         }
@@ -1622,25 +1915,43 @@ export function SchedulesPage() {
         if (!str.includes(query.toLowerCase())) return false;
       }
 
+      if (durationFilter === "Minor") {
+        const isMin = !item.isMajor || (item.time && getTimeDurationStr(item.time)?.includes("1h 30m")) || item.classMode === "1.5h";
+        if (!isMin) return false;
+      } else if (durationFilter === "MajorLec") {
+        const isLec = Boolean(item.isMajor) && item.classMode === "Lecture";
+        if (!isLec) return false;
+      } else if (durationFilter === "MajorLab") {
+        const isLab = item.classMode === "Laboratory" || String(item.roomType || "").toLowerCase().includes("lab");
+        if (!isLab) return false;
+      } else if (durationFilter === "7am") {
+        if (!item.time.startsWith("07:00 AM") && !item.time.startsWith("7:00 AM")) return false;
+      } else if (durationFilter === "730am") {
+        if (!item.time.startsWith("07:30 AM") && !item.time.startsWith("7:30 AM")) return false;
+      }
+
       return true;
     });
   }, [
     scheduleItems,
     perspectiveMode,
     selectedPerspectiveEntity,
+    matrixProgram,
+    matrixYearLevel,
     selectedFacultyFilter,
     selectedDayFilter,
+    durationFilter,
     selectedProgram,
     role,
     matchesProgram,
     query,
   ]);
 
-  const dayScheduleClusters = useMemo(() => {
-    const map = new Map<string, ReturnType<typeof buildDayScheduleClusters>>();
+  const dayTimelineBlocks = useMemo(() => {
+    const map = new Map<string, DayTimelineBlock[]>();
     for (const day of DAYS) {
       const dayItems = visibleSchedules.filter((item) => item.day.toLowerCase() === day.toLowerCase());
-      map.set(day.toLowerCase(), buildDayScheduleClusters(dayItems));
+      map.set(day.toLowerCase(), buildDayTimelineBlocks(dayItems));
     }
     return map;
   }, [visibleSchedules]);
@@ -1665,25 +1976,33 @@ export function SchedulesPage() {
     }) || sectionsList[0];
     const defSecVal = defSec ? (defSec.course && defSec.section ? `${defSec.course} ${defSec.yearLevel || ''}-${defSec.section}`.trim() : defSec.section) : "BSIT 1-A";
 
+    const isFirstMajor = Boolean(firstSub?.isMajor) && !isGeneralSubject(firstSub);
+    const defMode: "Lecture" | "Laboratory" = isFirstMajor && Number(firstSub?.labHours || 0) > 0 ? "Laboratory" : "Lecture";
+    const duration = getExpectedSubjectDuration(firstSub, defMode);
+    const [startSlot] = timeSlot.split("-").map((t) => t.trim());
+    const calculatedEnd = calculateEndTimeFromStart(startSlot || "07:00 AM", duration);
+    const finalSlotTime = startSlot && calculatedEnd ? `${startSlot} - ${calculatedEnd}` : timeSlot;
+
     setEditingSchedule(null);
-    const paired = getPairedDay(day);
-    setPairDayEnabled(Boolean(paired));
-    setDuplicateDays(paired ? [paired] : ["Friday"]);
     setForm({
       day,
-      time: timeSlot,
+      time: finalSlotTime,
       subjectCode: firstSub?.code || "",
       subject: firstSub?.name || "",
       section: defSecVal,
       facultyId: defFac?.id || "",
       faculty: defFac?.name || "",
       room: defRoom,
+      pairedRoom: "",
       building: defBuilding,
+      pairedBuilding: defBuilding,
       modality: "Face-to-Face",
       onlineLink: "",
-      isMajor: Boolean(firstSub?.isMajor),
+      isMajor: isFirstMajor,
+      classMode: defMode,
       program: firstSub?.program || selectedProgram.key || "BSIT",
     });
+    setPairedEnabled(true);
     setModalStep(1);
     setIsOpen(true);
   };
@@ -1715,7 +2034,7 @@ export function SchedulesPage() {
         helpText={
           role === "teacher"
             ? "Browse your schedule or view other instructors' timetables to coordinate class times and room availability."
-            : "Supports Face-to-Face and Online classes, College/SHS/JHS room assignments, and part-time availability checking."
+            : "Supports College, SHS, and JHS room assignments, paired lecture/laboratory scheduling, and instructor conflict prevention."
         }
         actions={
           canCreate ? (
@@ -1724,32 +2043,40 @@ export function SchedulesPage() {
               type="button"
               onClick={() => {
                 setEditingSchedule(null);
-                setPairDayEnabled(true);
-                setDuplicateDays(["Friday"]);
                 const firstSec = availableSections[0] || sectionsList[0];
                 const defSecVal = firstSec ? (firstSec.course && firstSec.section ? `${firstSec.course} ${firstSec.yearLevel || ''}-${firstSec.section}`.trim() : firstSec.section) : "BSIT 1-A";
                 const filteredSubs = availableSubjects.filter((s) => isSubjectMatchingSection(s, firstSec));
                 const firstSub = filteredSubs[0] || availableSubjects[0] || subjectsList[0];
                 const defFac = availableFaculty.find((f) => f.id === firstSub?.instructorId || f.name === firstSub?.instructor) || availableFaculty[0] || facultyList[0];
-                const isLab = Number(firstSub?.labHours || 0) > 0;
                 const freeRoom = findAvailableRoomForSlot("Monday", "07:00 AM - 08:30 AM", roomsList, scheduleItems);
-                const defRoom = freeRoom?.number || roomsList.find((r) => isLab ? (/lab/i.test(r.type || '') || /lab/i.test(r.building || '')) : true)?.number || roomsList[0]?.number || "COL-101";
+                const isFirstMajor = Boolean(firstSub?.isMajor) && !isGeneralSubject(firstSub);
+                const defMode: "Lecture" | "Laboratory" = isFirstMajor && Number(firstSub?.labHours || 0) > 0 ? "Laboratory" : "Lecture";
+                const duration = isFirstMajor ? (defMode === "Laboratory" ? 180 : 120) : 90;
+                const calculatedEnd = calculateEndTimeFromStart("07:00 AM", duration);
+                const labRoom = roomsList.find((r) => /lab/i.test(r.type || "") || /lab/i.test(r.number || ""));
+                const defPairedRoom = defMode === "Lecture" ? (labRoom?.number || "COL-101") : "COL-101";
+                const defRoom = freeRoom?.number || roomsList[0]?.number || "COL-101";
                 const defBuilding = (freeRoom?.building as BuildingType) || roomsList[0]?.building || "College Building";
+
                 setForm({
                   day: "Monday",
-                  time: "07:00 AM - 08:30 AM",
+                  time: `07:00 AM - ${calculatedEnd}`,
                   subjectCode: firstSub?.code || "",
                   subject: firstSub?.name || "",
                   section: defSecVal,
                   facultyId: defFac?.id || "",
                   faculty: defFac?.name || "",
                   room: defRoom,
+                  pairedRoom: defPairedRoom,
                   building: defBuilding as BuildingType,
+                  pairedBuilding: defBuilding as BuildingType,
                   modality: "Face-to-Face",
                   onlineLink: "",
-                  isMajor: Boolean(firstSub?.isMajor),
+                  isMajor: isFirstMajor,
+                  classMode: defMode,
                   program: firstSub?.program || firstSec?.program || selectedProgram.key || "BSIT",
                 });
+                setPairedEnabled(true);
                 setModalStep(1);
                 setIsOpen(true);
               }}
@@ -1878,10 +2205,11 @@ export function SchedulesPage() {
                   </span>
                 </button>
               </Tooltip>
+
             </div>
 
             {/* Multi-Perspective Matrix View Selector */}
-            <div style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--srcb-surface-alt, #f8fafc)", padding: "4px 8px", borderRadius: 8, border: "1px solid var(--srcb-border)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--srcb-surface-alt, #f8fafc)", padding: "4px 8px", borderRadius: 8, border: "1px solid var(--srcb-border)", flexWrap: "wrap" }}>
               <label style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--srcb-navy)" }}>
                 Perspective:
               </label>
@@ -1894,10 +2222,40 @@ export function SchedulesPage() {
                 style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", color: "var(--srcb-text)", fontSize: "0.84rem", fontWeight: 600 }}
               >
                 <option value="all">All Timetables</option>
+                <option value="program">By Academic Program (SRCB Matrix)</option>
                 <option value="section">By Section / Block</option>
                 <option value="faculty">By Faculty Member</option>
                 <option value="room">By Room / Facility</option>
               </select>
+
+              {perspectiveMode === "program" && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <select
+                    value={matrixProgram}
+                    onChange={(e) => setMatrixProgram(e.target.value)}
+                    style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", color: "var(--srcb-text)", fontSize: "0.84rem", fontWeight: 600 }}
+                  >
+                    <option value="All">All Academic Programs</option>
+                    <option value="CJEP">Criminal Justice (BSCRIM / CJEP)</option>
+                    <option value="TEP">Teacher Education (TEP / BSED / BEED)</option>
+                    <option value="BSHM">Hospitality Management (BSHM)</option>
+                    <option value="BSBA">Business Administration (BSBA)</option>
+                    <option value="BSIT">Information Technology (BSIT / ITP)</option>
+                  </select>
+
+                  <select
+                    value={matrixYearLevel}
+                    onChange={(e) => setMatrixYearLevel(e.target.value)}
+                    style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", color: "var(--srcb-text)", fontSize: "0.84rem", fontWeight: 600 }}
+                  >
+                    <option value="All">All Year Levels</option>
+                    <option value="1">1st Year</option>
+                    <option value="2">2nd Year</option>
+                    <option value="3">3rd Year</option>
+                    <option value="4">4th Year</option>
+                  </select>
+                </div>
+              )}
 
               {perspectiveMode === "section" && (
                 <select
@@ -1971,13 +2329,29 @@ export function SchedulesPage() {
                     {role === "program_head" ? `My Classes (${currentUserName})` : `My Schedule (${currentUserName})`}
                   </option>
                 )}
-                {facultyList
-                  .filter((f) => !currentUserName || (f.name !== currentUserName && String(f.id) !== String(currentTeacherId)))
-                  .map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name} ({f.department || "Academic"})
-                    </option>
-                  ))}
+                {availableFaculty.map((f) => (
+                  <option key={f.id} value={f.name}>
+                    {f.name} ({f.department || "Faculty"})
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {/* Academic Duration & Bell Shift Filter */}
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.85rem", fontWeight: 600 }}>
+              Class Duration:
+              <select
+                value={durationFilter}
+                onChange={(e) => setDurationFilter(e.target.value)}
+                style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", color: "var(--srcb-text)", fontWeight: 500 }}
+                aria-label="Filter by class duration"
+              >
+                <option value="All">All Class Durations</option>
+                <option value="Minor">1.5h Minor (1hr 30m)</option>
+                <option value="MajorLec">2h Major Lecture</option>
+                <option value="MajorLab">3h Major Lab</option>
+                <option value="7am">7:00 AM Starts</option>
+                <option value="730am">7:30 AM Starts</option>
               </select>
             </label>
 
@@ -2032,444 +2406,497 @@ export function SchedulesPage() {
           <>
             {/* View Mode: Weekly Matrix Grid */}
             {viewMode === "grid" && (
-              <>
-                <div className="table-wrap" style={{ marginTop: 12 }}>
-            <table className="data-table" style={{ textAlign: "center" }}>
-              <thead>
-                <tr>
-                  <th style={{ width: 120 }}>Time Slot (30m)</th>
-                  {DAYS.map((d) => (
-                    <th key={d} style={{ minWidth: 155 }}>
-                      {d}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody
-                onMouseLeave={() => {
-                  if (isDraggingGrid) {
-                    setIsDraggingGrid(false);
-                    setDragStart(null);
-                    setDragCurrent(null);
-                  }
-                }}
-                onMouseUp={handleMouseUpGrid}
-              >
-                {(() => {
-                  // Track occupied (day, slotIdx) slots that are covered by an earlier rowSpan
-                  const coveredCells = new Set<string>();
-
-                  return TIME_SLOTS.map((slot, slotIdx) => (
-                    <tr key={slot}>
-                      <td className={`timetable-time-slot-cell ${slot.includes(":00 ") ? "is-hour" : "is-half-hour"}`}>
-                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-                          <span className="timetable-time-slot-time">
-                            {slot.split("-")[0].trim()}
-                          </span>
-                          <span className="timetable-time-slot-range">
-                            to {slot.split("-")[1].trim()}
-                          </span>
-                        </div>
-                      </td>
-                      {DAYS.map((day) => {
-                        const cellKey = `${day.toLowerCase()}-${slotIdx}`;
-                        if (coveredCells.has(cellKey)) {
-                          // This cell is part of an ongoing multi-slot block from an earlier row
-                          return null;
-                        }
-
-                        const clusters = dayScheduleClusters.get(day.toLowerCase()) || [];
-                        const cluster = clusters.find((c) => c.startIdx === slotIdx);
-
-                        const inRange = isSlotInDragRange(day, slotIdx);
-                        const isDropHover = dropTarget?.day === day && dropTarget?.slot === slot;
-
-                        if (!cluster || cluster.items.length === 0) {
-                          return (
-                            <td
-                              key={`${day}-${slot}`}
-                              className={`schedule-grid-cell ${inRange ? "drag-hover" : ""} ${isDropHover ? "drag-target-hover" : ""}`}
-                              onDragOver={(e) => {
-                                e.preventDefault();
-                                if (!dropTarget || dropTarget.day !== day || dropTarget.slot !== slot) {
-                                  setDropTarget({ day, slot });
-                                }
-                              }}
-                              onDragLeave={() => {
-                                if (dropTarget?.day === day && dropTarget?.slot === slot) {
-                                  setDropTarget(null);
-                                }
-                              }}
-                              onDrop={(e) => {
-                                e.preventDefault();
-                                const dataStr = e.dataTransfer.getData("application/json");
-                                handleDropOnCell(day, slot, dataStr);
-                              }}
-                              onMouseDown={(e) => {
-                                if (e.button === 0) {
-                                  handleMouseDownCell(day, slotIdx);
-                                }
-                              }}
-                              onMouseEnter={() => handleMouseEnterCell(day, slotIdx)}
-                            >
-                              <div className="schedule-empty-slot">
-                                {isDropHover ? (
-                                  <span className="schedule-drag-hint">
-                                    <Download size={13} style={{ flexShrink: 0 }} /> Drop to assign here
-                                  </span>
-                                ) : inRange && dragStart && dragCurrent ? (
-                                  <span className="schedule-drag-hint">
-                                    <Clock size={13} style={{ flexShrink: 0 }} />{" "}
-                                    {TIME_SLOTS[Math.min(dragStart.slotIdx, dragCurrent.slotIdx)].split("-")[0].trim()} -{" "}
-                                    {TIME_SLOTS[Math.max(dragStart.slotIdx, dragCurrent.slotIdx)].split("-")[1].trim()}
-                                  </span>
-                                ) : canCreate ? (
-                                  <span style={{ fontSize: "0.72rem", opacity: 0.65 }}>+ Slot</span>
-                                ) : (
-                                  <span style={{ color: "#cbd5e1", fontSize: "0.75rem" }}>—</span>
-                                )}
-                              </div>
-                            </td>
-                          );
-                        }
-
-                        const rowSpan = Math.max(1, cluster.endIdx - cluster.startIdx);
-
-                        // Mark subsequent slots as covered
-                        for (let offset = 1; offset < rowSpan; offset++) {
-                          if (slotIdx + offset < TIME_SLOTS.length) {
-                            coveredCells.add(`${day.toLowerCase()}-${slotIdx + offset}`);
-                          }
-                        }
-
-                        return (
-                          <td
-                            key={`${day}-${slot}`}
-                            rowSpan={rowSpan > 1 ? rowSpan : undefined}
-                            className={`schedule-grid-cell ${inRange ? "drag-hover" : ""} ${isDropHover ? "drag-target-hover" : ""}`}
-                            style={{ height: rowSpan > 1 ? `${rowSpan * 42}px` : undefined }}
-                            onDragOver={(e) => {
-                              e.preventDefault();
-                              if (!dropTarget || dropTarget.day !== day || dropTarget.slot !== slot) {
-                                setDropTarget({ day, slot });
-                              }
-                            }}
-                            onDragLeave={() => {
-                              if (dropTarget?.day === day && dropTarget?.slot === slot) {
-                                setDropTarget(null);
-                              }
-                            }}
-                            onDrop={(e) => {
-                              e.preventDefault();
-                              const dataStr = e.dataTransfer.getData("application/json");
-                              handleDropOnCell(day, slot, dataStr);
-                            }}
-                          >
-                            <StackedScheduleCell
-                              day={day}
-                              slot={slot}
-                              slotIdx={slotIdx}
-                              rowSpan={rowSpan}
-                              schedules={cluster.items}
-                              canCreate={canCreate}
-                              onEdit={handleEdit}
-                              onDelete={(item) => setScheduleToDelete(item)}
-                              onView={(item) => setViewingSchedule(item)}
-                              onAddAtSlot={handleOpenAddAtSlot}
-                              onDuplicate={handleDuplicate}
-                            />
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ));
-                })()}
-              </tbody>
-            </table>
-          </div>
-          </>
-        )}
-
-        {/* View Mode: Filterable List View */}
-        {viewMode === "list" && (
-          <div style={{ marginTop: 16 }}>
-            {visibleSchedules.length === 0 ? (
-              <div className="empty-state" style={{ padding: "36px 16px", background: "var(--srcb-surface-alt, #f8fafc)", borderRadius: 8, textAlign: "center" }}>
-                <p style={{ margin: 0, fontWeight: 600, fontSize: "0.95rem" }}>No scheduled classes found matching your filters.</p>
-                <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "var(--srcb-text-muted)" }}>
-                  Try changing your Day or Instructor filter, or adjusting your search keywords.
-                </p>
-                {(query || selectedDayFilter !== "All" || selectedFacultyFilter !== "All") && (
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={() => {
-                      setQuery("");
-                      setSelectedDayFilter("All");
-                      setSelectedFacultyFilter("All");
-                    }}
-                    style={{ marginTop: 12, fontSize: "0.8rem" }}
-                  >
-                    Clear Search & Filters
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
-                {visibleSchedules.map((item) => {
-                  const itemTheme = getProgramTheme(item);
-                  return (
-                    <div
-                      key={item.id}
-                      style={{
-                        background: item.modality === "Online" ? "rgba(52, 211, 153, 0.12)" : "var(--srcb-surface-elevated, #ffffff)",
-                        border: "1px solid var(--srcb-border)",
-                        borderLeft: `5px solid ${itemTheme.primary}`,
-                        borderRadius: 10,
-                        padding: "14px 16px",
-                        boxShadow: "0 2px 6px rgba(15, 23, 42, 0.05)",
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "space-between",
-                        transition: "transform 150ms ease, box-shadow 150ms ease",
-                      }}
-                    >
-                      <div>
-                        {/* Card Header: Code & Modality */}
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span style={{ fontWeight: 800, fontSize: "0.95rem", color: "var(--srcb-navy)" }}>
-                              {item.subjectCode}
-                            </span>
-                            <span
-                              className="program-card-badge"
-                              style={{
-                                backgroundColor: itemTheme.badgeBg,
-                                color: itemTheme.badgeText,
-                              }}
-                              title={`Program: ${itemTheme.name}`}
-                            >
-                              {itemTheme.code}
-                            </span>
-                          </div>
-                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                          <span
-                            className={`pill ${item.modality === "Online" ? "pill--emerald" : "pill--navy"}`}
-                            style={{ fontSize: "0.7rem", padding: "2px 8px" }}
-                          >
-                            {item.modality}
-                          </span>
-                          <span className={`pill ${item.isMajor ? "pill--royal" : "pill--slate"}`} style={{ fontSize: "0.7rem" }}>
-                            {item.isMajor ? "Major" : "Gen Ed"}
-                          </span>
-                        </div>
+              <div className="timetable-workspace">
+                <div className="timetable-workspace-main">
+                  {/* Institutional Timetable Matrix Banner */}
+                  <div className="timetable-matrix-institutional-banner">
+                    <div>
+                      <h3 className="timetable-matrix-banner-title">
+                        {perspectiveMode === "program" && matrixProgram !== "All"
+                          ? `${matrixProgram === "CJEP" ? "CRIMINAL JUSTICE EDUCATION PROGRAM" : matrixProgram === "TEP" ? "TEACHER EDUCATION PROGRAM" : matrixProgram === "BSHM" ? "HOSPITALITY MANAGEMENT PROGRAM" : matrixProgram === "BSBA" ? "BUSINESS ADMINISTRATION PROGRAM" : "INFORMATION TECHNOLOGY PROGRAM"} CLASS SCHEDULE ${matrixYearLevel !== "All" ? `FOR ${matrixYearLevel === "1" ? "1ST" : matrixYearLevel === "2" ? "2ND" : matrixYearLevel === "3" ? "3RD" : "4TH"} YEAR` : ""}`
+                          : perspectiveMode === "section" && selectedPerspectiveEntity !== "All"
+                          ? `CLASS SCHEDULE FOR SECTION ${selectedPerspectiveEntity.toUpperCase()}`
+                          : perspectiveMode === "faculty" && selectedPerspectiveEntity !== "All"
+                          ? `FACULTY TEACHING TIMETABLE • ${selectedPerspectiveEntity.toUpperCase()}`
+                          : perspectiveMode === "room" && selectedPerspectiveEntity !== "All"
+                          ? `ROOM UTILIZATION TIMETABLE • ${selectedPerspectiveEntity.toUpperCase()}`
+                          : "OFFICIAL INSTITUTIONAL CLASS TIMETABLE"}
+                        <span className="timetable-matrix-banner-semester">
+                          (1st Semester SY 2026-2027)
+                        </span>
+                      </h3>
+                      <div className="timetable-matrix-banner-sub">
+                        St. Rita's College of Balingasag • Multi-Track Matrix Timetable (Monday – Saturday, 7:00 AM – 9:00 PM)
                       </div>
-
-                      {/* Subject Name */}
-                      <h4 style={{ fontSize: "0.9rem", color: "var(--srcb-text)", margin: "0 0 8px 0", fontWeight: 600, lineHeight: 1.3 }}>
-                        {item.subject}
-                      </h4>
-
-                      {/* Metadata Grid */}
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 10px", fontSize: "0.8rem", color: "var(--srcb-text-muted)", background: "var(--srcb-surface-alt)", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--srcb-border)" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                          <Calendar size={12} style={{ flexShrink: 0 }} /> <strong style={{ color: "var(--srcb-text)" }}>Day:</strong> {item.day}
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                          <Clock size={12} style={{ flexShrink: 0 }} /> <strong style={{ color: "var(--srcb-text)" }}>Time:</strong> {item.time}
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                          <GraduationCap size={12} style={{ flexShrink: 0 }} /> <strong style={{ color: "var(--srcb-text)" }}>Section:</strong> {item.section}
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                          <DoorOpen size={12} style={{ flexShrink: 0 }} /> <strong style={{ color: "var(--srcb-text)" }}>Room:</strong> {item.room}
-                        </div>
-                      </div>
-
-                      <div style={{ marginTop: 8, fontSize: "0.82rem", color: "var(--srcb-navy)", fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}>
-                        <UserCheck size={13} style={{ flexShrink: 0 }} /> {item.faculty}
-                      </div>
-
-                      {item.modality === "Online" && item.onlineLink && (
-                        <div style={{ marginTop: 6 }}>
-                          <a
-                            href={item.onlineLink}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{
-                              fontSize: "0.76rem",
-                              color: "#059669",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 4,
-                              textDecoration: "underline",
-                              fontWeight: 600,
-                            }}
-                          >
-                            <ExternalLink size={13} /> Open Virtual Meeting Link
-                          </a>
-                        </div>
-                      )}
                     </div>
 
-                    {/* Card Actions */}
-                    {canCreate ? (
-                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12, paddingTop: 8, borderTop: "1px solid var(--srcb-border-subtle, #f1f5f9)" }}>
-                        <button
-                          type="button"
-                          className="secondary-button"
-                          onClick={() => handleDuplicate(item)}
-                          aria-label={`Duplicate schedule for ${item.subjectCode}`}
-                          style={{ padding: "5px 10px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: 4 }}
-                        >
-                          <Copy size={13} /> Duplicate
-                        </button>
-                        <button
-                          type="button"
-                          className="secondary-button"
-                          onClick={() => handleEdit(item)}
-                          aria-label={`Edit schedule for ${item.subjectCode}`}
-                          style={{ padding: "5px 10px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: 4 }}
-                        >
-                          <Edit2 size={13} /> Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="secondary-button"
-                          onClick={() => setScheduleToDelete(item)}
-                          aria-label={`Remove schedule for ${item.subjectCode}`}
-                          style={{ padding: "5px 10px", fontSize: "0.78rem", color: "#dc2626", borderColor: "#fca5a5", display: "inline-flex", alignItems: "center", gap: 4 }}
-                        >
-                          <Trash2 size={13} /> Remove
-                        </button>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                      {/* Institutional Class Durations Guidelines */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.74rem", fontWeight: 600 }}>
+                        <span className="pill pill--amber" style={{ fontSize: "0.62rem", padding: "1px 6px" }}>Gen Ed (1.5h)</span>
+                        <span className="pill pill--blue" style={{ fontSize: "0.62rem", padding: "1px 6px" }}>Major Lec (2h)</span>
+                        <span className="pill pill--purple" style={{ fontSize: "0.62rem", padding: "1px 6px" }}>Major Lab (3h)</span>
                       </div>
-                    ) : (
-                      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12, paddingTop: 8, borderTop: "1px solid var(--srcb-border-subtle, #f1f5f9)" }}>
-                        <button
-                          type="button"
-                          className="secondary-button"
-                          onClick={() => setViewingSchedule(item)}
-                          style={{ padding: "5px 12px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: 5 }}
-                        >
-                          <Eye size={13} /> View Details
-                        </button>
+
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => window.print()}
+                        style={{ padding: "6px 14px", display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: "0.82rem" }}
+                        title="Print Timetable Matrix"
+                      >
+                        <Printer size={14} />
+                        <span>Print Timetable</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="timetable-calendar-scroll" style={{ overflowX: "auto" }}>
+                    <div className="timetable-timeline-grid" role="grid" aria-label="Weekly Class Schedule Timetable">
+                      {/* Sticky Days Header */}
+                      <div className="timetable-timeline-header" role="row">
+                        <div className="timetable-timeline-corner-cell" role="columnheader">
+                          <Clock size={14} style={{ marginRight: 5, verticalAlign: "middle" }} />
+                          <span>TIME</span>
+                        </div>
+                        {DAYS.map((d) => {
+                          const count = visibleSchedules.filter((s) => s.day.toLowerCase() === d.toLowerCase()).length;
+                          return (
+                            <div key={d} className="timetable-timeline-day-header" role="columnheader">
+                              <div className="day-name">{d.toUpperCase()}</div>
+                              <div className="day-count-badge">
+                                {count} {count === 1 ? "Class" : "Classes"}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
+
+                      {/* Timeline Body */}
+                      <div
+                        className="timetable-timeline-body"
+                        onMouseLeave={() => {
+                          if (isDraggingGrid) {
+                            setIsDraggingGrid(false);
+                            setDragStart(null);
+                            setDragCurrent(null);
+                          }
+                        }}
+                        onMouseUp={handleMouseUpGrid}
+                      >
+                        {/* Time Gutter Column */}
+                        <div className="timetable-time-gutter">
+                          {TIME_SLOTS.map((slot) => {
+                            const startTime = slot.split("-")[0].trim();
+                            const isHour = startTime.includes(":00");
+                            return (
+                              <div
+                                key={slot}
+                                className={`timetable-time-slot-cell ${isHour ? "is-hour" : "is-half-hour"}`}
+                              >
+                                <span className="timetable-time-slot-time">
+                                  {startTime}
+                                </span>
+                                <span className="timetable-time-slot-sub">
+                                  {isHour ? "Hour Mark" : ":30 Shift"}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* 6 Day Columns */}
+                        {DAYS.map((day) => {
+                          const blocks = dayTimelineBlocks.get(day.toLowerCase()) || [];
+
+                          return (
+                            <div key={day} className="timetable-day-column" data-day={day}>
+                              {/* Background Slot Grid: Interactive Drag, Drop, Click Targets */}
+                              <div className="timetable-day-slots-bg">
+                                {TIME_SLOTS.map((slot, slotIdx) => {
+                                  const inRange = isSlotInDragRange(day, slotIdx);
+                                  const isDropHover = dropTarget?.day === day && dropTarget?.slot === slot;
+
+                                  return (
+                                    <div
+                                      key={`${day}-${slot}`}
+                                      className={`schedule-grid-cell ${inRange ? "drag-hover" : ""} ${isDropHover ? "drag-target-hover" : ""}`}
+                                      onDragOver={(e) => {
+                                        e.preventDefault();
+                                        if (!dropTarget || dropTarget.day !== day || dropTarget.slot !== slot) {
+                                          setDropTarget({ day, slot });
+                                        }
+                                      }}
+                                      onDragLeave={() => {
+                                        if (dropTarget?.day === day && dropTarget?.slot === slot) {
+                                          setDropTarget(null);
+                                        }
+                                      }}
+                                      onDrop={(e) => {
+                                        e.preventDefault();
+                                        const dataStr = e.dataTransfer.getData("application/json");
+                                        handleDropOnCell(day, slot, dataStr);
+                                      }}
+                                      onMouseDown={(e) => {
+                                        if (e.button === 0) {
+                                          handleMouseDownCell(day, slotIdx);
+                                        }
+                                      }}
+                                      onMouseEnter={() => handleMouseEnterCell(day, slotIdx)}
+                                    >
+                                      <div className="schedule-empty-slot">
+                                        {isDropHover ? (
+                                          <span className="schedule-drag-hint">
+                                            <Download size={13} style={{ flexShrink: 0 }} /> Drop to assign here
+                                          </span>
+                                        ) : inRange && dragStart && dragCurrent ? (
+                                          <span className="schedule-drag-hint">
+                                            <Clock size={13} style={{ flexShrink: 0 }} />{" "}
+                                            {TIME_SLOTS[Math.min(dragStart.slotIdx, dragCurrent.slotIdx)].split("-")[0].trim()} -{" "}
+                                            {TIME_SLOTS[Math.max(dragStart.slotIdx, dragCurrent.slotIdx)].split("-")[1].trim()}
+                                          </span>
+                                        ) : canCreate ? (
+                                          <span style={{ fontSize: "0.72rem", opacity: 0.65 }}>+ Add Class</span>
+                                        ) : (
+                                          <span style={{ color: "#cbd5e1", fontSize: "0.75rem" }}>—</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              {/* Foreground Scheduled Class Blocks */}
+                              <div className="timetable-day-items-layer">
+                                {blocks.map((block) => (
+                                  <div
+                                    key={block.key}
+                                    className="timetable-schedule-positioned-block"
+                                    style={{
+                                      top: `${block.startIdx * 52}px`,
+                                      height: `${block.span * 52 - 4}px`,
+                                      left: `calc(${block.leftPercent}% + 2px)`,
+                                      width: `calc(${block.widthPercent}% - 4px)`,
+                                      zIndex: 2,
+                                    }}
+                                    onDragOver={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                    }}
+                                    onDrop={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      const dataStr = e.dataTransfer.getData("application/json");
+                                      handleDropOnCell(day, block.slot, dataStr);
+                                    }}
+                                  >
+                                    <StackedScheduleCell
+                                      day={day}
+                                      slot={block.slot}
+                                      slotIdx={block.startIdx}
+                                      rowSpan={block.span}
+                                      schedules={block.items}
+                                      canCreate={canCreate}
+                                      onEdit={handleEdit}
+                                      onDelete={(item) => setScheduleToDelete(item)}
+                                      onView={(item) => setViewingSchedule(item)}
+                                      onAddAtSlot={handleOpenAddAtSlot}
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* View Mode: Filterable List View */}
+            {viewMode === "list" && (
+              <div style={{ marginTop: 16 }}>
+                {visibleSchedules.length === 0 ? (
+                  <div className="empty-state" style={{ padding: "36px 16px", background: "var(--srcb-surface-alt, #f8fafc)", borderRadius: 8, textAlign: "center" }}>
+                    <p style={{ margin: 0, fontWeight: 600, fontSize: "0.95rem" }}>No scheduled classes found matching your filters.</p>
+                    <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "var(--srcb-text-muted)" }}>
+                      Try changing your Day or Instructor filter, or adjusting your search keywords.
+                    </p>
+                    {(query || selectedDayFilter !== "All" || selectedFacultyFilter !== "All") && (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => {
+                          setQuery("");
+                          setSelectedDayFilter("All");
+                          setSelectedFacultyFilter("All");
+                        }}
+                        style={{ marginTop: 12, fontSize: "0.8rem" }}
+                      >
+                        Clear Search & Filters
+                      </button>
                     )}
                   </div>
-                );
-              })}
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
+                    {visibleSchedules.map((item) => {
+                      const itemTheme = getProgramTheme(item);
+                      return (
+                        <div
+                          key={item.id}
+                          style={{
+                            background: item.modality === "Online" ? "rgba(52, 211, 153, 0.12)" : "var(--srcb-surface-elevated, #ffffff)",
+                            border: "1px solid var(--srcb-border)",
+                            borderLeft: `5px solid ${itemTheme.primary}`,
+                            borderRadius: 10,
+                            padding: "14px 16px",
+                            boxShadow: "0 2px 6px rgba(15, 23, 42, 0.05)",
+                            display: "flex",
+                            flexDirection: "column",
+                            justifyContent: "space-between",
+                            transition: "transform 150ms ease, box-shadow 150ms ease",
+                          }}
+                        >
+                          <div>
+                            {/* Card Header: Code & Modality */}
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <span style={{ fontWeight: 800, fontSize: "0.95rem", color: "var(--srcb-navy)" }}>
+                                  {item.subjectCode}
+                                </span>
+                                <span
+                                  className="program-card-badge"
+                                  style={{
+                                    backgroundColor: itemTheme.badgeBg,
+                                    color: itemTheme.badgeText,
+                                  }}
+                                  title={`Program: ${itemTheme.name}`}
+                                >
+                                  {itemTheme.code}
+                                </span>
+                              </div>
+                              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                {item.modality === "Online" && (
+                                  <span
+                                    className="pill pill--emerald"
+                                    style={{ fontSize: "0.7rem", padding: "2px 8px" }}
+                                  >
+                                    Online
+                                  </span>
+                                )}
+                                <span className={`pill ${item.isMajor ? "pill--royal" : "pill--slate"}`} style={{ fontSize: "0.7rem" }}>
+                                  {item.isMajor ? "Major" : "Gen Ed"}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Subject Name */}
+                            <h4 style={{ fontSize: "0.9rem", color: "var(--srcb-text)", margin: "0 0 8px 0", fontWeight: 600, lineHeight: 1.3 }}>
+                              {item.subject}
+                            </h4>
+
+                            {/* Metadata Grid */}
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 10px", fontSize: "0.8rem", color: "var(--srcb-text-muted)", background: "var(--srcb-surface-alt)", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--srcb-border)" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                <Calendar size={12} style={{ flexShrink: 0 }} /> <strong style={{ color: "var(--srcb-text)" }}>Day:</strong> {item.day}
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                <Clock size={12} style={{ flexShrink: 0 }} /> <strong style={{ color: "var(--srcb-text)" }}>Time:</strong> {item.time}
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                <GraduationCap size={12} style={{ flexShrink: 0 }} /> <strong style={{ color: "var(--srcb-text)" }}>Section:</strong> {item.section}
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                <DoorOpen size={12} style={{ flexShrink: 0 }} /> <strong style={{ color: "var(--srcb-text)" }}>Room:</strong> {item.room}
+                              </div>
+                            </div>
+
+                            <div style={{ marginTop: 8, fontSize: "0.82rem", color: "var(--srcb-navy)", fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}>
+                              <UserCheck size={13} style={{ flexShrink: 0 }} /> {item.faculty}
+                            </div>
+
+                            {item.modality === "Online" && item.onlineLink && (
+                              <div style={{ marginTop: 6 }}>
+                                <a
+                                  href={item.onlineLink}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={{
+                                    fontSize: "0.76rem",
+                                    color: "#059669",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                    textDecoration: "underline",
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  <ExternalLink size={13} /> Open Virtual Meeting Link
+                                </a>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Card Actions */}
+                          {canCreate ? (
+                            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12, paddingTop: 8, borderTop: "1px solid var(--srcb-border-subtle, #f1f5f9)" }}>
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                onClick={() => handleDuplicate(item)}
+                                aria-label={`Duplicate schedule for ${item.subjectCode}`}
+                                style={{ padding: "5px 10px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: 4 }}
+                              >
+                                <Copy size={13} /> Duplicate
+                              </button>
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                onClick={() => handleEdit(item)}
+                                aria-label={`Edit schedule for ${item.subjectCode}`}
+                                style={{ padding: "5px 10px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: 4 }}
+                              >
+                                <Edit2 size={13} /> Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                onClick={() => setScheduleToDelete(item)}
+                                aria-label={`Remove schedule for ${item.subjectCode}`}
+                                style={{ padding: "5px 10px", fontSize: "0.78rem", color: "#dc2626", borderColor: "#fca5a5", display: "inline-flex", alignItems: "center", gap: 4 }}
+                              >
+                                <Trash2 size={13} /> Remove
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12, paddingTop: 8, borderTop: "1px solid var(--srcb-border-subtle, #f1f5f9)" }}>
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                onClick={() => setViewingSchedule(item)}
+                                style={{ padding: "5px 12px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: 5 }}
+                              >
+                                <Eye size={13} /> View Details
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        )}
 
-        {/* Unscheduled Subjects View */}
-        {viewMode === "unscheduled" && (
-          <div style={{ marginTop: 20 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-              <div>
-                <h4 style={{ margin: 0, fontSize: "1rem", color: "var(--srcb-text)" }}>
-                  Curriculum Subjects Awaiting Class Schedule ({filteredUnscheduled.length})
-                </h4>
-                <p className="muted" style={{ margin: "2px 0 0", fontSize: "0.84rem" }}>
-                  These subjects are active in the institutional catalog but do not currently have an assigned timetable block.
-                </p>
-              </div>
-              <span className="pill pill--amber">
-                {filteredUnscheduled.length} Unscheduled
-              </span>
-            </div>
+            {/* Unscheduled Subjects View */}
+            {viewMode === "unscheduled" && (
+              <div style={{ marginTop: 20 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: "1rem", color: "var(--srcb-text)" }}>
+                      Curriculum Subjects Awaiting Class Schedule ({filteredUnscheduled.length})
+                    </h4>
+                    <p className="muted" style={{ margin: "2px 0 0", fontSize: "0.84rem" }}>
+                      These subjects are active in the institutional catalog but do not currently have an assigned timetable block.
+                    </p>
+                  </div>
+                  <span className="pill pill--amber">
+                    {filteredUnscheduled.length} Unscheduled
+                  </span>
+                </div>
 
-            {filteredUnscheduled.length === 0 ? (
-              <div className="card" style={{ textAlign: "center", padding: "40px 20px" }}>
-                <CheckCircle2 size={40} color="#10b981" style={{ margin: "0 auto 12px" }} />
-                <h3 style={{ margin: 0, color: "var(--srcb-text)" }}>All Academic Subjects Scheduled</h3>
-                <p className="muted" style={{ margin: "6px 0 0", fontSize: "0.88rem" }}>
-                  Every active curriculum subject in the institutional database has been allocated a timetable schedule.
-                </p>
-              </div>
-            ) : (
-              <div className="grid-3" style={{ gap: 16 }}>
-                {filteredUnscheduled.map((sub) => {
-                  const subTheme = getProgramTheme(sub);
-                  return (
-                    <div
-                      key={sub.code || sub.id}
-                      className="card"
-                      style={{
-                        borderLeft: `4px solid ${subTheme.primary}`,
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "space-between",
-                        padding: 16,
-                      }}
-                    >
-                      <div>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span style={{ fontWeight: 800, fontSize: "0.95rem", color: "var(--srcb-navy)" }}>
-                              {sub.code}
-                            </span>
-                            <span
-                              className="program-card-badge"
-                              style={{
-                                backgroundColor: subTheme.badgeBg,
-                                color: subTheme.badgeText,
-                              }}
-                              title={`Program: ${subTheme.name}`}
-                            >
-                              {subTheme.code}
-                            </span>
+                {filteredUnscheduled.length === 0 ? (
+                  <div className="card" style={{ textAlign: "center", padding: "40px 20px" }}>
+                    <CheckCircle2 size={40} color="#10b981" style={{ margin: "0 auto 12px" }} />
+                    <h3 style={{ margin: 0, color: "var(--srcb-text)" }}>All Academic Subjects Scheduled</h3>
+                    <p className="muted" style={{ margin: "6px 0 0", fontSize: "0.88rem" }}>
+                      Every active curriculum subject in the institutional database has been allocated a timetable schedule.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid-3" style={{ gap: 16 }}>
+                    {filteredUnscheduled.map((sub) => {
+                      const subTheme = getProgramTheme(sub);
+                      return (
+                        <div
+                          key={sub.code || sub.id}
+                          className="card"
+                          style={{
+                            borderLeft: `4px solid ${subTheme.primary}`,
+                            display: "flex",
+                            flexDirection: "column",
+                            justifyContent: "space-between",
+                            padding: 16,
+                          }}
+                        >
+                          <div>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <span style={{ fontWeight: 800, fontSize: "0.95rem", color: "var(--srcb-navy)" }}>
+                                  {sub.code}
+                                </span>
+                                <span
+                                  className="program-card-badge"
+                                  style={{
+                                    backgroundColor: subTheme.badgeBg,
+                                    color: subTheme.badgeText,
+                                  }}
+                                  title={`Program: ${subTheme.name}`}
+                                >
+                                  {subTheme.code}
+                                </span>
+                              </div>
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <span className={`pill ${sub.isMajor ? "pill--royal" : "pill--slate"}`} style={{ fontSize: "0.7rem" }}>
+                                  {sub.isMajor ? "Major" : "Gen Ed"}
+                                </span>
+                                <span className="pill pill--amber" style={{ fontSize: "0.7rem" }}>
+                                  Unscheduled
+                                </span>
+                              </div>
+                            </div>
+
+                            <h4 style={{ fontSize: "0.92rem", color: "var(--srcb-text)", margin: "0 0 8px 0", fontWeight: 600, lineHeight: 1.3 }}>
+                              {sub.name}
+                            </h4>
+
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 10px", fontSize: "0.8rem", color: "var(--srcb-text-muted)", background: "var(--srcb-surface-alt, rgba(148, 163, 184, 0.08))", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--srcb-border)" }}>
+                              <div>
+                                <strong>Department:</strong> {sub.program || sub.department || "Academic"}
+                              </div>
+                              <div>
+                                <strong>Units:</strong> {sub.units || 3} Units
+                              </div>
+                              <div>
+                                <strong>Lec Hours:</strong> {sub.lecHours || sub.lectureHours || 3} hrs
+                              </div>
+                              <div>
+                                <strong>Lab Hours:</strong> {sub.labHours || 0} hrs
+                              </div>
+                            </div>
                           </div>
-                          <div style={{ display: "flex", gap: 6 }}>
-                            <span className={`pill ${sub.isMajor ? "pill--royal" : "pill--slate"}`} style={{ fontSize: "0.7rem" }}>
-                              {sub.isMajor ? "Major" : "Gen Ed"}
-                            </span>
-                            <span className="pill pill--amber" style={{ fontSize: "0.7rem" }}>
-                              Unscheduled
-                            </span>
-                          </div>
+
+                          {canCreate && (
+                            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14, paddingTop: 10, borderTop: "1px solid var(--srcb-border)" }}>
+                              <button
+                                type="button"
+                                className="action-button"
+                                onClick={() => handleScheduleUnscheduledSubject(sub)}
+                                style={{ padding: "6px 14px", fontSize: "0.82rem", display: "inline-flex", alignItems: "center", gap: 6 }}
+                              >
+                                <CalendarRange size={14} /> Schedule Now
+                              </button>
+                            </div>
+                          )}
                         </div>
-
-                        <h4 style={{ fontSize: "0.92rem", color: "var(--srcb-text)", margin: "0 0 8px 0", fontWeight: 600, lineHeight: 1.3 }}>
-                          {sub.name}
-                        </h4>
-
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 10px", fontSize: "0.8rem", color: "var(--srcb-text-muted)", background: "var(--srcb-surface-alt, rgba(148, 163, 184, 0.08))", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--srcb-border)" }}>
-                          <div>
-                            <strong>Department:</strong> {sub.program || sub.department || "Academic"}
-                          </div>
-                          <div>
-                            <strong>Units:</strong> {sub.units || 3} Units
-                          </div>
-                          <div>
-                            <strong>Lec Hours:</strong> {sub.lecHours || sub.lectureHours || 3} hrs
-                          </div>
-                          <div>
-                            <strong>Lab Hours:</strong> {sub.labHours || 0} hrs
-                          </div>
-                        </div>
-                      </div>
-
-                      {canCreate && (
-                        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14, paddingTop: 10, borderTop: "1px solid var(--srcb-border)" }}>
-                          <button
-                            type="button"
-                            className="action-button"
-                            onClick={() => handleScheduleUnscheduledSubject(sub)}
-                            style={{ padding: "6px 14px", fontSize: "0.82rem", display: "inline-flex", alignItems: "center", gap: 6 }}
-                          >
-                            <CalendarRange size={14} /> Schedule Now
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        )}
           </>
         )}
       </section>
@@ -2479,6 +2906,9 @@ export function SchedulesPage() {
           =================================================== */}
       <Modal
         isOpen={isOpen && canCreate}
+        size="xl"
+        icon={<Calendar size={20} />}
+        eyebrow="Class Timetable"
         title={
           modalStep === 1
             ? (editingSchedule ? "Edit Class Schedule - Step 1: Basic Information" : "Create Class Schedule - Step 1: Basic Information")
@@ -2486,7 +2916,7 @@ export function SchedulesPage() {
         }
         description={
           modalStep === 1
-            ? "Define the academic subject, teaching day, time slot, and instructional delivery mode."
+            ? "Define the academic subject, teaching day, and time slot."
             : "Assign an available instructor, room, and student section for this schedule slot."
         }
         onClose={() => {
@@ -2536,345 +2966,433 @@ export function SchedulesPage() {
 
         {/* STEP 1: Basic Schedule Information (WHAT & WHEN) */}
         {modalStep === 1 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div className="sched-modal-side-by-side">
-              {/* LEFT COLUMN: WHAT & HOW (Subject + Modality) */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                {/* Subject Section Card */}
-                <div className="sched-form-card">
-                  <div className="sched-form-card-header">
-                    <div className="sched-form-card-title-wrap">
-                      <div className="sched-form-card-icon">
-                        <BookOpen size={16} />
-                      </div>
-                      <span className="sched-form-card-title">Curriculum Subject</span>
+              {/* LEFT COLUMN: Subject & Component (Consolidated Card) */}
+              <div className="sched-form-card" style={{ padding: "14px 16px", gap: 10 }}>
+                <div className="sched-form-card-header" style={{ paddingBottom: 8 }}>
+                  <div className="sched-form-card-title-wrap">
+                    <div className="sched-form-card-icon">
+                      <BookOpen size={16} />
                     </div>
-                    {selectedSubjectObj && (
-                      <span className="sched-form-card-badge">
-                        {selectedSubjectObj.units} Units {Number(selectedSubjectObj.labHours || 0) > 0 ? "· Lab Required" : "· Lecture"}
-                      </span>
-                    )}
+                    <span className="sched-form-card-title">Curriculum Subject &amp; Component</span>
                   </div>
+                  <span
+                    className="sched-form-card-badge"
+                    style={{
+                      background: form.isMajor ? "rgba(37, 99, 235, 0.1)" : "rgba(245, 158, 11, 0.1)",
+                      color: form.isMajor ? "var(--srcb-royal)" : "#b45309",
+                      fontWeight: 700,
+                      padding: "2px 8px",
+                      borderRadius: 4,
+                    }}
+                  >
+                    {selectedSubjectObj ? `${selectedSubjectObj.units} Units · ` : ""}
+                    {form.isMajor
+                      ? pairedDay && pairedEnabled && !editingSchedule
+                        ? `Major: ${form.classMode === "Lecture" ? "Lec (2h) + Lab (3h)" : "Lab (3h) + Lec (2h)"}`
+                        : form.classMode === "Laboratory"
+                          ? "Major Lab (3h)"
+                          : "Major Lecture (2h)"
+                      : "Gen Ed / Minor (1.5h)"}
+                  </span>
+                </div>
 
-                  <div className="field-group" style={{ margin: 0 }}>
-                    <label htmlFor="schedSubject">
-                      Academic Subject <span style={{ color: "#dc2626" }}>*</span>
-                    </label>
-                    <SearchableSelect
-                      id="schedSubject"
-                      value={form.subjectCode}
-                      onChange={(val) => handleSubjectChange(val)}
-                      options={subjectOptionsForStep1}
-                      placeholder="Search & select curriculum subject..."
-                      searchPlaceholder="Search by subject code, title, program..."
-                      emptyText="No matching academic subjects found"
-                    />
+                <div className="field-group" style={{ margin: 0 }}>
+                  <label htmlFor="schedSubject" className="modal-field-label">
+                    <BookOpen size={13} />
+                    <span>Academic Subject</span>
+                    <span className="required-asterisk">*</span>
+                  </label>
+                  <SearchableSelect
+                    id="schedSubject"
+                    value={form.subjectCode}
+                    onChange={(val) => handleSubjectChange(val)}
+                    options={subjectOptionsForStep1}
+                    placeholder="Search & select curriculum subject..."
+                    searchPlaceholder="Search by subject code, title, program..."
+                    emptyText="No matching academic subjects found"
+                  />
+                </div>
+
+                {selectedSubjectObj && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "4px 8px",
+                      borderRadius: 6,
+                      background: "rgba(2, 132, 199, 0.06)",
+                      border: "1px solid rgba(2, 132, 199, 0.15)",
+                      fontSize: "0.74rem",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <span style={{ fontWeight: 700, color: "var(--srcb-navy)" }}>{selectedSubjectObj.code}</span>
+                    <span style={{ color: "var(--srcb-text-muted)" }}>•</span>
+                    <span style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {selectedSubjectObj.name}
+                    </span>
+                    <span className={`pill ${selectedSubjectObj.isMajor ? "pill--blue" : "pill--amber"}`} style={{ fontSize: "0.66rem", padding: "1px 5px" }}>
+                      {selectedSubjectObj.isMajor ? "Major" : "Gen Ed (Universal)"}
+                    </span>
                   </div>
+                )}
 
-                  {selectedSubjectObj && (
+                {/* Session Component */}
+                <div style={{ marginTop: 2 }}>
+                  <label style={{ fontSize: "0.74rem", fontWeight: 700, color: "var(--srcb-navy)", display: "flex", alignItems: "center", gap: 5, marginBottom: 4 }}>
+                    <Clock size={12} />
+                    <span>Academic Component Allocation</span>
+                  </label>
+                  {form.isMajor ? (
+                    <>
+                      <div className="sched-segmented-control">
+                        <button
+                          type="button"
+                          className={`sched-segmented-btn ${form.classMode === "Lecture" ? "is-selected" : ""}`}
+                          onClick={() => handleClassModeChange("Lecture")}
+                          style={{ padding: "6px 12px" }}
+                        >
+                          <BookOpen size={13} />
+                          <span>{form.day}: Lecture (2h)</span>
+                        </button>
+                        <button
+                          type="button"
+                          className={`sched-segmented-btn ${form.classMode === "Laboratory" ? "is-selected" : ""}`}
+                          onClick={() => handleClassModeChange("Laboratory")}
+                          style={{ padding: "6px 12px" }}
+                        >
+                          <Monitor size={13} />
+                          <span>{form.day}: Lab (3h)</span>
+                        </button>
+                      </div>
+
+                      {/* Paired Day Auto-Complement Banner */}
+                      {pairedDay && pairedEnabled && !editingSchedule && (
+                        <div
+                          style={{
+                            marginTop: 6,
+                            padding: "6px 10px",
+                            background: "rgba(37, 99, 235, 0.06)",
+                            border: "1px solid rgba(37, 99, 235, 0.18)",
+                            borderRadius: 6,
+                            fontSize: "0.74rem",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 6,
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <Sparkles size={13} color="var(--srcb-royal)" style={{ flexShrink: 0 }} />
+                            <span>
+                              <strong>Paired Day:</strong> {pairedDay} auto-assigned as{" "}
+                              <strong style={{ color: pairedClassMode === "Laboratory" ? "#7c3aed" : "#2563eb" }}>
+                                {pairedClassMode} ({pairedClassMode === "Laboratory" ? "3 hrs" : "2 hrs"})
+                              </strong>
+                            </span>
+                          </div>
+                          <span
+                            style={{
+                              fontSize: "0.7rem",
+                              fontWeight: 700,
+                              background: pairedClassMode === "Laboratory" ? "rgba(124, 58, 237, 0.12)" : "rgba(37, 99, 235, 0.12)",
+                              color: pairedClassMode === "Laboratory" ? "#7c3aed" : "#2563eb",
+                              padding: "1px 6px",
+                              borderRadius: 4,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {pairedTime}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  ) : (
                     <div
                       style={{
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        background: "rgba(245, 158, 11, 0.08)",
+                        border: "1px solid rgba(245, 158, 11, 0.2)",
+                        fontSize: "0.76rem",
+                        color: "#92400e",
+                        fontWeight: 600,
                         display: "flex",
                         alignItems: "center",
                         gap: 8,
-                        padding: "6px 10px",
-                        borderRadius: 6,
-                        background: "rgba(2, 132, 199, 0.06)",
-                        border: "1px solid rgba(2, 132, 199, 0.15)",
-                        fontSize: "0.75rem",
-                        flexWrap: "wrap",
+                        minHeight: 34,
                       }}
                     >
-                      <span style={{ fontWeight: 700, color: "var(--srcb-navy)" }}>{selectedSubjectObj.code}</span>
-                      <span style={{ color: "var(--srcb-text-muted)" }}>•</span>
-                      <span style={{ maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {selectedSubjectObj.name}
-                      </span>
-                      <span className={`pill ${selectedSubjectObj.isMajor ? "pill--blue" : "pill--amber"}`} style={{ fontSize: "0.68rem", padding: "1px 5px" }}>
-                        {selectedSubjectObj.isMajor ? "Major" : "Gen Ed (Universal)"}
-                      </span>
+                      <Clock size={14} color="#d97706" />
+                      <span>Gen Ed / Minor (1.5h standard session)</span>
                     </div>
                   )}
                 </div>
 
-                {/* Modality & Facility Card */}
-                <div className="sched-form-card">
-                  <div className="sched-form-card-header">
-                    <div className="sched-form-card-title-wrap">
-                      <div className="sched-form-card-icon">
-                        <Building2 size={16} />
-                      </div>
-                      <span className="sched-form-card-title">Delivery Mode</span>
-                    </div>
-                  </div>
-
-                  <div className="sched-modality-grid">
-                    <button
-                      type="button"
-                      className={`sched-modality-card ${form.modality === "Face-to-Face" ? "is-selected" : ""}`}
-                      onClick={() => setForm({ ...form, modality: "Face-to-Face" })}
-                    >
-                      <div className="sched-modality-icon-wrap">
-                        <Building2 size={16} />
-                      </div>
-                      <div className="sched-modality-details">
-                        <span className="sched-modality-name">Face-to-Face</span>
-                        <span className="sched-modality-sub">On-campus facility</span>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      className={`sched-modality-card ${form.modality === "Online" ? "is-selected" : ""}`}
-                      onClick={() => setForm({ ...form, modality: "Online" })}
-                    >
-                      <div className="sched-modality-icon-wrap">
-                        <Monitor size={16} />
-                      </div>
-                      <div className="sched-modality-details">
-                        <span className="sched-modality-name">Online</span>
-                        <span className="sched-modality-sub">Virtual session</span>
-                      </div>
-                    </button>
-                  </div>
-
-                  {form.modality === "Online" ? (
-                    <div className="field-group" style={{ margin: 0 }}>
-                      <label htmlFor="schedOnlineLink" style={{ fontSize: "0.78rem" }}>Virtual Meeting Link</label>
-                      <input
-                        id="schedOnlineLink"
-                        placeholder="https://meet.google.com/xxx or Zoom"
-                        value={form.onlineLink}
-                        onChange={(e) => setForm({ ...form, onlineLink: e.target.value })}
-                        style={{ fontSize: "0.82rem", padding: "6px 10px" }}
-                      />
-                    </div>
-                  ) : (
-                    <div className="field-group" style={{ margin: 0 }}>
-                      <label htmlFor="schedBuilding" style={{ fontSize: "0.78rem" }}>Preferred Campus Building</label>
-                      <select
-                        id="schedBuilding"
-                        value={form.building}
-                        onChange={(e) => handleBuildingChange(e.target.value as BuildingType)}
-                        style={{ fontSize: "0.82rem", padding: "6px 10px" }}
-                      >
-                        {buildingOptions.map((b) => (
-                          <option key={b} value={b}>
-                            {b}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
+                {/* Preferred Campus Building */}
+                <div className="field-group" style={{ margin: 0, marginTop: 4 }}>
+                  <label htmlFor="schedBuilding" className="modal-field-label" style={{ fontSize: "0.74rem" }}>
+                    <Building2 size={13} />
+                    <span>Campus Building</span>
+                  </label>
+                  <select
+                    id="schedBuilding"
+                    value={form.building}
+                    onChange={(e) => handleBuildingChange(e.target.value as BuildingType)}
+                    style={{ fontSize: "0.82rem", padding: "6px 10px" }}
+                  >
+                    {buildingOptions.map((b) => (
+                      <option key={b} value={b}>
+                        {b}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
               {/* RIGHT COLUMN: WHEN & READINESS (Day + Paired Day + Time + Availability) */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                {/* Day & Time Card */}
-                <div className="sched-form-card">
-                  <div className="sched-form-card-header">
-                    <div className="sched-form-card-title-wrap">
-                      <div className="sched-form-card-icon">
-                        <CalendarDays size={16} />
-                      </div>
-                      <span className="sched-form-card-title">Schedule Timing & Duration</span>
+              <div className="sched-form-card" style={{ padding: "14px 16px", gap: 10 }}>
+                <div className="sched-form-card-header" style={{ paddingBottom: 8 }}>
+                  <div className="sched-form-card-title-wrap">
+                    <div className="sched-form-card-icon">
+                      <CalendarDays size={16} />
                     </div>
-                    {form.time && getTimeDurationStr(form.time) && (
-                      <span className="sched-duration-tag">
-                        <Clock size={12} />
-                        {getTimeDurationStr(form.time)}
+                    <span className="sched-form-card-title">Schedule Timing &amp; Duration</span>
+                  </div>
+                  {form.time && getTimeDurationStr(form.time) && (
+                    <span className="sched-duration-tag">
+                      <Clock size={12} />
+                      {getTimeDurationStr(form.time)}
+                    </span>
+                  )}
+                </div>
+
+                <div className="field-group" style={{ margin: 0 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <label htmlFor="schedDay" className="modal-field-label" style={{ margin: 0 }}>
+                      <Calendar size={13} />
+                      <span>Teaching Day</span>
+                      <span className="required-asterisk">*</span>
+                    </label>
+                    {!editingSchedule && pairedDay && (
+                      <label
+                        style={{
+                          fontSize: "0.72rem",
+                          fontWeight: 600,
+                          color: "var(--srcb-primary, #1e40af)",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                          background: "rgba(59, 130, 246, 0.08)",
+                          padding: "2px 8px",
+                          borderRadius: 6,
+                          border: "1px solid rgba(59, 130, 246, 0.2)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={pairedEnabled}
+                          onChange={(e) => setPairedEnabled(e.target.checked)}
+                          style={{ cursor: "pointer", margin: 0 }}
+                        />
+                        <Sparkles size={11} /> Auto-pairs with {pairedDay}
+                      </label>
+                    )}
+                  </div>
+                  <select
+                    id="schedDay"
+                    value={form.day}
+                    onChange={(e) => setForm({ ...form, day: e.target.value })}
+                  >
+                    {DAYS.map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="field-group" style={{ margin: 0 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <label htmlFor="schedStartTime" className="modal-field-label" style={{ margin: 0 }}>
+                      <Clock size={13} />
+                      <span>Time Window</span>
+                      <span className="required-asterisk">*</span>
+                    </label>
+                    {getTimeDurationStr(form.time) && (
+                      <span className="sched-duration-chip" title="Total allocated class duration">
+                        <Clock size={11} /> {getTimeDurationStr(form.time)}
                       </span>
                     )}
                   </div>
 
-                  <div className="field-group" style={{ margin: 0 }}>
-                    <label htmlFor="schedDay">
-                      Teaching Day <span style={{ color: "#dc2626" }}>*</span>
-                    </label>
-                    <select
-                      id="schedDay"
-                      value={form.day}
-                      onChange={(e) => {
-                        const newDay = e.target.value;
-                        setForm({ ...form, day: newDay });
-                        if (!editingSchedule) {
-                          const paired = getPairedDay(newDay);
-                          setPairDayEnabled(Boolean(paired));
-                          setDuplicateDays(paired ? [paired] : ["Friday"]);
-                        }
-                      }}
-                    >
-                      {DAYS.map((d) => (
-                        <option key={d} value={d}>
-                          {d}
-                        </option>
-                      ))}
-                    </select>
-
-                    {/* Schedule Duplication Section */}
-                    {!editingSchedule && (
-                      <div className="sched-duplication-box">
-                        <div className="sched-duplication-header">
-                          <label className="sched-duplication-toggle" htmlFor="pairDayEnabledToggle">
-                            <input
-                              id="pairDayEnabledToggle"
-                              type="checkbox"
-                              checked={pairDayEnabled}
-                              onChange={(e) => {
-                                const checked = e.target.checked;
-                                setPairDayEnabled(checked);
-                                if (checked && duplicateDays.length === 0) {
-                                  const paired = getPairedDay(form.day) || "Friday";
-                                  setDuplicateDays([paired]);
-                                }
-                              }}
-                            />
-                            <span className="sched-duplication-title">
-                              <Copy size={13} style={{ display: "inline-block", verticalAlign: "-2px", marginRight: 4 }} />
-                              Duplicate Schedule to Paired Day
-                            </span>
-                          </label>
-                          {getPairedDay(form.day) && (
-                            <span className="sched-dup-recommended">
-                              Recommended: {getPairedDay(form.day)}
-                            </span>
-                          )}
-                        </div>
-
-                        {pairDayEnabled && (
-                          <>
-                            <div className="sched-dup-days-grid">
-                              {DAYS.filter((d) => d !== form.day).map((d) => {
-                                const isSelected = duplicateDays.includes(d);
-                                const isDefaultPair = d === getPairedDay(form.day);
-                                return (
-                                  <button
-                                    key={d}
-                                    type="button"
-                                    className={`sched-dup-day-btn ${isSelected ? "selected" : ""}`}
-                                    onClick={() => {
-                                      if (isSelected) {
-                                        setDuplicateDays(duplicateDays.filter((x) => x !== d));
-                                      } else {
-                                        setDuplicateDays([...duplicateDays, d]);
-                                      }
-                                    }}
-                                  >
-                                    {d.slice(0, 3)}
-                                    {isDefaultPair && <span style={{ fontSize: "0.65rem", marginLeft: 2, opacity: 0.85 }}>★</span>}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                            <div className="sched-dup-preview">
-                              {duplicateDays.length > 0 ? (
-                                <>
-                                  Will save matching session on <strong>{duplicateDays.join(", ")}</strong> at {form.time}
-                                </>
-                              ) : (
-                                <span style={{ color: "#eab308" }}>Select at least one day to duplicate to</span>
-                              )}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="field-group" style={{ margin: 0 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                      <label htmlFor="schedStartTime" style={{ margin: 0, fontWeight: 700, fontSize: "0.85rem" }}>
-                        Time Window <span style={{ color: "#dc2626" }}>*</span>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8 }}>
+                    <div>
+                      <label htmlFor="schedStartTime" style={{ fontSize: "0.7rem", color: "var(--srcb-text-muted)", display: "block", marginBottom: 2, fontWeight: 600 }}>
+                        Start Time
                       </label>
-                      {getTimeDurationStr(form.time) && (
-                        <span className="sched-duration-chip" title="Total allocated class duration">
-                          <Clock size={11} /> {getTimeDurationStr(form.time)}
-                        </span>
-                      )}
+                      <select
+                        id="schedStartTime"
+                        value={form.time.split("-")[0]?.trim() || "07:00 AM"}
+                        onChange={(e) => {
+                          const newStart = e.target.value;
+                          const duration = getExpectedSubjectDuration(selectedSubjectObj, form.classMode);
+                          const newEnd = calculateEndTimeFromStart(newStart, duration);
+                          setForm({ ...form, time: `${newStart} - ${newEnd}` });
+                        }}
+                      >
+                        {TIME_POINTS.slice(0, -1).map((tp) => (
+                          <option key={tp} value={tp}>
+                            {tp}
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8 }}>
-                      <div>
-                        <label htmlFor="schedStartTime" style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)", display: "block", marginBottom: 3, fontWeight: 600 }}>
-                          Start Time
-                        </label>
-                        <select
-                          id="schedStartTime"
-                          value={form.time.split("-")[0]?.trim() || "07:00 AM"}
-                          onChange={(e) => {
-                            const newStart = e.target.value;
-                            const curEnd = form.time.split("-")[1]?.trim() || "08:30 AM";
-                            const startMin = parseTimeToMinutes(newStart);
-                            const endMin = parseTimeToMinutes(curEnd);
-                            let newEnd = curEnd;
-                            if (startMin >= endMin) {
-                              const targetMin = Math.min(startMin + 90, 21 * 60);
-                              const found = TIME_POINTS.find((tp) => parseTimeToMinutes(tp) >= targetMin) || TIME_POINTS[TIME_POINTS.length - 1];
-                              newEnd = found;
-                            }
-                            setForm({ ...form, time: `${newStart} - ${newEnd}` });
-                          }}
-                        >
-                          {TIME_POINTS.slice(0, -1).map((tp) => (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", paddingTop: 16, color: "var(--srcb-text-muted)" }}>
+                      <ArrowRight size={14} />
+                    </div>
+
+                    <div>
+                      <label htmlFor="schedEndTime" style={{ fontSize: "0.7rem", color: "var(--srcb-text-muted)", display: "block", marginBottom: 2, fontWeight: 600 }}>
+                        End Time
+                      </label>
+                      <select
+                        id="schedEndTime"
+                        value={form.time.split("-")[1]?.trim() || "08:30 AM"}
+                        onChange={(e) => {
+                          const curStart = form.time.split("-")[0]?.trim() || "07:00 AM";
+                          const newEnd = e.target.value;
+                          setForm({ ...form, time: `${curStart} - ${newEnd}` });
+                        }}
+                      >
+                        {TIME_POINTS.map((tp) => {
+                          const curStart = form.time.split("-")[0]?.trim() || "07:00 AM";
+                          const startMin = parseTimeToMinutes(curStart);
+                          const endMin = parseTimeToMinutes(tp);
+                          if (endMin <= startMin) return null;
+                          const diff = endMin - startMin;
+                          const hrs = diff / 60;
+                          const diffLabel = hrs % 1 === 0 ? `${hrs}h` : `${hrs.toFixed(1)}h`;
+                          const duration = getExpectedSubjectDuration(selectedSubjectObj, form.classMode);
+                          const isRecommended = diff === duration;
+                          return (
                             <option key={tp} value={tp}>
-                              {tp}
+                              {tp} ({diffLabel}){isRecommended ? " ★ Recommended" : ""}
                             </option>
-                          ))}
-                        </select>
-                      </div>
+                          );
+                        })}
+                      </select>
+                    </div>
+                  </div>
 
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", paddingTop: 18, color: "var(--srcb-text-muted)" }}>
-                        <ArrowRight size={14} />
-                      </div>
-
-                      <div>
-                        <label htmlFor="schedEndTime" style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)", display: "block", marginBottom: 3, fontWeight: 600 }}>
-                          End Time
-                        </label>
-                        <select
-                          id="schedEndTime"
-                          value={form.time.split("-")[1]?.trim() || "08:30 AM"}
-                          onChange={(e) => {
-                            const curStart = form.time.split("-")[0]?.trim() || "07:00 AM";
-                            const newEnd = e.target.value;
-                            setForm({ ...form, time: `${curStart} - ${newEnd}` });
-                          }}
-                        >
-                          {TIME_POINTS.map((tp) => {
-                            const curStart = form.time.split("-")[0]?.trim() || "07:00 AM";
-                            const startMin = parseTimeToMinutes(curStart);
-                            const endMin = parseTimeToMinutes(tp);
-                            if (endMin <= startMin) return null;
-                            const diff = endMin - startMin;
-                            const hrs = diff / 60;
-                            const diffLabel = hrs % 1 === 0 ? `${hrs}h` : `${hrs.toFixed(1)}h`;
-                            return (
-                              <option key={tp} value={tp}>
-                                {tp} ({diffLabel})
-                              </option>
-                            );
-                          })}
-                        </select>
-                      </div>
+                  {/* SRCB Official Standard Time Slots Quick-Select */}
+                  <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px dashed var(--srcb-border)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--srcb-navy)", display: "flex", alignItems: "center", gap: 5 }}>
+                        <Sparkles size={12} color="var(--srcb-royal)" />
+                        <span>SRCB Standard Period Presets ({form.day === "Wednesday" ? "Wednesday 3h Blocks" : form.day === "Saturday" ? "Saturday Blocks" : "M-Th & T-F 1.5h Periods"})</span>
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                      {SRCB_STANDARD_TIME_SLOTS
+                        .filter((preset) => {
+                          if (form.day === "Wednesday") return preset.category === "wednesday" || preset.category === "laboratory";
+                          if (form.day === "Saturday") return preset.category === "saturday";
+                          return preset.category === "m-th-tf" || (form.classMode === "Laboratory" && preset.category === "laboratory");
+                        })
+                        .map((preset) => {
+                          const isSelected = form.time.trim() === preset.label.trim();
+                          return (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              onClick={() => {
+                                setForm({ ...form, time: preset.label });
+                              }}
+                              style={{
+                                padding: "3px 8px",
+                                borderRadius: 5,
+                                border: isSelected ? "1px solid var(--srcb-royal, #2563eb)" : "1px solid var(--srcb-border, #cbd5e1)",
+                                background: isSelected ? "rgba(37, 99, 235, 0.12)" : "var(--srcb-surface-alt, #f8fafc)",
+                                color: isSelected ? "var(--srcb-royal, #2563eb)" : "var(--srcb-text, #1e293b)",
+                                fontSize: "0.72rem",
+                                fontWeight: isSelected ? 700 : 500,
+                                cursor: "pointer",
+                                transition: "all 0.15s ease",
+                              }}
+                              title={preset.description}
+                            >
+                              {preset.startTime.replace(/ (AM|PM)/i, "")} - {preset.endTime}
+                            </button>
+                          );
+                        })}
                     </div>
                   </div>
                 </div>
 
                 {/* Compact Availability Assessment */}
                 {form.subjectCode && form.day && form.time && (
-                  <div className="sched-compact-readiness-row">
+                  <div className="sched-compact-readiness-row" style={{ padding: "6px 8px" }}>
                     <span style={{ fontWeight: 700, color: "var(--srcb-navy)", display: "flex", alignItems: "center", gap: 4 }}>
-                      <Sparkles size={13} color="var(--srcb-royal)" /> Pre-check:
+                      <Sparkles size={12} color="var(--srcb-royal)" /> Pre-check:
                     </span>
                     <span className={`sched-compact-chip ${availableFacultyForSlot.length > 0 ? "is-good" : "is-warning"}`}>
                       {availableFacultyForSlot.length > 0 ? `✓ ${availableFacultyForSlot.length} Faculty Free` : "⚠ No Faculty Free"}
                     </span>
-                    <span className={`sched-compact-chip ${form.modality === "Online" || availableRoomsForSlot.length > 0 ? "is-good" : "is-warning"}`}>
-                      {form.modality === "Online" ? "✓ Online" : availableRoomsForSlot.length > 0 ? `✓ ${availableRoomsForSlot.length} Rooms Free` : "⚠ No Rooms Free"}
+                    <span className={`sched-compact-chip ${availableRoomsForSlot.length > 0 ? "is-good" : "is-warning"}`}>
+                      {availableRoomsForSlot.length > 0 ? `✓ ${availableRoomsForSlot.length} Rooms Free` : "⚠ No Rooms Free"}
                     </span>
                     <span className={`sched-compact-chip ${availableSectionsForSlot.length > 0 ? "is-good" : "is-warning"}`}>
                       {availableSectionsForSlot.length > 0 ? `✓ ${availableSectionsForSlot.length} Sections Free` : "⚠ Check Section"}
+                    </span>
+                  </div>
+                )}
+
+                {/* Concurrent Time Slot Information Banner */}
+                {form.day && form.time && concurrentSlotSchedules.length > 0 && (
+                  <div
+                    style={{
+                      padding: "8px 12px",
+                      background: "rgba(37, 99, 235, 0.08)",
+                      border: "1px solid rgba(37, 99, 235, 0.25)",
+                      borderRadius: 8,
+                      fontSize: "0.78rem",
+                      color: "var(--srcb-royal, #2563eb)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 4,
+                      marginTop: 6,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700 }}>
+                      <Layers size={14} />
+                      <span>Concurrent Time Slot: {concurrentSlotSchedules.length} other subject{concurrentSlotSchedules.length > 1 ? "s" : ""} scheduled at this time</span>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 2 }}>
+                      {concurrentSlotSchedules.map((cs) => (
+                        <span
+                          key={cs.id}
+                          style={{
+                            padding: "2px 8px",
+                            background: "var(--srcb-surface, #fff)",
+                            border: "1px solid var(--srcb-border, #cbd5e1)",
+                            borderRadius: 4,
+                            fontSize: "0.72rem",
+                            fontWeight: 600,
+                            color: "var(--srcb-text, #1e293b)",
+                          }}
+                        >
+                          {cs.subjectCode} ({cs.section} • {cs.room || "Online"} • {cs.faculty})
+                        </span>
+                      ))}
+                    </div>
+                    <span style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted, #64748b)" }}>
+                      Multiple different subjects can run concurrently at this time across distinct rooms and sections.
                     </span>
                   </div>
                 )}
@@ -2882,10 +3400,10 @@ export function SchedulesPage() {
             </div>
 
             {/* Sticky Action Footer */}
-            <div className="modal-actions">
+            <div className="modal-actions" style={{ marginTop: 8 }}>
               <button
                 type="button"
-                className="secondary-button"
+                className="cancel-button"
                 onClick={() => {
                   setIsOpen(false);
                   setEditingSchedule(null);
@@ -2914,29 +3432,26 @@ export function SchedulesPage() {
 
         {/* STEP 2: Resource Assignment ONLY (WHO, WHERE, FOR WHOM) */}
         {modalStep === 2 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {/* Step 1 Context Summary Bar */}
-            <div className="sched-context-banner" style={{ padding: "8px 14px" }}>
+            <div className="sched-context-banner" style={{ padding: "6px 12px" }}>
               <div className="sched-context-tags">
                 <div className="sched-context-item">
-                  <BookOpen size={14} color="var(--srcb-royal)" />
+                  <BookOpen size={13} color="var(--srcb-royal)" />
                   <strong>Subject:</strong> <span>{form.subjectCode} — {form.subject}</span>
                 </div>
                 <div className="sched-context-item">
-                  <Calendar size={14} color="var(--srcb-royal)" />
+                  <Calendar size={13} color="var(--srcb-royal)" />
                   <strong>Schedule:</strong>{" "}
                   <span>
-                    {pairDayEnabled && !editingSchedule && duplicateDays.length > 0
-                      ? `${form.day} & ${duplicateDays.join(", ")}`
-                      : pairDayEnabled && !editingSchedule && getPairedDay(form.day)
-                      ? `${form.day} & ${getPairedDay(form.day)}`
-                      : form.day}{" "}
-                    • {form.time}
+                    {!editingSchedule && pairedDay && pairedEnabled
+                      ? `${form.day} (${form.classMode === "Laboratory" ? "Lab 3h" : "Lec 2h"}: ${form.time}) & ${pairedDay} (${pairedClassMode === "Laboratory" ? "Lab 3h" : "Lec 2h"}: ${pairedTime})`
+                      : `${form.day} • ${form.time}`}
                   </span>
                 </div>
                 <div className="sched-context-item">
-                  <DoorOpen size={14} color="var(--srcb-royal)" />
-                  <strong>Modality:</strong> <span>{form.modality}</span>
+                  <Building2 size={13} color="var(--srcb-royal)" />
+                  <strong>Building:</strong> <span>{form.building || "All Buildings"}</span>
                 </div>
               </div>
               <button
@@ -2952,281 +3467,286 @@ export function SchedulesPage() {
 
             <div className="sched-modal-side-by-side">
               {/* LEFT COLUMN: Section & Faculty */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                {/* Resource: Section */}
-                <div className="sched-form-card">
-                  <div className="sched-form-card-header">
-                    <div className="sched-form-card-title-wrap">
-                      <div className="sched-form-card-icon">
-                        <Users size={16} />
-                      </div>
-                      <span className="sched-form-card-title">Assign Student Section</span>
+              <div className="sched-form-card" style={{ padding: "14px 16px", gap: 10 }}>
+                <div className="sched-form-card-header" style={{ paddingBottom: 8 }}>
+                  <div className="sched-form-card-title-wrap">
+                    <div className="sched-form-card-icon">
+                      <Users size={16} />
                     </div>
-                    {form.section && (
-                      <span className="sched-form-card-badge" style={{ color: "var(--srcb-royal)" }}>
-                        Enrolled: {selectedSectionHeadcount} Students
-                      </span>
-                    )}
+                    <span className="sched-form-card-title">Student Cohort &amp; Instructor</span>
                   </div>
-
-                  <div className="field-group" style={{ margin: 0 }}>
-                    <label htmlFor="schedSection">
-                      Student Section <span style={{ color: "#dc2626" }}>*</span>
-                    </label>
-                    <SearchableSelect
-                      id="schedSection"
-                      value={form.section}
-                      onChange={(val) => {
-                        const sec = availableSections.find(
-                          (s) => s.section === val || (s.course && `${s.course} ${s.yearLevel || ''}-${s.section}`.trim() === val)
-                        );
-                        setForm({
-                          ...form,
-                          section: val,
-                          program: sec?.program || sec?.course || form.program,
-                        });
-                      }}
-                      options={sectionOptionsForStep2}
-                      placeholder="Search & select student section..."
-                      searchPlaceholder="Search sections (e.g. BSIT 1-A)..."
-                      emptyText="No matching student sections found"
-                    />
-                  </div>
-                </div>
-
-                {/* Resource: Faculty */}
-                <div className="sched-form-card">
-                  <div className="sched-form-card-header">
-                    <div className="sched-form-card-title-wrap">
-                      <div className="sched-form-card-icon">
-                        <UserCheck size={16} />
-                      </div>
-                      <span className="sched-form-card-title">Assign Instructor</span>
-                    </div>
-                    {form.faculty && (
-                      <span className="sched-form-card-badge" style={{ color: "var(--srcb-royal)" }}>
-                        {form.faculty}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="field-group" style={{ margin: 0 }}>
-                    <label htmlFor="schedFaculty">
-                      Instructor / Faculty <span style={{ color: "#dc2626" }}>*</span>
-                    </label>
-                    <SearchableSelect
-                      id="schedFaculty"
-                      value={form.facultyId}
-                      onChange={(val) => {
-                        const fac = availableFaculty.find((f) => f.id === val);
-                        setForm({
-                          ...form,
-                          facultyId: val,
-                          faculty: fac ? fac.name : "",
-                        });
-                      }}
-                      options={facultyOptionsForStep2}
-                      placeholder="Search & select instructor..."
-                      searchPlaceholder="Search instructors..."
-                      emptyText="No matching instructors found"
-                    />
-                  </div>
-
-                  {/* Part-Time Instructor Availability Window */}
-                  {selectedFacultyMember && selectedFacultyMember.status === "Part-Time" && (
-                    <div
-                      style={{
-                        padding: "6px 10px",
-                        background: "var(--srcb-surface)",
-                        borderRadius: 6,
-                        border: "1px solid var(--srcb-border)",
-                        borderLeft: "3px solid #f59e0b",
-                        fontSize: "0.74rem",
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: 4, fontWeight: 700, color: "#d97706", marginBottom: 4 }}>
-                        <Clock size={12} />
-                        <span>Part-Time Availability Windows:</span>
-                      </div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                        {formatGroupedAvailability(selectedFacultyMember.availability).map(({ day, formattedRange }) => {
-                          const isMatchingDay =
-                            day.toLowerCase() === form.day.toLowerCase() ||
-                            (pairDayEnabled && duplicateDays.some((d) => d.toLowerCase() === day.toLowerCase())) ||
-                            (pairDayEnabled && day.toLowerCase() === (getPairedDay(form.day) || "").toLowerCase());
-                          return (
-                            <span
-                              key={day}
-                              style={{
-                                padding: "2px 6px",
-                                borderRadius: 4,
-                                background: isMatchingDay ? "rgba(245, 158, 11, 0.15)" : "rgba(148, 163, 184, 0.08)",
-                                border: `1px solid ${isMatchingDay ? "rgba(245, 158, 11, 0.4)" : "var(--srcb-border)"}`,
-                                fontSize: "0.72rem",
-                              }}
-                            >
-                              <strong>{day}:</strong> {formattedRange}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    </div>
+                  {form.section && (
+                    <span className="sched-form-card-badge" style={{ color: "var(--srcb-royal)" }}>
+                      Enrolled: {selectedSectionHeadcount} Students
+                    </span>
                   )}
                 </div>
+
+                <div className="field-group" style={{ margin: 0 }}>
+                  <label htmlFor="schedSection" className="modal-field-label">
+                    <Users size={13} />
+                    <span>Student Section</span>
+                    <span className="required-asterisk">*</span>
+                  </label>
+                  <SearchableSelect
+                    id="schedSection"
+                    value={form.section}
+                    onChange={(val) => {
+                      const sec = availableSections.find(
+                        (s) => s.section === val || (s.course && `${s.course} ${s.yearLevel || ''}-${s.section}`.trim() === val)
+                      );
+                      setForm({
+                        ...form,
+                        section: val,
+                        program: sec?.program || sec?.course || form.program,
+                      });
+                    }}
+                    options={sectionOptionsForStep2}
+                    placeholder="Search & select student section..."
+                    searchPlaceholder="Search sections (e.g. BSIT 1-A)..."
+                    emptyText="No matching student sections found"
+                  />
+                </div>
+
+                {/* Combined / Cross-Program Cohort Toggle */}
+                <div
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: 6,
+                    background: form.isCombinedCohort ? "rgba(37, 99, 235, 0.08)" : "var(--srcb-surface-alt, #f8fafc)",
+                    border: form.isCombinedCohort ? "1px solid rgba(37, 99, 235, 0.3)" : "1px solid var(--srcb-border)",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 8,
+                    cursor: "pointer",
+                  }}
+                  onClick={() => setForm({ ...form, isCombinedCohort: !form.isCombinedCohort })}
+                >
+                  <input
+                    type="checkbox"
+                    checked={form.isCombinedCohort}
+                    onChange={(e) => setForm({ ...form, isCombinedCohort: e.target.checked })}
+                    style={{ marginTop: 2, cursor: "pointer" }}
+                  />
+                  <div>
+                    <span style={{ fontSize: "0.78rem", fontWeight: 700, color: form.isCombinedCohort ? "var(--srcb-royal)" : "var(--srcb-text)", display: "block" }}>
+                      Combined / Cross-Program Shared Cohort
+                    </span>
+                    <span style={{ fontSize: "0.71rem", color: "var(--srcb-text-muted)", display: "block", marginTop: 2 }}>
+                      Allows this section to share this room &amp; instructor with another section taking the same course (e.g. Crim 1 / IT 1, HM-1 / CJEP).
+                    </span>
+                  </div>
+                </div>
+
+                <div className="field-group" style={{ margin: 0 }}>
+                  <label htmlFor="schedFaculty" className="modal-field-label">
+                    <UserCheck size={13} />
+                    <span>Instructor / Faculty</span>
+                    <span className="required-asterisk">*</span>
+                  </label>
+                  <SearchableSelect
+                    id="schedFaculty"
+                    value={form.facultyId}
+                    onChange={(val) => {
+                      const fac = availableFaculty.find((f) => f.id === val);
+                      setForm({
+                        ...form,
+                        facultyId: val,
+                        faculty: fac ? fac.name : "",
+                      });
+                    }}
+                    options={facultyOptionsForStep2}
+                    placeholder="Search & select instructor..."
+                    searchPlaceholder="Search instructors..."
+                    emptyText="No matching instructors found"
+                  />
+                </div>
+
+                {/* Part-Time Instructor Availability Window */}
+                {selectedFacultyMember && selectedFacultyMember.status === "Part-Time" && (
+                  <div
+                    style={{
+                      padding: "6px 10px",
+                      background: "var(--srcb-surface)",
+                      borderRadius: 6,
+                      border: "1px solid var(--srcb-border)",
+                      borderLeft: "3px solid #f59e0b",
+                      fontSize: "0.74rem",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, fontWeight: 700, color: "#d97706", marginBottom: 4 }}>
+                      <Clock size={12} />
+                      <span>Part-Time Availability Windows:</span>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                      {formatGroupedAvailability(selectedFacultyMember.availability).map(({ day, formattedRange }) => {
+                        const isMatchingDay =
+                          day.toLowerCase() === form.day.toLowerCase() ||
+                          (!editingSchedule && day.toLowerCase() === (getPairedDay(form.day) || "").toLowerCase());
+                        return (
+                          <span
+                            key={day}
+                            style={{
+                              padding: "2px 6px",
+                              borderRadius: 4,
+                              background: isMatchingDay ? "rgba(245, 158, 11, 0.15)" : "rgba(148, 163, 184, 0.08)",
+                              border: `1px solid ${isMatchingDay ? "rgba(245, 158, 11, 0.4)" : "var(--srcb-border)"}`,
+                              fontSize: "0.72rem",
+                            }}
+                          >
+                            <strong>{day}:</strong> {formattedRange}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* RIGHT COLUMN: Room & Validation */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                {/* Resource: Room */}
-                <div className="sched-form-card">
-                  <div className="sched-form-card-header">
-                    <div className="sched-form-card-title-wrap">
-                      <div className="sched-form-card-icon">
-                        <DoorOpen size={16} />
-                      </div>
-                      <span className="sched-form-card-title">Assign Classroom</span>
+              <div className="sched-form-card" style={{ padding: "14px 16px", gap: 10 }}>
+                <div className="sched-form-card-header" style={{ paddingBottom: 8 }}>
+                  <div className="sched-form-card-title-wrap">
+                    <div className="sched-form-card-icon">
+                      <DoorOpen size={16} />
                     </div>
-                    {selectedRoomObj && form.modality !== "Online" && (
-                      <span className="sched-form-card-badge">
-                        Cap: {selectedRoomObj.capacity} seats · {selectedRoomObj.type || "Classroom"}
-                      </span>
-                    )}
+                    <span className="sched-form-card-title">Classroom &amp; Conflict Verification</span>
                   </div>
-
-                  <div className="field-group" style={{ margin: 0 }}>
-                    <label htmlFor="schedRoom">
-                      Classroom / Laboratory <span style={{ color: "#dc2626" }}>*</span>
-                    </label>
-                    {form.modality === "Online" ? (
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 6,
-                          padding: "8px 12px",
-                          background: "rgba(16, 185, 129, 0.08)",
-                          border: "1px solid rgba(16, 185, 129, 0.25)",
-                          borderRadius: 6,
-                          color: "#059669",
-                          fontSize: "0.8rem",
-                          fontWeight: 600,
-                        }}
-                      >
-                        <CheckCircle2 size={15} />
-                        <span>Virtual Classroom Mode — No physical room needed</span>
-                      </div>
-                    ) : (
-                      <>
-                        <SearchableSelect
-                          id="schedRoom"
-                          value={form.room}
-                          onChange={(val) => handleRoomChange(val)}
-                          options={roomOptionsForStep2}
-                          placeholder="Search & select classroom or lab..."
-                          searchPlaceholder="Search rooms..."
-                          emptyText="No matching rooms found"
-                        />
-                        {concurrentSlotSchedules.length > 0 && (
-                          <div className="sched-concurrent-alert" style={{ marginTop: 6, padding: "6px 10px", fontSize: "0.74rem" }}>
-                            <Sparkles size={13} style={{ flexShrink: 0, marginTop: 1 }} />
-                            <div>
-                              <strong>Concurrent Slot:</strong> {concurrentSlotSchedules.length} class(es) running in other rooms ({concurrentSlotSchedules.map((cs) => cs.room).join(", ")}).
-                              {form.room && !concurrentSlotSchedules.some((cs) => cs.room.toLowerCase() === form.room.toLowerCase()) && (
-                                <span style={{ color: "#166534", fontWeight: 700, marginLeft: 4 }}>
-                                  ✓ Room {form.room} is clear.
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                        {isRoomTooSmall && (
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 6,
-                              padding: "6px 10px",
-                              background: "rgba(239, 68, 68, 0.08)",
-                              border: "1px solid rgba(239, 68, 68, 0.25)",
-                              borderRadius: 6,
-                              color: "#dc2626",
-                              fontSize: "0.75rem",
-                              fontWeight: 600,
-                              marginTop: 4,
-                            }}
-                          >
-                            <AlertTriangle size={14} style={{ flexShrink: 0 }} />
-                            <span>
-                              ⚠ Room capacity ({selectedRoomObj?.capacity}) is less than section size ({selectedSectionHeadcount}).
-                            </span>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
+                  {selectedRoomObj && (
+                    <span className="sched-form-card-badge">
+                      Cap: {selectedRoomObj.capacity} seats · {selectedRoomObj.type || "Classroom"}
+                    </span>
+                  )}
                 </div>
 
-                {/* Validation & Conflict Status Card */}
-                <div className="sched-form-card">
-                  <div className="sched-form-card-header">
-                    <div className="sched-form-card-title-wrap">
-                      <div className="sched-form-card-icon">
-                        <ShieldCheck size={16} />
+                <div className="field-group" style={{ margin: 0 }}>
+                  <label htmlFor="schedRoom" className="modal-field-label">
+                    <DoorOpen size={13} />
+                    <span>
+                      {!editingSchedule && pairedDay && pairedEnabled
+                        ? `Classroom for ${form.day} (${form.classMode === "Laboratory" ? "Lab - 3h" : "Lecture - 2h"})`
+                        : "Classroom / Laboratory"}
+                    </span>
+                    <span className="required-asterisk">*</span>
+                  </label>
+                  <SearchableSelect
+                    id="schedRoom"
+                    value={form.room}
+                    onChange={(val) => handleRoomChange(val)}
+                    options={roomOptionsForStep2}
+                    placeholder="Search & select classroom or lab..."
+                    searchPlaceholder="Search rooms..."
+                    emptyText="No matching rooms found"
+                  />
+                  {concurrentSlotSchedules.length > 0 && (
+                    <div className="sched-concurrent-alert" style={{ marginTop: 6, padding: "6px 10px", fontSize: "0.74rem" }}>
+                      <Sparkles size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+                      <div>
+                        <strong>Concurrent Slot:</strong> {concurrentSlotSchedules.length} class(es) running in other rooms ({concurrentSlotSchedules.map((cs) => cs.room).join(", ")}).
+                        {form.room && !concurrentSlotSchedules.some((cs) => cs.room.toLowerCase() === form.room.toLowerCase()) && (
+                          <span style={{ color: "#166534", fontWeight: 700, marginLeft: 4 }}>
+                            ✓ Room {form.room} is clear.
+                          </span>
+                        )}
                       </div>
-                      <span className="sched-form-card-title">Validation & Conflict Diagnostics</span>
                     </div>
-                  </div>
-
-                  {validationFeedback.errors.length > 0 ? (
-                    <div
-                      style={{
-                        padding: 10,
-                        background: "rgba(239, 68, 68, 0.08)",
-                        borderRadius: 6,
-                        border: "1px solid rgba(239, 68, 68, 0.25)",
-                        borderLeft: "3px solid #dc2626",
-                        fontSize: "0.76rem",
-                      }}
-                    >
-                      <div style={{ fontWeight: 700, color: "#dc2626", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
-                        <AlertTriangle size={14} />
-                        <span>Conflicts Detected ({validationFeedback.errors.length})</span>
-                      </div>
-                      {validationFeedback.errors.map((err, i) => (
-                        <div key={i} style={{ color: "var(--srcb-text)", marginTop: 2 }}>
-                          • {err}
-                        </div>
-                      ))}
-                    </div>
-                  ) : validationFeedback.valid && form.subjectCode && form.section && form.faculty ? (
+                  )}
+                  {isRoomTooSmall && (
                     <div
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        gap: 8,
-                        padding: "8px 12px",
-                        background: "rgba(16, 185, 129, 0.08)",
+                        gap: 6,
+                        padding: "6px 10px",
+                        background: "rgba(239, 68, 68, 0.08)",
+                        border: "1px solid rgba(239, 68, 68, 0.25)",
                         borderRadius: 6,
-                        border: "1px solid rgba(16, 185, 129, 0.25)",
-                        fontSize: "0.78rem",
-                        color: "#059669",
+                        color: "#dc2626",
+                        fontSize: "0.75rem",
                         fontWeight: 600,
+                        marginTop: 4,
                       }}
                     >
-                      <ShieldCheck size={16} />
-                      <span>All resources verified: Instructor, Room, and Section are clear.</span>
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: "0.75rem", color: "var(--srcb-text-muted)" }}>
-                      Select an available Section, Instructor, and Room to verify conflict-free scheduling.
+                      <AlertTriangle size={14} style={{ flexShrink: 0 }} />
+                      <span>
+                        ⚠ Room capacity ({selectedRoomObj?.capacity}) is less than section size ({selectedSectionHeadcount}).
+                      </span>
                     </div>
                   )}
                 </div>
+
+                {/* Paired Day Room Selection */}
+                {!editingSchedule && pairedDay && pairedEnabled && (
+                  <div className="field-group" style={{ margin: 0, marginTop: 4 }}>
+                    <label htmlFor="schedPairedRoom" className="modal-field-label">
+                      <DoorOpen size={13} />
+                      <span>
+                        Classroom for {pairedDay} ({pairedClassMode === "Laboratory" ? "Lab - 3h" : "Lecture - 2h"})
+                      </span>
+                      <span className="required-asterisk">*</span>
+                    </label>
+                    <SearchableSelect
+                      id="schedPairedRoom"
+                      value={form.pairedRoom || form.room}
+                      onChange={(val) => setForm((prev) => ({ ...prev, pairedRoom: val }))}
+                      options={pairedRoomOptionsForStep2}
+                      placeholder={`Search & select room for ${pairedDay}...`}
+                      searchPlaceholder="Search rooms..."
+                      emptyText="No matching rooms found"
+                    />
+                  </div>
+                )}
+
+                {/* Validation & Conflict Diagnostics */}
+                {validationFeedback.errors.length > 0 ? (
+                  <div
+                    style={{
+                      padding: 8,
+                      background: "rgba(239, 68, 68, 0.08)",
+                      borderRadius: 6,
+                      border: "1px solid rgba(239, 68, 68, 0.25)",
+                      borderLeft: "3px solid #dc2626",
+                      fontSize: "0.75rem",
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, color: "#dc2626", marginBottom: 2, display: "flex", alignItems: "center", gap: 6 }}>
+                      <AlertTriangle size={14} />
+                      <span>Conflicts Detected ({validationFeedback.errors.length})</span>
+                    </div>
+                    {validationFeedback.errors.map((err, i) => (
+                      <div key={i} style={{ color: "var(--srcb-text)", marginTop: 2 }}>
+                        • {err}
+                      </div>
+                    ))}
+                  </div>
+                ) : validationFeedback.valid && form.subjectCode && form.section && form.faculty ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "8px 12px",
+                      background: "rgba(16, 185, 129, 0.08)",
+                      borderRadius: 6,
+                      border: "1px solid rgba(16, 185, 129, 0.25)",
+                      fontSize: "0.78rem",
+                      color: "#059669",
+                      fontWeight: 600,
+                    }}
+                  >
+                    <ShieldCheck size={16} />
+                    <span>All resources verified: Instructor, Room, and Section are clear.</span>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: "0.75rem", color: "var(--srcb-text-muted)" }}>
+                    Select an available Section, Instructor, and Room to verify conflict-free scheduling.
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Sticky Action Footer */}
-            <div className="modal-actions" style={{ justifyContent: "space-between" }}>
+            <div className="modal-actions" style={{ justifyContent: "space-between", marginTop: 8 }}>
               <button
                 type="button"
                 className="secondary-button"
@@ -3238,7 +3758,7 @@ export function SchedulesPage() {
               <div style={{ display: "flex", gap: 10 }}>
                 <button
                   type="button"
-                  className="secondary-button"
+                  className="cancel-button"
                   onClick={() => {
                     setIsOpen(false);
                     setEditingSchedule(null);
@@ -3247,6 +3767,33 @@ export function SchedulesPage() {
                 >
                   Cancel
                 </button>
+                {!editingSchedule && (
+                  <button
+                    type="button"
+                    className="action-button action-button--secondary"
+                    disabled={
+                      loading ||
+                      !form.subjectCode ||
+                      !form.section ||
+                      !form.faculty ||
+                      (form.modality === "Face-to-Face" && !form.room) ||
+                      (!validationFeedback.valid && validationFeedback.errors.length > 0)
+                    }
+                    onClick={() => handleSave(true)}
+                    title="Save this subject and immediately schedule another subject at this exact same time slot"
+                    style={{
+                      background: "var(--srcb-royal-light, #eff6ff)",
+                      color: "var(--srcb-royal, #2563eb)",
+                      borderColor: "var(--srcb-royal, #2563eb)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <Plus size={15} />
+                    <span>Save &amp; Add Another Subject Here</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   className="action-button"
@@ -3258,9 +3805,9 @@ export function SchedulesPage() {
                     (form.modality === "Face-to-Face" && !form.room) ||
                     (!validationFeedback.valid && validationFeedback.errors.length > 0)
                   }
-                  onClick={handleSave}
+                  onClick={() => handleSave(false)}
                 >
-                  <CheckCircle2 size={16} />
+                  {loading ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
                   <span>{loading ? "Saving…" : (editingSchedule ? "Save Schedule Changes" : "Confirm & Schedule Block")}</span>
                 </button>
               </div>

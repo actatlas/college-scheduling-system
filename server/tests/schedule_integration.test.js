@@ -352,25 +352,21 @@ describe('SRCB Scheduling Engine Business Logic & Security Integration', () => {
     });
   });
 
-  it('4. FACULTY_UNAVAILABLE: rejects Part-Time faculty when requested time is partially outside availability', async () => {
-    // T002 availability is Tuesday 08:00-17:00
-    // Requesting Tuesday 16:00-18:00 extends beyond 17:00 window -> must be rejected
-    await expect(
-      schedulesService.createSchedule(
-        {
-          day: 'Tuesday',
-          time: '16:00-18:00',
-          subjectCode: 'CS102',
-          facultyId: 'T002',
-          room: 'R-101',
-          sectionId: '1',
-        },
-        adminUser
-      )
-    ).rejects.toMatchObject({
-      code: 'FACULTY_UNAVAILABLE',
-      statusCode: 409,
-    });
+  it('4. Faculty scheduling succeeds flexibly without availability window restrictions', async () => {
+    // Availability restrictions removed: Part-Time faculty can be scheduled at any slot
+    const created = await schedulesService.createSchedule(
+      {
+        day: 'Tuesday',
+        time: '16:00-18:00',
+        subjectCode: 'CS102',
+        facultyId: 'T002',
+        room: 'R-101',
+        sectionId: '1',
+      },
+      adminUser
+    );
+    expect(created).toBeDefined();
+    expect(created.facultyId).toBe('T002');
   });
 
   it('5. Part-Time faculty class completely inside availability window succeeds', async () => {

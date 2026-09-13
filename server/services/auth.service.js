@@ -62,8 +62,14 @@ async function ensureDefaultUsers() {
     { email: process.env.SEED_ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL, password: process.env.SEED_ADMIN_PASSWORD || DEFAULT_ADMIN_PASSWORD, name: DEFAULT_ADMIN_NAME, role: 'admin' },
     { email: 'programhead@srcb.edu.ph', password: '@program123', name: 'Dr. Reyes (IT Head)', role: 'program_head' },
     { email: process.env.SEED_TEACHER_EMAIL || 'teacher@srcb.edu.ph', password: process.env.SEED_TEACHER_PASSWORD || '@teacher123', name: 'Maria Santos', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T001' },
-    { email: 'parttime@srcb.edu.ph', password: '@teacher123', name: 'Marco Sabuero', role: 'teacher', teacherStatus: 'Part-Time', teacherId: 'FAC-003' },
   ];
+
+  // Purge legacy part-time faculty accounts so only one official faculty account exists
+  try {
+    await query("DELETE FROM users WHERE email IN ('parttime@srcb.edu.ph', 'faculty.parttime@srcb.edu.ph')");
+  } catch (err) {
+    // ignore if table doesn't exist
+  }
 
   for (const user of defaultUsers) {
     const [existing] = await query('SELECT id FROM users WHERE email = ? LIMIT 1', [user.email]);
@@ -103,7 +109,7 @@ async function ensureDefaultUsers() {
     }
 
     if (user.role === 'teacher') {
-      const teacherId = user.teacherId || (user.teacherStatus === 'Part-Time' ? 'FAC-003' : 'T001');
+      const teacherId = user.teacherId || 'T001';
       const teacherStatus = user.teacherStatus || 'Full-Time';
       const [major] = await query('SELECT id FROM program_majors WHERE code = ? LIMIT 1', ['BSIT']);
       const [teacher] = await query('SELECT id FROM teachers WHERE id = ? OR LOWER(email) = LOWER(?) LIMIT 1', [teacherId, user.email]);

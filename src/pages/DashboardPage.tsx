@@ -19,7 +19,6 @@ import {
   Lock,
   Lightbulb,
   Copy,
-  X,
   RotateCcw,
 } from "lucide-react";
 import { motion } from "framer-motion";
@@ -32,6 +31,7 @@ import { useNavigate } from "react-router-dom";
 import { useProgramContext } from "../contexts/ProgramContext";
 import { ScheduleDetailsModal } from "../components/schedule/ScheduleDetailsModal";
 import { Modal } from "../components/common/Modal";
+import { ConfirmModal } from "../components/common/ConfirmModal";
 import { getProgramLogo } from "../utils/programLogos";
 import type { UserRole, ClassScheduleItem, ExamScheduleItem } from "../types";
 
@@ -787,14 +787,6 @@ export function DashboardPage() {
               </div>
             </div>
             <div className="edusched-header-actions">
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => navigate("/rooms")}
-              >
-                <LayoutGrid size={16} />
-                <span>Institutional Grid</span>
-              </button>
               <button
                 type="button"
                 className="action-button"
@@ -1959,95 +1951,30 @@ export function DashboardPage() {
             )}
 
             {/* CONFIRMATION DIALOG: Change Teaching Availability */}
-            {isConfirmChangeModalOpen && (
-              <div className="modal-overlay" role="presentation" onClick={() => setIsConfirmChangeModalOpen(false)}>
-                <div
-                  className="modal-card"
-                  role="dialog"
-                  aria-modal="true"
-                  style={{ maxWidth: 480 }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="modal-card__header">
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div
-                        style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: "50%",
-                          backgroundColor: "rgba(245, 158, 11, 0.15)",
-                          color: "#d97706",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          flexShrink: 0,
-                        }}
-                      >
-                        <AlertTriangle size={20} />
-                      </div>
-                      <div>
-                        <h3 id="modal-title" style={{ margin: 0, fontSize: "1.08rem", fontWeight: 700, color: "var(--srcb-navy)" }}>
-                          Change Teaching Availability?
-                        </h3>
-                        <p className="muted" style={{ margin: "2px 0 0", fontSize: "0.82rem" }}>
-                          Confirmation Required
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      className="icon-button"
-                      onClick={() => setIsConfirmChangeModalOpen(false)}
-                      aria-label="Close dialog"
-                    >
-                      <X size={18} />
-                    </button>
-                  </div>
-
-                  <div className="modal-card__body" style={{ padding: "20px 24px" }}>
-                    <p style={{ margin: "0 0 14px", fontSize: "0.92rem", color: "var(--srcb-text)", lineHeight: 1.5 }}>
-                      Your current teaching availability is already saved. Are you sure you want to change it?
-                    </p>
-                    <div
-                      style={{
-                        background: "var(--srcb-surface-alt, #f8fafc)",
-                        border: "1px solid var(--srcb-border)",
-                        borderRadius: 8,
-                        padding: "12px 14px",
-                        marginBottom: 20,
-                        fontSize: "0.84rem",
-                        color: "var(--srcb-text-muted)",
-                        lineHeight: 1.4,
-                      }}
-                    >
-                      Entering edit mode will allow you to modify time slots. Your existing saved availability will remain active until you explicitly submit new changes.
-                    </div>
-
-                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        onClick={() => setIsConfirmChangeModalOpen(false)}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        className="action-button action-button--emerald"
-                        onClick={() => {
-                          setIsConfirmChangeModalOpen(false);
-                          setDraftSlots({ ...savedSlots });
-                          setIsEditMode(true);
-                          toast.push("Editing mode enabled. Select your available slots and click Save.", "info");
-                        }}
-                      >
-                        Continue
-                      </button>
-                    </div>
-                  </div>
+            <ConfirmModal
+              isOpen={isConfirmChangeModalOpen}
+              title="Change Teaching Availability?"
+              message={
+                <div>
+                  <p style={{ margin: "0 0 10px", fontSize: "0.92rem", color: "var(--srcb-text-body, #334155)", lineHeight: 1.5 }}>
+                    Your current teaching availability is already saved. Are you sure you want to modify it?
+                  </p>
+                  <p style={{ margin: 0, fontSize: "0.84rem", color: "var(--srcb-text-muted)", lineHeight: 1.4 }}>
+                    Entering edit mode will allow you to modify time slots. Your existing saved availability will remain active until you explicitly submit new changes.
+                  </p>
                 </div>
-              </div>
-            )}
+              }
+              confirmLabel="Continue"
+              cancelLabel="Cancel"
+              variant="warning"
+              onCancel={() => setIsConfirmChangeModalOpen(false)}
+              onConfirm={() => {
+                setIsConfirmChangeModalOpen(false);
+                setDraftSlots({ ...savedSlots });
+                setIsEditMode(true);
+                toast.push("Editing mode enabled. Select your available slots and click Save.", "info");
+              }}
+            />
 
             {/* Teacher Schedule List */}
             <article className="card" style={{ gridColumn: "1 / -1" }}>
@@ -2286,6 +2213,8 @@ export function DashboardPage() {
       {/* Enlarged Program Logo Modal */}
       <Modal
         isOpen={isLogoModalOpen}
+        size="sm"
+        eyebrow="Academic Program Seal"
         title={selectedProgram.label || "Academic Program"}
         description="Official Academic Program Seal · St. Rita's College of Balingasag"
         onClose={() => setIsLogoModalOpen(false)}
@@ -2296,7 +2225,7 @@ export function DashboardPage() {
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
-            padding: "20px 10px 10px",
+            padding: "10px 10px 0",
             textAlign: "center",
           }}
         >
@@ -2310,15 +2239,15 @@ export function DashboardPage() {
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
-              marginBottom: "20px",
+              marginBottom: "16px",
             }}
           >
             <img
               src={getProgramLogo(selectedProgram.key || selectedProgram.label)}
               alt="Enlarged Logo"
               style={{
-                width: "240px",
-                height: "240px",
+                width: "200px",
+                height: "200px",
                 objectFit: "contain",
                 filter: "drop-shadow(0 8px 16px rgba(0, 0, 0, 0.08))",
               }}
@@ -2327,7 +2256,7 @@ export function DashboardPage() {
 
           <h3
             style={{
-              fontSize: "1.3rem",
+              fontSize: "1.2rem",
               fontWeight: 800,
               color: "var(--srcb-navy)",
               margin: "0 0 6px",
@@ -2338,10 +2267,10 @@ export function DashboardPage() {
 
           <p
             style={{
-              fontSize: "0.9rem",
+              fontSize: "0.85rem",
               fontWeight: 600,
               color: "#0284c7",
-              margin: "0 0 20px",
+              margin: "0 0 16px",
               textTransform: "uppercase",
               letterSpacing: "0.04em",
             }}
@@ -2349,14 +2278,16 @@ export function DashboardPage() {
             {selectedProgram.shortLabel || selectedProgram.key} Academic Scope
           </p>
 
-          <button
-            type="button"
-            className="action-button"
-            onClick={() => setIsLogoModalOpen(false)}
-            style={{ minWidth: "140px" }}
-          >
-            Close Preview
-          </button>
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="action-button"
+              onClick={() => setIsLogoModalOpen(false)}
+              style={{ minWidth: "140px" }}
+            >
+              Close Preview
+            </button>
+          </div>
         </div>
       </Modal>
     </motion.div>

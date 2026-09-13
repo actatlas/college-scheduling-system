@@ -60,18 +60,11 @@ const PRESET_ACCOUNTS: PresetAccount[] = [
     icon: <GraduationCap size={16} />,
   },
   {
-    label: "Full-Time Faculty (Teacher)",
+    label: "Faculty / Teacher",
     email: "teacher@srcb.edu.ph",
     pass: "@teacher123",
     role: "teacher",
     icon: <Users size={16} />,
-  },
-  {
-    label: "Part-Time Faculty (Teacher)",
-    email: "parttime@srcb.edu.ph",
-    pass: "@teacher123",
-    role: "teacher",
-    icon: <Clock size={16} />,
   },
 ];
 

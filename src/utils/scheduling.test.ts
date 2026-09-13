@@ -112,7 +112,7 @@ describe("Part-Time Teacher Availability Verification & Formatting", () => {
     expect(grouped.find((g) => g.day === "Tuesday")?.formattedRange).toBe("6:00 PM - 8:00 PM");
   });
 
-  it("proactively validates part-time teacher schedule slots against registered availability", () => {
+  it("permits scheduling faculty flexibly without availability window restrictions", () => {
     const partTimeFaculty = [
       {
         id: "FAC-003",
@@ -122,7 +122,7 @@ describe("Part-Time Teacher Availability Verification & Formatting", () => {
       },
     ];
 
-    // Attempting schedule on Monday 05:30-07:00 (inside availability) -> VALID
+    // Attempting schedule on Monday 05:30-07:00 -> VALID
     const validCandidate = {
       day: "Monday",
       time: "05:30-07:00",
@@ -137,8 +137,8 @@ describe("Part-Time Teacher Availability Verification & Formatting", () => {
     expect(validResult.valid).toBe(true);
     expect(validResult.errors.length).toBe(0);
 
-    // Attempting schedule on Monday 08:00-09:00 (outside availability) -> INVALID
-    const invalidTimeCandidate = {
+    // Attempting schedule on Monday 08:00-09:00 (previously outside availability window) -> now VALID
+    const flexibleTimeCandidate = {
       day: "Monday",
       time: "08:00-09:00",
       room: "R-101",
@@ -148,12 +148,12 @@ describe("Part-Time Teacher Availability Verification & Formatting", () => {
       section: "BSCS 1-A",
       modality: "Face-to-Face" as const,
     };
-    const invalidTimeResult = validateScheduleSlot(invalidTimeCandidate, [], partTimeFaculty);
-    expect(invalidTimeResult.valid).toBe(false);
-    expect(invalidTimeResult.errors.some((e) => e.includes("availability mismatch"))).toBe(true);
+    const flexibleTimeResult = validateScheduleSlot(flexibleTimeCandidate, [], partTimeFaculty);
+    expect(flexibleTimeResult.valid).toBe(true);
+    expect(flexibleTimeResult.errors.some((e) => e.includes("availability"))).toBe(false);
 
-    // Attempting schedule on Wednesday (unregistered day) -> INVALID
-    const invalidDayCandidate = {
+    // Attempting schedule on Wednesday (previously unregistered day) -> now VALID
+    const flexibleDayCandidate = {
       day: "Wednesday",
       time: "05:30-07:00",
       room: "R-101",
@@ -163,9 +163,9 @@ describe("Part-Time Teacher Availability Verification & Formatting", () => {
       section: "BSCS 1-A",
       modality: "Face-to-Face" as const,
     };
-    const invalidDayResult = validateScheduleSlot(invalidDayCandidate, [], partTimeFaculty);
-    expect(invalidDayResult.valid).toBe(false);
-    expect(invalidDayResult.errors.some((e) => e.includes("has not registered availability for Wednesday"))).toBe(true);
+    const flexibleDayResult = validateScheduleSlot(flexibleDayCandidate, [], partTimeFaculty);
+    expect(flexibleDayResult.valid).toBe(true);
+    expect(flexibleDayResult.errors.some((e) => e.includes("availability"))).toBe(false);
   });
 
   it("correctly parses 7:00 AM as morning time and handles 30-minute intervals starting at 7am", () => {

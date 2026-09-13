@@ -34,6 +34,8 @@ html[data-theme="dark"] {
   --srcb-blue-strong: #60a5fa;
   --srcb-blue-soft: rgba(56, 189, 248, 0.14);
   --srcb-terracotta: #38bdf8;
+  --srcb-royal: #38bdf8;
+  --srcb-royal-rgb: 56, 189, 248;
 
   /* Official SRCB Status & Accent Colors in Dark Mode */
   --srcb-green: #34d399;
@@ -1107,13 +1109,142 @@ html[data-theme="dark"] .schedule-grid-cell.drag-target-hover {
   box-shadow: inset 0 0 16px rgba(56, 189, 248, 0.2), 0 0 16px rgba(56, 189, 248, 0.2) !important;
 }
 
+/* Institutional Timetable Matrix Banner in Dark Mode */
+html[data-theme="dark"] .timetable-matrix-institutional-banner {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%) !important;
+  border: 1.5px solid rgba(56, 189, 248, 0.3) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+html[data-theme="dark"] .timetable-matrix-banner-title {
+  color: #f8fafc !important;
+}
+
+html[data-theme="dark"] .timetable-matrix-banner-semester {
+  color: #38bdf8 !important;
+  text-shadow: 0 0 12px rgba(56, 189, 248, 0.35);
+}
+
+html[data-theme="dark"] .timetable-matrix-banner-sub {
+  color: #94a3b8 !important;
+}
+
+html[data-theme="dark"] .perspective-selector-bar {
+  background: rgba(30, 41, 59, 0.8) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+html[data-theme="dark"] .perspective-selector-bar label {
+  color: #38bdf8 !important;
+}
+
+html[data-theme="dark"] .perspective-select-input,
+html[data-theme="dark"] .perspective-selector-bar select {
+  background: #0f172a !important;
+  color: #f8fafc !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+/* Institutional Timeline Grid in Dark Mode */
+html[data-theme="dark"] .timetable-timeline-grid {
+  background: #0f172a !important;
+  border: 2px solid rgba(56, 189, 248, 0.35) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65) !important;
+}
+
+html[data-theme="dark"] .timetable-timeline-header {
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.98) 0%, rgba(15, 23, 42, 0.95) 100%) !important;
+  border-bottom: 2px solid rgba(56, 189, 248, 0.35) !important;
+}
+
+html[data-theme="dark"] .timetable-timeline-corner-cell {
+  background: rgba(30, 41, 59, 0.95) !important;
+  color: #38bdf8 !important;
+  border-right: 2px solid rgba(56, 189, 248, 0.35) !important;
+  text-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+}
+
+html[data-theme="dark"] .timetable-timeline-day-header {
+  background: rgba(15, 23, 42, 0.8) !important;
+  border-right: 1.5px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+html[data-theme="dark"] .timetable-timeline-day-header .day-name {
+  color: #f8fafc !important;
+}
+
+html[data-theme="dark"] .timetable-timeline-day-header .day-count-badge {
+  background: rgba(56, 189, 248, 0.16) !important;
+  color: #38bdf8 !important;
+  border: 1px solid rgba(56, 189, 248, 0.35) !important;
+}
+
+html[data-theme="dark"] .timetable-time-gutter {
+  background: rgba(15, 23, 42, 0.98) !important;
+  border-right: 2px solid rgba(56, 189, 248, 0.35) !important;
+}
+
+html[data-theme="dark"] .timetable-time-gutter .timetable-time-slot-cell {
+  background: rgba(15, 23, 42, 0.85) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+html[data-theme="dark"] .timetable-time-gutter .timetable-time-slot-cell.is-hour {
+  background: rgba(30, 41, 59, 0.9) !important;
+  border-top: 1.5px solid rgba(56, 189, 248, 0.3) !important;
+}
+
+html[data-theme="dark"] .timetable-time-gutter .timetable-time-slot-time {
+  color: #cbd5e1 !important;
+}
+
+html[data-theme="dark"] .timetable-time-gutter .timetable-time-slot-cell.is-hour .timetable-time-slot-time {
+  color: #38bdf8 !important;
+  font-weight: 900 !important;
+  text-shadow: 0 0 8px rgba(56, 189, 248, 0.25);
+}
+
+html[data-theme="dark"] .timetable-time-gutter .timetable-time-slot-range,
+html[data-theme="dark"] .timetable-time-gutter .timetable-time-slot-sub {
+  color: #64748b !important;
+}
+
+html[data-theme="dark"] .timetable-time-gutter .timetable-time-slot-cell.is-hour .timetable-time-slot-sub {
+  color: #38bdf8 !important;
+}
+
+html[data-theme="dark"] .timetable-day-column {
+  border-right: 1.5px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+html[data-theme="dark"] .timetable-day-slots-bg .schedule-grid-cell {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: transparent !important;
+}
+
+html[data-theme="dark"] .timetable-day-slots-bg .schedule-grid-cell:nth-child(even) {
+  background: rgba(255, 255, 255, 0.015) !important;
+}
+
+html[data-theme="dark"] .schedule-empty-slot {
+  color: rgba(148, 163, 184, 0.5) !important;
+}
+
+html[data-theme="dark"] .schedule-empty-slot span {
+  color: rgba(148, 163, 184, 0.5) !important;
+}
+
+html[data-theme="dark"] .schedule-grid-cell:hover .schedule-empty-slot span {
+  color: #38bdf8 !important;
+}
+
 /* Enhanced Draggable Schedule Cards in Dark Mode */
 html[data-theme="dark"] .schedule-card-draggable {
-  background: linear-gradient(145deg, #171924 0%, #10121a 100%) !important;
-  border-top: 1px solid rgba(255, 255, 255, 0.13) !important;
-  border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.55) !important;
+  background: linear-gradient(145deg, #1e2433 0%, #131722 100%) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6) !important;
 }
 
 html[data-theme="dark"] .schedule-card-draggable.is-online {
@@ -1125,22 +1256,35 @@ html[data-theme="dark"] .schedule-card-draggable.is-online {
 
 html[data-theme="dark"] .schedule-card-draggable:hover {
   transform: translateY(-2px);
-  border-top-color: rgba(56, 189, 248, 0.5) !important;
-  border-right-color: rgba(56, 189, 248, 0.5) !important;
-  border-bottom-color: rgba(56, 189, 248, 0.5) !important;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.7), 0 0 16px rgba(56, 189, 248, 0.18) !important;
+  border-top-color: rgba(56, 189, 248, 0.6) !important;
+  border-right-color: rgba(56, 189, 248, 0.6) !important;
+  border-bottom-color: rgba(56, 189, 248, 0.6) !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.75), 0 0 16px rgba(56, 189, 248, 0.25) !important;
 }
 
 html[data-theme="dark"] .schedule-card-draggable .schedule-card-code {
   color: #38bdf8 !important;
-  text-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+  text-shadow: 0 0 10px rgba(56, 189, 248, 0.35);
+}
+
+html[data-theme="dark"] .schedule-card-draggable .schedule-card-room {
+  color: #93c5fd !important;
+  font-weight: 800 !important;
 }
 
 html[data-theme="dark"] .schedule-card-draggable .schedule-card-subject {
-  color: #f1f5f9 !important;
+  color: #f8fafc !important;
 }
 
 html[data-theme="dark"] .schedule-card-draggable .schedule-card-meta {
+  color: #cbd5e1 !important;
+}
+
+html[data-theme="dark"] .schedule-card-draggable .schedule-card-meta strong {
+  color: #f1f5f9 !important;
+}
+
+html[data-theme="dark"] .schedule-card-draggable .schedule-card-time {
   color: #94a3b8 !important;
 }
 
@@ -1202,18 +1346,23 @@ html[data-theme="dark"] .stacked-add-slot-btn:hover {
   border-color: #38bdf8 !important;
 }
 
-html[data-theme="dark"] .stacked-cards-stack.mode-stacked .stacked-card-wrapper:not(:first-child) {
-  box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.75), 0 6px 18px rgba(0, 0, 0, 0.6) !important;
+html[data-theme="dark"] .stacked-cards-stack .stacked-card-wrapper {
+  transform: none !important;
+}
+
+html[data-theme="dark"] .stacked-cards-stack .stacked-card-wrapper.is-front {
+  border: 1.5px solid #38bdf8 !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6), 0 0 14px rgba(56, 189, 248, 0.25) !important;
+}
+
+html[data-theme="dark"] .stacked-cards-stack .stacked-card-wrapper.is-behind {
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5) !important;
 }
 
 html[data-theme="dark"] .stacked-card-wrapper:hover {
-  z-index: 30 !important;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.85), 0 0 20px rgba(56, 189, 248, 0.22) !important;
-}
-
-html[data-theme="dark"] .stacked-card-wrapper.is-front {
-  z-index: 25 !important;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.8), 0 0 16px rgba(56, 189, 248, 0.16) !important;
+  border-color: rgba(56, 189, 248, 0.7) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8), 0 0 16px rgba(56, 189, 248, 0.3) !important;
 }
 
 /* DnD Tray in Dark Mode */
@@ -1291,7 +1440,19 @@ html[data-theme="dark"] .modal-box {
 
 html[data-theme="dark"] .modal-card__header,
 html[data-theme="dark"] .modal-header {
+  background: #15161c;
   border-bottom: 1px solid var(--srcb-border-subtle);
+}
+
+html[data-theme="dark"] .modal-card__header-icon {
+  background: rgba(255, 255, 255, 0.08);
+  color: #38bdf8;
+}
+
+html[data-theme="dark"] .modal-card__close-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
 html[data-theme="dark"] .modal-card__header h3,
@@ -1306,9 +1467,33 @@ html[data-theme="dark"] .modal-actions {
   border-top: 1px solid var(--srcb-border-subtle);
 }
 
+html[data-theme="dark"] .modal-actions .secondary-button,
+html[data-theme="dark"] .modal-actions .cancel-button,
+html[data-theme="dark"] .modal-actions .user-mgmt-secondary-btn {
+  background: #20222c;
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #e2e8f0;
+}
+
+html[data-theme="dark"] .modal-actions .secondary-button:hover,
+html[data-theme="dark"] .modal-actions .cancel-button:hover,
+html[data-theme="dark"] .modal-actions .user-mgmt-secondary-btn:hover {
+  background: #2a2c38;
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
+
 html[data-theme="dark"] .modal-description,
 html[data-theme="dark"] .modal-subtitle {
   color: var(--srcb-text-muted);
+}
+
+html[data-theme="dark"] .modal-card__body::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+
+html[data-theme="dark"] .modal-card__body::-webkit-scrollbar-thumb:hover {
+  background: #475569;
 }
 
 /* ==========================================================================
@@ -1359,12 +1544,10 @@ html[data-theme="dark"] .dev-tools-panel {
    ========================================================================== */
 
 html[data-theme="dark"] .skeleton-shimmer {
-  background: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0.05) 25%,
-    rgba(255, 255, 255, 0.11) 37%,
-    rgba(255, 255, 255, 0.05) 63%
-  );
+  background: linear-gradient(90deg,
+      rgba(255, 255, 255, 0.05) 25%,
+      rgba(255, 255, 255, 0.11) 37%,
+      rgba(255, 255, 255, 0.05) 63%);
   background-size: 200% 100%;
 }
 
@@ -1468,7 +1651,7 @@ html[data-theme="dark"] .srcb-apple-tooltip {
   background: rgba(18, 20, 29, 0.96);
   color: #f8fafc;
   border-color: rgba(255, 255, 255, 0.18);
-  box-shadow: 
+  box-shadow:
     0 8px 24px rgba(0, 0, 0, 0.6),
     0 2px 6px rgba(0, 0, 0, 0.3),
     inset 0 1px 0 rgba(255, 255, 255, 0.15);
@@ -1504,7 +1687,7 @@ html[data-theme="dark"] .searchable-select-popover {
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
 }
 
-html[data-theme="dark"] .searchable-select-popover > div:first-child {
+html[data-theme="dark"] .searchable-select-popover>div:first-child {
   background: #111216 !important;
   border-bottom-color: rgba(255, 255, 255, 0.1) !important;
 }
@@ -1771,5 +1954,3 @@ html[data-theme="dark"] .exam-section-chip.is-selected {
   background: rgba(56, 189, 248, 0.14);
   border-color: #38bdf8;
 }
-
-

@@ -125,9 +125,9 @@ describe("Universal General Subjects Logic", () => {
 });
 
 describe("Paired Day Scheduling Logic", () => {
-  it("pairs Monday with Friday (M-F)", () => {
-    expect(getPairedDay("Monday")).toBe("Friday");
-    expect(getDayPairLabel("Monday")).toBe("Monday & Friday (M-F)");
+  it("pairs Monday with Thursday (M-Th)", () => {
+    expect(getPairedDay("Monday")).toBe("Thursday");
+    expect(getDayPairLabel("Monday")).toBe("Monday & Thursday (M-Th)");
   });
 
   it("pairs Tuesday with Friday (T-F)", () => {

@@ -19,6 +19,7 @@ const STORAGE_KEYS = {
   CLASS_SCHEDULES: 'srcb_class_schedules',
   EXAM_SCHEDULES: 'srcb_exam_schedules',
   SETTINGS: 'srcb_settings',
+  NOTIFICATIONS: 'srcb_notifications',
 }
 
 // Initial Seed Data
@@ -59,21 +60,12 @@ const defaultUsers: UserAccount[] = [
   },
   {
     id: 'USR-005',
-    name: 'Mr. Juan Dela Cruz',
-    email: 'faculty.fulltime@srcb.edu.ph',
+    name: 'Maria Santos',
+    email: 'teacher@srcb.edu.ph',
     role: 'teacher',
-    teacherId: 'FAC-001',
+    teacherId: 'T001',
     status: 'Active',
     createdAt: '2026-02-01T08:00:00.000Z',
-  },
-  {
-    id: 'USR-006',
-    name: 'Engr. Roberto Santos (Part-Time)',
-    email: 'faculty.parttime@srcb.edu.ph',
-    role: 'teacher',
-    teacherId: 'FAC-002',
-    status: 'Active',
-    createdAt: '2026-02-05T08:00:00.000Z',
   },
 ]
 
@@ -85,342 +77,12 @@ const defaultPrograms = [
   { code: 'HMP', name: 'Hospitality Management Program', focus: 'Hospitality & Culinary Management' },
 ]
 
-const defaultFaculty: FacultyMember[] = [
-  {
-    id: 'FAC-001',
-    name: 'Mr. Juan Dela Cruz',
-    department: 'Information Technology',
-    email: 'faculty.fulltime@srcb.edu.ph',
-    phone: '09171234567',
-    status: 'Full-Time',
-    availability: 'Monday-Friday: 08:00-17:00',
-    maxLoadHours: 24,
-    subjects: ['IT101', 'IT201'],
-    programs: ['BSIT'],
-  },
-  {
-    id: 'FAC-002',
-    name: 'Engr. Roberto Santos (Part-Time)',
-    department: 'Information Technology',
-    email: 'faculty.parttime@srcb.edu.ph',
-    phone: '09187654321',
-    status: 'Part-Time',
-    availability: 'Monday: 08:00-09:00, 09:00-10:00, 10:00-11:00 | Wednesday: 08:00-09:00, 09:00-10:00, 10:00-11:00 | Friday: 01:00-02:00, 02:00-03:00, 03:00-04:00',
-    maxLoadHours: 12,
-    subjects: ['IT102', 'IT301'],
-    programs: ['BSIT'],
-  },
-  {
-    id: 'FAC-003',
-    name: 'Dr. Alan Turing',
-    department: 'Information Technology',
-    email: 'head.it@srcb.edu.ph',
-    phone: '09191112233',
-    status: 'Full-Time',
-    availability: 'Monday-Friday: 08:00-17:00',
-    maxLoadHours: 18,
-    subjects: ['IT401', 'GE103'],
-    programs: ['BSIT'],
-  },
-  {
-    id: 'FAC-004',
-    name: 'Prof. Mary Cruz',
-    department: 'Business Administration',
-    email: 'head.ba@srcb.edu.ph',
-    phone: '09204445566',
-    status: 'Full-Time',
-    availability: 'Monday-Friday: 08:00-17:00',
-    maxLoadHours: 21,
-    subjects: ['BA101', 'BA201'],
-    programs: ['BSBA'],
-  },
-  {
-    id: 'FAC-005',
-    name: 'Dr. Grace Hopper (Part-Time)',
-    department: 'Information Technology',
-    email: 'hopper@srcb.edu.ph',
-    phone: '09228889900',
-    status: 'Part-Time',
-    availability: 'Tuesday: 08:00-09:00, 09:00-10:00, 10:00-11:00 | Thursday: 08:00-09:00, 09:00-10:00, 10:00-11:00',
-    maxLoadHours: 12,
-    subjects: ['IT201'],
-    programs: ['BSIT'],
-  },
-  {
-    id: 'FAC-006',
-    name: 'Mrs. Elena Ramos',
-    department: 'General Education',
-    email: 'ramos@srcb.edu.ph',
-    phone: '09175556677',
-    status: 'Full-Time',
-    availability: 'Monday-Friday: 08:00-17:00',
-    maxLoadHours: 24,
-    subjects: ['GE101', 'GE102'],
-    programs: ['BSIT', 'BSBA', 'BSED'],
-  },
-  {
-    id: 'FAC-007',
-    name: 'Mr. Baltazar',
-    department: 'Religious Studies / Gen Ed',
-    email: 'baltazar@srcb.edu.ph',
-    phone: '09179998877',
-    status: 'Full-Time',
-    availability: 'Monday-Friday: 08:00-17:00',
-    maxLoadHours: 24,
-    subjects: ['RS1'],
-    programs: ['ITP', 'BAP', 'TEP', 'CJEP', 'HMP'],
-  },
-]
-
-const defaultRooms: RoomItem[] = [
-  // College Building
-  { number: 'COL-101', capacity: 45, building: 'College Building', type: 'Lecture', status: 'Available' },
-  { number: 'COL-102', capacity: 45, building: 'College Building', type: 'Lecture', status: 'Available' },
-  { number: 'COL-201', capacity: 50, building: 'College Building', type: 'Lecture', status: 'Available' },
-  { number: 'COMLAB-1', capacity: 40, building: 'College Building', type: 'Computer Laboratory', status: 'Available' },
-  { number: 'COMLAB-2', capacity: 40, building: 'College Building', type: 'Computer Laboratory', status: 'Available' },
-  { number: 'COL-AVR', capacity: 120, building: 'College Building', type: 'AVR', status: 'Available' },
-  { number: 'SCI-LAB1', capacity: 35, building: 'College Building', type: 'Science Laboratory', status: 'Available' },
-
-  // SHS Building
-  { number: 'SHS-101', capacity: 45, building: 'SHS Building', type: 'Lecture', status: 'Available' },
-  { number: 'SHS-102', capacity: 45, building: 'SHS Building', type: 'Lecture', status: 'Available' },
-  { number: 'SHS-COMLAB', capacity: 40, building: 'SHS Building', type: 'Computer Laboratory', status: 'Available' },
-  { number: 'SHS-AVR', capacity: 80, building: 'SHS Building', type: 'AVR', status: 'Available' },
-
-  // JHS Building
-  { number: 'JHS-201', capacity: 45, building: 'JHS Building', type: 'Lecture', status: 'Available' },
-  { number: 'JHS-202', capacity: 45, building: 'JHS Building', type: 'Lecture', status: 'Available' },
-  { number: 'JHS-SCILAB', capacity: 40, building: 'JHS Building', type: 'Science Laboratory', status: 'Available' },
-]
-
-const defaultSubjects: SubjectItem[] = [
-  { code: 'IT101', name: 'Computer Programming 1', units: 3, lectureHours: 2, labHours: 3, semester: '1st Semester', department: 'Information Technology', program: 'BSIT', isMajor: true, instructor: 'Mr. Juan Dela Cruz', instructorId: 'FAC-001' },
-  { code: 'IT102', name: 'Data Structures and Algorithms', units: 3, lectureHours: 2, labHours: 3, semester: '1st Semester', department: 'Information Technology', program: 'BSIT', isMajor: true, instructor: 'Engr. Roberto Santos (Part-Time)', instructorId: 'FAC-002' },
-  { code: 'IT201', name: 'Database Management Systems', units: 3, lectureHours: 2, labHours: 3, semester: '1st Semester', department: 'Information Technology', program: 'BSIT', isMajor: true, instructor: 'Mr. Juan Dela Cruz', instructorId: 'FAC-001' },
-  { code: 'IT301', name: 'Web Systems and Technologies', units: 3, lectureHours: 2, labHours: 3, semester: '1st Semester', department: 'Information Technology', program: 'BSIT', isMajor: true, instructor: 'Engr. Roberto Santos (Part-Time)', instructorId: 'FAC-002' },
-  { code: 'IT401', name: 'Capstone Project 1', units: 3, lectureHours: 3, labHours: 0, semester: '1st Semester', department: 'Information Technology', program: 'BSIT', isMajor: true, instructor: 'Dr. Alan Turing', instructorId: 'FAC-003' },
-  { code: 'BA101', name: 'Principles of Management', units: 3, lectureHours: 3, labHours: 0, semester: '1st Semester', department: 'Business Administration', program: 'BSBA', isMajor: true, instructor: 'Prof. Mary Cruz', instructorId: 'FAC-004' },
-  { code: 'BA201', name: 'Marketing Management', units: 3, lectureHours: 3, labHours: 0, semester: '1st Semester', department: 'Business Administration', program: 'BSBA', isMajor: true, instructor: 'Prof. Mary Cruz', instructorId: 'FAC-004' },
-  { code: 'GE101', name: 'Understanding the Self', units: 3, lectureHours: 3, labHours: 0, semester: '1st Semester', department: 'General Education', program: 'ALL', isMajor: false, instructor: 'Mrs. Elena Ramos', instructorId: 'FAC-006' },
-  { code: 'GE102', name: 'Purposive Communication', units: 3, lectureHours: 3, labHours: 0, semester: '1st Semester', department: 'General Education', program: 'ALL', isMajor: false, instructor: 'Mrs. Elena Ramos', instructorId: 'FAC-006' },
-  { code: 'GE103', name: 'Mathematics in the Modern World', units: 3, lectureHours: 3, labHours: 0, semester: '1st Semester', department: 'General Education', program: 'ALL', isMajor: false, instructor: 'Dr. Alan Turing', instructorId: 'FAC-003' },
-  { code: 'RS1', name: 'Religious Studies 1 (Peace & Christian Ethics)', units: 3, lectureHours: 3, labHours: 0, semester: '1st Semester', department: 'General Education', program: 'ALL', isMajor: false, instructor: 'Mr. Baltazar', instructorId: 'FAC-007' },
-]
-
-const defaultSections: SectionItem[] = [
-  { id: 'SEC-001', course: 'BSIT', program: 'BSIT', yearLevel: '1', section: 'BSIT 1-A', adviser: 'Mr. Juan Dela Cruz', adviserId: 'FAC-001', students: 38, semester: '1st Semester', schoolYear: '2026-2027' },
-  { id: 'SEC-002', course: 'BSIT', program: 'BSIT', yearLevel: '1', section: 'BSIT 1-B', adviser: 'Engr. Roberto Santos (Part-Time)', adviserId: 'FAC-002', students: 35, semester: '1st Semester', schoolYear: '2026-2027' },
-  { id: 'SEC-003', course: 'BSIT', program: 'BSIT', yearLevel: '2', section: 'BSIT 2-A', adviser: 'Dr. Alan Turing', adviserId: 'FAC-003', students: 32, semester: '1st Semester', schoolYear: '2026-2027' },
-  { id: 'SEC-004', course: 'BSIT', program: 'BSIT', yearLevel: '3', section: 'BSIT 3-A', adviser: 'Mr. Juan Dela Cruz', adviserId: 'FAC-001', students: 30, semester: '1st Semester', schoolYear: '2026-2027' },
-  { id: 'SEC-005', course: 'BSBA', program: 'BSBA', yearLevel: '1', section: 'BSBA 1-A', adviser: 'Prof. Mary Cruz', adviserId: 'FAC-004', students: 40, semester: '1st Semester', schoolYear: '2026-2027' },
-]
-
-const defaultClassSchedules: ClassScheduleItem[] = [
-  {
-    id: 'SCHED-001',
-    day: 'Monday',
-    time: '08:00-09:30',
-    subjectCode: 'IT101',
-    subject: 'Computer Programming 1',
-    section: 'BSIT 1-A',
-    faculty: 'Mr. Juan Dela Cruz',
-    facultyId: 'FAC-001',
-    room: 'COMLAB-1',
-    building: 'College Building',
-    modality: 'Face-to-Face',
-    isMajor: true,
-    program: 'BSIT',
-    color: '#0284c7',
-    status: 'Confirmed',
-  },
-  {
-    id: 'SCHED-002',
-    day: 'Wednesday',
-    time: '08:00-09:30',
-    subjectCode: 'IT101',
-    subject: 'Computer Programming 1 (Lab)',
-    section: 'BSIT 1-A',
-    faculty: 'Mr. Juan Dela Cruz',
-    facultyId: 'FAC-001',
-    room: 'COMLAB-1',
-    building: 'College Building',
-    modality: 'Face-to-Face',
-    isMajor: true,
-    program: 'BSIT',
-    color: '#0284c7',
-    status: 'Confirmed',
-  },
-  {
-    id: 'SCHED-003',
-    day: 'Monday',
-    time: '10:00-11:30',
-    subjectCode: 'IT102',
-    subject: 'Data Structures and Algorithms',
-    section: 'BSIT 1-B',
-    faculty: 'Engr. Roberto Santos (Part-Time)',
-    facultyId: 'FAC-002',
-    room: 'COMLAB-2',
-    building: 'College Building',
-    modality: 'Face-to-Face',
-    isMajor: true,
-    program: 'BSIT',
-    color: '#0d9488',
-    status: 'Confirmed',
-  },
-  {
-    id: 'SCHED-004',
-    day: 'Wednesday',
-    time: '10:00-11:30',
-    subjectCode: 'IT102',
-    subject: 'Data Structures and Algorithms (Online)',
-    section: 'BSIT 1-B',
-    faculty: 'Engr. Roberto Santos (Part-Time)',
-    facultyId: 'FAC-002',
-    room: 'Virtual Room A',
-    building: 'College Building',
-    modality: 'Online',
-    onlineLink: 'https://meet.google.com/srcb-it102-ds',
-    isMajor: true,
-    program: 'BSIT',
-    color: '#0d9488',
-    status: 'Confirmed',
-  },
-  {
-    id: 'SCHED-005',
-    day: 'Tuesday',
-    time: '08:00-09:30',
-    subjectCode: 'GE101',
-    subject: 'Understanding the Self',
-    section: 'BSIT 1-A',
-    faculty: 'Mrs. Elena Ramos',
-    facultyId: 'FAC-006',
-    room: 'COL-101',
-    building: 'College Building',
-    modality: 'Face-to-Face',
-    isMajor: false,
-    program: 'BSIT',
-    color: '#f59e0b',
-    status: 'Confirmed',
-  },
-  {
-    id: 'SCHED-006',
-    day: 'Thursday',
-    time: '08:00-09:30',
-    subjectCode: 'GE101',
-    subject: 'Understanding the Self (Online Lecture)',
-    section: 'BSIT 1-A',
-    faculty: 'Mrs. Elena Ramos',
-    facultyId: 'FAC-006',
-    room: 'Virtual Room B',
-    building: 'College Building',
-    modality: 'Online',
-    onlineLink: 'https://meet.google.com/srcb-ge101-lec',
-    isMajor: false,
-    program: 'BSIT',
-    color: '#f59e0b',
-    status: 'Confirmed',
-  },
-  {
-    id: 'SCHED-007',
-    day: 'Tuesday',
-    time: '10:00-11:30',
-    subjectCode: 'BA101',
-    subject: 'Principles of Management',
-    section: 'BSBA 1-A',
-    faculty: 'Prof. Mary Cruz',
-    facultyId: 'FAC-004',
-    room: 'SHS-101',
-    building: 'SHS Building',
-    modality: 'Face-to-Face',
-    isMajor: true,
-    program: 'BSBA',
-    color: '#8b5cf6',
-    status: 'Confirmed',
-  },
-  {
-    id: 'SCHED-008',
-    day: 'Tuesday',
-    time: '08:00-09:30',
-    subjectCode: 'IT301',
-    subject: 'Web Systems and Technologies',
-    section: 'BSIT 3-A',
-    faculty: 'Dr. Alan Turing',
-    facultyId: 'FAC-003',
-    room: 'COMLAB-2',
-    building: 'College Building',
-    modality: 'Face-to-Face',
-    isMajor: true,
-    program: 'BSIT',
-    color: '#6366f1',
-    status: 'Confirmed',
-  },
-  {
-    id: 'SCHED-009',
-    day: 'Thursday',
-    time: '08:00-09:30',
-    subjectCode: 'IT301',
-    subject: 'Web Systems and Technologies (Lab)',
-    section: 'BSIT 3-A',
-    faculty: 'Dr. Alan Turing',
-    facultyId: 'FAC-003',
-    room: 'COMLAB-2',
-    building: 'College Building',
-    modality: 'Face-to-Face',
-    isMajor: true,
-    program: 'BSIT',
-    color: '#6366f1',
-    status: 'Confirmed',
-  },
-]
-
-const defaultExamSchedules: ExamScheduleItem[] = [
-  {
-    id: 'EXAM-001',
-    term: 'Midterm',
-    examDate: '2026-10-15',
-    time: '08:00-10:00',
-    subjectCode: 'IT101',
-    subject: 'Computer Programming 1',
-    synchronizedSections: ['BSIT 1-A', 'BSIT 1-B'],
-    room: 'COMLAB-1 & COMLAB-2',
-    building: 'College Building',
-    proctor: 'Mr. Juan Dela Cruz',
-    proctorId: 'FAC-001',
-    program: 'BSIT',
-    color: '#0284c7',
-  },
-  {
-    id: 'EXAM-002',
-    term: 'Midterm',
-    examDate: '2026-10-15',
-    time: '10:30-12:30',
-    subjectCode: 'GE101',
-    subject: 'Understanding the Self',
-    synchronizedSections: ['BSIT 1-A', 'BSIT 1-B', 'BSBA 1-A'],
-    room: 'COL-AVR',
-    building: 'College Building',
-    proctor: 'Mrs. Elena Ramos',
-    proctorId: 'FAC-006',
-    program: 'BSIT',
-    color: '#f59e0b',
-  },
-  {
-    id: 'EXAM-003',
-    term: 'Midterm',
-    examDate: '2026-10-16',
-    time: '08:00-10:00',
-    subjectCode: 'IT102',
-    subject: 'Data Structures and Algorithms',
-    synchronizedSections: ['BSIT 1-A', 'BSIT 1-B'],
-    room: 'SHS-COMLAB',
-    building: 'SHS Building',
-    proctor: 'Engr. Roberto Santos (Part-Time)',
-    proctorId: 'FAC-002',
-    program: 'BSIT',
-    color: '#0d9488',
-  },
-]
+const defaultFaculty: FacultyMember[] = []
+const defaultRooms: RoomItem[] = []
+const defaultSubjects: SubjectItem[] = []
+const defaultSections: SectionItem[] = []
+const defaultClassSchedules: ClassScheduleItem[] = []
+const defaultExamSchedules: ExamScheduleItem[] = []
 
 class LocalStorageService {
   private notifyListeners() {
@@ -456,6 +118,18 @@ class LocalStorageService {
   }
 
   initSeedData(forceReset = false) {
+    const CLEAN_SLATE_KEY = 'srcb_clean_slate_2026_purge'
+    if (forceReset || !localStorage.getItem(CLEAN_SLATE_KEY)) {
+      localStorage.removeItem(STORAGE_KEYS.FACULTY)
+      localStorage.removeItem(STORAGE_KEYS.ROOMS)
+      localStorage.removeItem(STORAGE_KEYS.SUBJECTS)
+      localStorage.removeItem(STORAGE_KEYS.SECTIONS)
+      localStorage.removeItem(STORAGE_KEYS.CLASS_SCHEDULES)
+      localStorage.removeItem(STORAGE_KEYS.EXAM_SCHEDULES)
+      localStorage.removeItem(STORAGE_KEYS.NOTIFICATIONS)
+      localStorage.setItem(CLEAN_SLATE_KEY, 'true')
+    }
+
     if (forceReset || !localStorage.getItem(STORAGE_KEYS.USERS)) {
       this.setItem(STORAGE_KEYS.USERS, defaultUsers)
     }

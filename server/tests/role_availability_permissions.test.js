@@ -292,12 +292,12 @@ describe('Role and Faculty Availability Permissions', () => {
     expect(resCreate.body.data.email).toBe('newfaculty@srcb.edu.ph');
   });
 
-  it('Schedule validation enforces Part-Time availability window', async () => {
+  it('Schedule validation allows flexible scheduling without availability window constraints', async () => {
     testState.teacher_availability = [
       { id: 1, teacher_id: 'FAC-003', day_of_week: 'Monday', start_time: '08:00:00', end_time: '12:00:00' },
     ];
 
-    // Attempting schedule on Monday 08:00-10:00 (inside availability) -> valid
+    // Attempting schedule on Monday 08:00-10:00 -> valid
     await expect(
       schedulesService.validateSchedulePayload(
         {
@@ -313,7 +313,7 @@ describe('Role and Faculty Availability Permissions', () => {
       )
     ).resolves.not.toThrow();
 
-    // Attempting schedule on Tuesday (outside availability window) -> FACULTY_UNAVAILABLE (409)
+    // Attempting schedule on Tuesday (previously outside availability window) -> now valid
     await expect(
       schedulesService.validateSchedulePayload(
         {
@@ -327,10 +327,7 @@ describe('Role and Faculty Availability Permissions', () => {
         },
         { role: 'admin' }
       )
-    ).rejects.toMatchObject({
-      statusCode: 409,
-      code: 'FACULTY_UNAVAILABLE',
-    });
+    ).resolves.not.toThrow();
   });
 
   it('Admin cannot delete faculty (returns 403 UNAUTHORIZED_ROLE)', async () => {

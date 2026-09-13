@@ -6,7 +6,23 @@ import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
 import { ConfirmModal } from "../components/common/ConfirmModal";
 import { TableSkeleton } from "../components/common/Skeleton";
-import { Plus, Search, Edit2, Trash2, AlertTriangle, X } from "lucide-react";
+import {
+  Plus,
+  Search,
+  Edit2,
+  Trash2,
+  AlertTriangle,
+  X,
+  BookOpen,
+  Hash,
+  Award,
+  Clock,
+  Calendar,
+  Layers,
+  GraduationCap,
+  UserCheck,
+  Loader2,
+} from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { useProgramContext } from "../contexts/ProgramContext";
 import { useAcademicPeriod } from "../contexts/AcademicPeriodContext";
@@ -22,26 +38,17 @@ export function SubjectsPage() {
   const [fetching, setFetching] = useState(true);
   const [subjectToDelete, setSubjectToDelete] = useState<SubjectItem | null>(null);
 
+  const [query, setQuery] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
-  const [query, setQuery] = useState(searchParams.get("q") || searchParams.get("search") || "");
-
-  useEffect(() => {
-    const q = searchParams.get("q") || searchParams.get("search") || "";
-    setQuery(q);
-  }, [searchParams]);
-
   const handleQueryChange = (val: string) => {
     setQuery(val);
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      if (val.trim()) {
-        next.set("q", val);
-      } else {
-        next.delete("q");
-        next.delete("search");
-      }
-      return next;
-    }, { replace: true });
+    const next = new URLSearchParams(searchParams);
+    if (val.trim()) {
+      next.set("q", val);
+    } else {
+      next.delete("q");
+    }
+    setSearchParams(next, { replace: true });
   };
   const [majorFilter, setMajorFilter] = useState("All");
   const [programFilter, setProgramFilter] = useState<string>("All");
@@ -58,12 +65,12 @@ export function SubjectsPage() {
     code: "",
     name: "",
     units: "3",
-    lectureHours: "3",
+    lectureHours: "2",
     labHours: "0",
     semester: activeSemester || "1st Semester",
     department: "Information Technology",
-    program: selectedProgram.key !== "ALL" ? selectedProgram.key : "BSIT",
-    courseCode: selectedProgram.key !== "ALL" ? selectedProgram.key : "BSIT",
+    program: selectedProgram.key !== "ALL" ? selectedProgram.key : "ITP",
+    courseCode: selectedProgram.key !== "ALL" ? selectedProgram.key : "ITP",
     isMajor: true,
     instructorId: "",
     instructor: "Unassigned",
@@ -126,13 +133,13 @@ export function SubjectsPage() {
       units: String(subject.units),
       lectureHours: String(subject.lectureHours),
       labHours: String(subject.labHours),
-      semester: subject.semester,
-      department: subject.department,
-      program: subject.program || selectedProgram.key || "BSIT",
-      courseCode: subject.courseCode || subject.program || "BSIT",
+      semester: subject.semester || activeSemester || "1st Semester",
+      department: subject.department || (subject.isMajor ? (subject.program || "ITP") : "General Education"),
+      program: subject.program || (subject.isMajor ? (selectedProgram.key !== "ALL" ? selectedProgram.key : "ITP") : "ALL"),
+      courseCode: subject.courseCode || subject.program || "ITP",
       isMajor: Boolean(subject.isMajor),
       instructorId: subject.instructorId || "",
-      instructor: subject.instructor || "",
+      instructor: subject.instructor || "Unassigned",
     });
     setIsOpen(true);
   };
@@ -157,26 +164,29 @@ export function SubjectsPage() {
   };
 
   const handleSave = async () => {
-    if (!form.code || !form.name) {
+    const cleanCode = form.code.trim().toUpperCase();
+    const cleanName = form.name.trim();
+    if (!cleanCode || !cleanName) {
       toast.push("Subject code and name are required", "error");
       return;
     }
     setLoading(true);
     try {
-      const selectedFac = facultyList.find((f) => f.id === form.instructorId);
+      const selectedFac = editingSubject ? facultyList.find((f) => f.id === form.instructorId) : null;
+      const isMaj = Boolean(form.isMajor);
       const payload: SubjectItem = {
-        code: form.code,
-        name: form.name,
+        code: cleanCode,
+        name: cleanName,
         units: Number(form.units) || 3,
         lectureHours: Number(form.lectureHours) || 0,
         labHours: Number(form.labHours) || 0,
-        semester: form.semester,
-        department: form.department,
-        program: form.program,
-        courseCode: form.courseCode,
-        isMajor: Boolean(form.isMajor),
-        instructorId: form.instructorId || undefined,
-        instructor: selectedFac ? selectedFac.name : form.instructor || "Unassigned",
+        semester: form.semester || activeSemester || "1st Semester",
+        department: isMaj ? (form.program || "ITP") : "General Education",
+        program: isMaj ? (form.program || "ITP") : "ALL",
+        courseCode: isMaj ? (form.courseCode || form.program || "ITP") : "ALL",
+        isMajor: isMaj,
+        instructorId: editingSubject ? (form.instructorId || undefined) : undefined,
+        instructor: editingSubject ? (selectedFac ? selectedFac.name : form.instructor || "Unassigned") : "Unassigned",
       };
 
       if (editingSubject) {
@@ -222,34 +232,34 @@ export function SubjectsPage() {
       : programFilter === "All"
         ? true
         : (() => {
-            const subProg = String(
-              subject.program ||
-              subject.department ||
-              subject.courseCode ||
-              ""
-            ).toUpperCase().trim();
-            const filterKey = programFilter.toUpperCase().trim();
+          const subProg = String(
+            subject.program ||
+            subject.department ||
+            subject.courseCode ||
+            ""
+          ).toUpperCase().trim();
+          const filterKey = programFilter.toUpperCase().trim();
 
-            const IT_KEYS = ["ITP", "BSIT", "BSCS", "IT", "INFORMATION TECHNOLOGY", "COMPUTER"];
-            const CRIM_KEYS = ["CJEP", "BSCRIM", "CRIMINOLOGY", "CRIM", "CRIMINAL JUSTICE"];
-            const BUS_KEYS = ["BAP", "BSA", "BSBA", "BUSINESS", "ACCOUNTANCY", "ADMINISTRATION"];
-            const HM_KEYS = ["HMP", "BSHM", "HOSPITALITY", "HOTEL", "TOURISM"];
-            const EDUC_KEYS = ["TEP", "BSED", "BEED", "EDUCATION", "TEACHER"];
+          const IT_KEYS = ["ITP", "BSIT", "BSCS", "IT", "INFORMATION TECHNOLOGY", "COMPUTER"];
+          const CRIM_KEYS = ["CJEP", "BSCRIM", "CRIMINOLOGY", "CRIM", "CRIMINAL JUSTICE"];
+          const BUS_KEYS = ["BAP", "BSA", "BSBA", "BUSINESS", "ACCOUNTANCY", "ADMINISTRATION"];
+          const HM_KEYS = ["HMP", "BSHM", "HOSPITALITY", "HOTEL", "TOURISM"];
+          const EDUC_KEYS = ["TEP", "BSED", "BEED", "EDUCATION", "TEACHER"];
 
-            const getFam = (k: string) => {
-              if (IT_KEYS.some((x) => k.includes(x))) return "IT";
-              if (CRIM_KEYS.some((x) => k.includes(x))) return "CRIM";
-              if (BUS_KEYS.some((x) => k.includes(x))) return "BUS";
-              if (HM_KEYS.some((x) => k.includes(x))) return "HM";
-              if (EDUC_KEYS.some((x) => k.includes(x))) return "EDUC";
-              return "";
-            };
+          const getFam = (k: string) => {
+            if (IT_KEYS.some((x) => k.includes(x))) return "IT";
+            if (CRIM_KEYS.some((x) => k.includes(x))) return "CRIM";
+            if (BUS_KEYS.some((x) => k.includes(x))) return "BUS";
+            if (HM_KEYS.some((x) => k.includes(x))) return "HM";
+            if (EDUC_KEYS.some((x) => k.includes(x))) return "EDUC";
+            return "";
+          };
 
-            if (subProg.includes(filterKey) || filterKey.includes(subProg)) return true;
-            const f1 = getFam(filterKey);
-            const f2 = getFam(subProg);
-            return Boolean(f1 && f2 && f1 === f2);
-          })();
+          if (subProg.includes(filterKey) || filterKey.includes(subProg)) return true;
+          const f1 = getFam(filterKey);
+          const f2 = getFam(subProg);
+          return Boolean(f1 && f2 && f1 === f2);
+        })();
 
     return matchesQuery && matchesMajor && matchesProg;
   });
@@ -294,15 +304,15 @@ export function SubjectsPage() {
               type="button"
               onClick={() => {
                 setEditingSubject(null);
-                const defaultProg = selectedProgram.key !== "ALL" ? selectedProgram.key : (programsList[0]?.code || "BSIT");
+                const defaultProg = selectedProgram.key !== "ALL" ? selectedProgram.key : (programsList[0]?.code || "ITP");
                 const matchingCourses = coursesList.filter((c) => c.programCode === defaultProg || c.code.includes(defaultProg));
-                const defaultCourse = matchingCourses[0]?.code || coursesList[0]?.code || "BSIT";
+                const defaultCourse = matchingCourses[0]?.code || coursesList[0]?.code || defaultProg;
                 setForm({
                   code: "",
                   name: "",
                   units: "3",
                   lectureHours: "2",
-                  labHours: "3",
+                  labHours: "0",
                   semester: activeSemester || "1st Semester",
                   department: defaultProg,
                   program: defaultProg,
@@ -590,7 +600,9 @@ export function SubjectsPage() {
       {/* Add / Edit Subject Modal */}
       <Modal
         isOpen={isOpen}
+        icon={<BookOpen size={20} />}
         title={editingSubject ? "Edit Academic Subject" : "Register New Subject"}
+        eyebrow="Subject Catalog"
         onClose={() => {
           setIsOpen(false);
           setEditingSubject(null);
@@ -598,24 +610,26 @@ export function SubjectsPage() {
         description="Set course units, major classification, teaching hours, and program link."
       >
         <div className="form-grid">
+          {/* Subject Code */}
           <div className="field-group">
             <label htmlFor="subjectCode">
-              Subject Code <span style={{ color: "#dc2626" }}>*</span>
+              <Hash size={13} /> Subject Code <span className="required-asterisk">*</span>
             </label>
             <input
               id="subjectCode"
               value={form.code}
               disabled={!!editingSubject}
-              onChange={(event) => setForm({ ...form, code: event.target.value })}
-              placeholder="e.g. IT101, BA102"
+              onChange={(event) => setForm({ ...form, code: event.target.value.toUpperCase() })}
+              placeholder="e.g. IT101, BA102, GE101"
               required
               aria-required="true"
             />
           </div>
 
+          {/* Subject Title */}
           <div className="field-group">
             <label htmlFor="subjectName">
-              Subject Title <span style={{ color: "#dc2626" }}>*</span>
+              <BookOpen size={13} /> Subject Title <span className="required-asterisk">*</span>
             </label>
             <input
               id="subjectName"
@@ -627,62 +641,90 @@ export function SubjectsPage() {
             />
           </div>
 
+          {/* Subject Classification */}
           <div className="field-group">
-            <label htmlFor="subjectUnits">Units</label>
-            <input
-              id="subjectUnits"
-              type="number"
-              value={form.units}
-              onChange={(event) => setForm({ ...form, units: event.target.value })}
-            />
-          </div>
-
-          <div className="field-group">
-            <label htmlFor="subjectLec">Lecture Hours</label>
-            <input
-              id="subjectLec"
-              type="number"
-              value={form.lectureHours}
-              onChange={(event) => setForm({ ...form, lectureHours: event.target.value })}
-            />
-          </div>
-
-          <div className="field-group">
-            <label htmlFor="subjectLab">Lab Hours</label>
-            <input
-              id="subjectLab"
-              type="number"
-              value={form.labHours}
-              onChange={(event) => setForm({ ...form, labHours: event.target.value })}
-            />
-          </div>
-
-          <div className="field-group">
-            <label htmlFor="subjectIsMajor">Subject Classification</label>
+            <label htmlFor="subjectIsMajor">
+              <Layers size={13} /> Subject Classification <span className="required-asterisk">*</span>
+            </label>
             <select
               id="subjectIsMajor"
               value={form.isMajor ? "true" : "false"}
               onChange={(e) => {
                 const isMaj = e.target.value === "true";
+                const prog = isMaj ? (programsList[0]?.code || "ITP") : "ALL";
+                const matchingCourses = coursesList.filter((c) => c.programCode === prog || c.code.includes(prog));
+                const crs = isMaj ? (matchingCourses[0]?.code || coursesList[0]?.code || prog) : "ALL";
                 setForm({
                   ...form,
                   isMajor: isMaj,
-                  program: isMaj ? (programsList[0]?.code || "BSIT") : "ALL",
-                  courseCode: isMaj ? (coursesList[0]?.code || "BSIT") : "ALL",
-                  department: isMaj ? "Information Technology" : "General Education",
+                  lectureHours: isMaj ? "2" : "1.5",
+                  labHours: "0",
+                  program: prog,
+                  courseCode: crs,
+                  department: isMaj ? prog : "General Education",
                 });
               }}
             >
-              <option value="true">Major Subject (Program Specific)</option>
-              <option value="false">General Education (All Academic Programs)</option>
+              <option value="true">Major Subject (Degree / Program Specific)</option>
+              <option value="false">General Education / Minor Subject (Universal)</option>
             </select>
           </div>
 
-          {!form.isMajor ? (
+          {/* Academic Semester */}
+          <div className="field-group">
+            <label htmlFor="subjectSemester">
+              <Calendar size={13} /> Academic Semester
+            </label>
+            <select
+              id="subjectSemester"
+              value={form.semester}
+              onChange={(e) => setForm({ ...form, semester: e.target.value })}
+            >
+              <option value="1st Semester">1st Semester</option>
+              <option value="2nd Semester">2nd Semester</option>
+              <option value="Summer">Summer</option>
+            </select>
+          </div>
+
+          {/* Class Component Structure (Major vs Minor) */}
+          {form.isMajor ? (
+            <div className="field-group" style={{ gridColumn: "1 / -1" }}>
+              <label htmlFor="subjectComponent">
+                <Clock size={13} /> Class Component & Institutional Hours
+              </label>
+              <select
+                id="subjectComponent"
+                value={
+                  Number(form.labHours) > 0 && Number(form.lectureHours) > 0
+                    ? "LecLab"
+                    : Number(form.labHours) > 0
+                      ? "LabOnly"
+                      : Number(form.lectureHours) === 2 && Number(form.labHours) === 0
+                        ? "LecOnly"
+                        : "Custom"
+                }
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "LecOnly") {
+                    setForm({ ...form, lectureHours: "2", labHours: "0", units: "3" });
+                  } else if (val === "LabOnly") {
+                    setForm({ ...form, lectureHours: "0", labHours: "3", units: "3" });
+                  } else if (val === "LecLab") {
+                    setForm({ ...form, lectureHours: "2", labHours: "3", units: "3" });
+                  }
+                }}
+              >
+                <option value="LecOnly">Major Lecture Only (2 Hours per session)</option>
+                <option value="LabOnly">Major Laboratory Only (3 Hours per session)</option>
+                <option value="LecLab">Major Lecture & Laboratory (2h Lec + 3h Lab)</option>
+                <option value="Custom">Custom Teaching Hours</option>
+              </select>
+            </div>
+          ) : (
             <div
               style={{
                 gridColumn: "1 / -1",
-                padding: "12px 14px",
+                padding: "10px 14px",
                 background: "rgba(16, 185, 129, 0.08)",
                 border: "1px solid rgba(16, 185, 129, 0.25)",
                 borderRadius: 8,
@@ -694,12 +736,65 @@ export function SubjectsPage() {
                 gap: 8,
               }}
             >
-              <span>✓ Universal General Education Subject: Automatically available to all collegiate programs (BSIT, BSBA, CRIM, BSHM, EDUC). No manual program-by-program selection required.</span>
+              <span>✓ Universal Minor / Gen Ed Subject: Scheduled in 1.5h sessions (e.g. 7:00-8:30 AM or 7:30-9:00 AM). Automatically accessible to all collegiate programs.</span>
             </div>
-          ) : (
+          )}
+
+          {/* Credit Units */}
+          <div className="field-group">
+            <label htmlFor="subjectUnits">
+              <Award size={13} /> Credit Units
+            </label>
+            <input
+              id="subjectUnits"
+              type="number"
+              min={1}
+              max={12}
+              value={form.units}
+              onChange={(event) => setForm({ ...form, units: event.target.value })}
+            />
+          </div>
+
+          {/* Lecture Hours */}
+          <div className="field-group">
+            <label htmlFor="subjectLec">
+              <Clock size={13} /> Lecture Hours {form.isMajor ? "(2h per lecture session)" : "(1.5h session)"}
+            </label>
+            <input
+              id="subjectLec"
+              type="number"
+              step="0.5"
+              min={0}
+              max={10}
+              value={form.lectureHours}
+              onChange={(event) => setForm({ ...form, lectureHours: event.target.value })}
+            />
+          </div>
+
+          {/* Laboratory Hours */}
+          <div className="field-group">
+            <label htmlFor="subjectLab">
+              <Clock size={13} /> Laboratory Hours {form.isMajor ? "(3h per lab session)" : "(0 for minor)"}
+            </label>
+            <input
+              id="subjectLab"
+              type="number"
+              step="0.5"
+              min={0}
+              max={10}
+              value={form.labHours}
+              disabled={!form.isMajor}
+              onChange={(event) => setForm({ ...form, labHours: event.target.value })}
+            />
+          </div>
+
+          {/* Program & Course (Only when Major) */}
+          {form.isMajor && (
             <>
               <div className="field-group">
-                <label htmlFor="subjectProgram">Academic Program <span style={{ color: "#dc2626" }}>*</span></label>
+                <label htmlFor="subjectProgram">
+                  <GraduationCap size={13} /> Academic Program <span className="required-asterisk">*</span>
+                </label>
                 <select
                   id="subjectProgram"
                   value={form.program}
@@ -712,9 +807,7 @@ export function SubjectsPage() {
                         c.code.toUpperCase().includes(p) ||
                         p.includes(c.code.toUpperCase())
                     );
-                    const nextCourse = matching.some((c) => c.code === form.courseCode)
-                      ? form.courseCode
-                      : matching[0]?.code || coursesList[0]?.code || "";
+                    const nextCourse = matching[0]?.code || coursesList[0]?.code || newProg;
 
                     setForm({
                       ...form,
@@ -733,21 +826,13 @@ export function SubjectsPage() {
               </div>
 
               <div className="field-group">
-                <label htmlFor="subjectCourse">Course / Major Degree <span style={{ color: "#dc2626" }}>*</span></label>
+                <label htmlFor="subjectCourse">
+                  <GraduationCap size={13} /> Course / Degree <span className="required-asterisk">*</span>
+                </label>
                 <select
                   id="subjectCourse"
                   value={form.courseCode}
-                  onChange={(e) => {
-                    const newCourseCode = e.target.value;
-                    const selectedCourse = coursesList.find((c) => c.code === newCourseCode);
-                    const nextProg = selectedCourse?.programCode || form.program;
-                    setForm({
-                      ...form,
-                      courseCode: newCourseCode,
-                      program: nextProg,
-                      department: nextProg,
-                    });
-                  }}
+                  onChange={(e) => setForm({ ...form, courseCode: e.target.value })}
                 >
                   {(() => {
                     const p = (form.program || "").toUpperCase().trim();
@@ -761,7 +846,7 @@ export function SubjectsPage() {
                     const displayList = filtered.length > 0 ? filtered : coursesList;
                     return displayList.map((c) => (
                       <option key={c.code} value={c.code}>
-                        {c.code} - {c.name} {c.programCode ? `(${c.programCode})` : ""}
+                        {c.code} - {c.name}
                       </option>
                     ));
                   })()}
@@ -770,27 +855,75 @@ export function SubjectsPage() {
             </>
           )}
 
-          <div className="field-group">
-            <label htmlFor="subjectInstructor">Default Instructor</label>
-            <select
-              id="subjectInstructor"
-              value={form.instructorId}
-              onChange={(e) => setForm({ ...form, instructorId: e.target.value })}
-            >
-              <option value="">Unassigned</option>
-              {facultyList.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.name} ({f.department} · {f.status})
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Assigned Instructor (strictly only when editing an existing subject) */}
+          {editingSubject && (
+            <div className="field-group" style={{ gridColumn: "1 / -1" }}>
+              <label htmlFor="subjectInstructor">
+                <UserCheck size={13} /> Assigned Instructor
+              </label>
+              <select
+                id="subjectInstructor"
+                value={form.instructorId}
+                onChange={(e) => setForm({ ...form, instructorId: e.target.value })}
+              >
+                <option value="">Unassigned</option>
+                {facultyList.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name} ({f.department} · {f.status})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
-        <div className="table-actions" style={{ marginTop: 20 }}>
+        {/* Live Timetable Preview */}
+        <div
+          style={{
+            marginTop: 16,
+            padding: "10px 14px",
+            background: "var(--srcb-surface-alt, #f8fafc)",
+            borderRadius: 8,
+            border: "1px solid var(--srcb-border, #e2e8f0)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 8,
+            fontSize: "0.8rem",
+          }}
+        >
+          <span style={{ fontWeight: 700, color: "var(--srcb-navy, #0f2c59)", display: "flex", alignItems: "center", gap: 5 }}>
+            <Clock size={13} color="var(--srcb-royal, #2563eb)" /> Timetable Session Duration:
+          </span>
+          {!form.isMajor ? (
+            <span className="pill pill--amber" style={{ fontWeight: 700, fontSize: "0.75rem" }}>
+              Minor / Gen Ed: 1 hr 30 mins (1.5h session)
+            </span>
+          ) : Number(form.labHours) > 0 && Number(form.lectureHours) > 0 ? (
+            <div style={{ display: "flex", gap: 6 }}>
+              <span className="pill pill--blue" style={{ fontWeight: 700, fontSize: "0.75rem" }}>
+                Major Lec: 2 hrs
+              </span>
+              <span className="pill pill--purple" style={{ fontWeight: 700, fontSize: "0.75rem" }}>
+                Major Lab: 3 hrs
+              </span>
+            </div>
+          ) : Number(form.labHours) > 0 ? (
+            <span className="pill pill--purple" style={{ fontWeight: 700, fontSize: "0.75rem" }}>
+              Major Lab: 3 hrs session
+            </span>
+          ) : (
+            <span className="pill pill--blue" style={{ fontWeight: 700, fontSize: "0.75rem" }}>
+              Major Lec: 2 hrs session
+            </span>
+          )}
+        </div>
+
+        <div className="modal-actions" style={{ marginTop: 24 }}>
           <button
             type="button"
-            className="secondary-button"
+            className="cancel-button"
             onClick={() => {
               setIsOpen(false);
               setEditingSubject(null);
@@ -798,8 +931,19 @@ export function SubjectsPage() {
           >
             Cancel
           </button>
-          <button type="button" className="action-button" disabled={loading} onClick={handleSave}>
-            {loading ? "Saving…" : "Save Subject"}
+          <button
+            type="button"
+            className="action-button"
+            disabled={
+              loading ||
+              !form.code.trim() ||
+              !form.name.trim() ||
+              (form.isMajor && !form.program)
+            }
+            onClick={handleSave}
+          >
+            {loading && <Loader2 size={16} className="animate-spin" />}
+            <span>{loading ? "Saving…" : editingSubject ? "Update Subject" : "Register Subject"}</span>
           </button>
         </div>
       </Modal>

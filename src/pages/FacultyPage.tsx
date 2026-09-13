@@ -1,5 +1,5 @@
 import { PageHeader } from "../components/common/PageHeader";
-import { useEffect, useState, useRef, useMemo, useCallback } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { api } from "../data/apiClient";
 import { useToast } from "../components/common/Toast";
 import { Modal } from "../components/common/Modal";
@@ -27,133 +27,16 @@ import {
   CheckCircle2,
   Building2,
   AlertCircle,
-  Check,
-  Sunrise,
-  Sunset,
-  Sun,
-  RotateCcw,
+  UserCheck,
+  Users,
+  Mail,
+  Phone,
+  Hash,
+  Loader2,
 } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
 import { formatSystemId } from "../utils/idFormatter";
-import { parseTimeToMinutes } from "../utils/scheduling";
 import type { FacultyMember } from "../types";
-
-const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const SLOTS = [
-  "07:00 AM - 07:30 AM",
-  "07:30 AM - 08:00 AM",
-  "08:00 AM - 08:30 AM",
-  "08:30 AM - 09:00 AM",
-  "09:00 AM - 09:30 AM",
-  "09:30 AM - 10:00 AM",
-  "10:00 AM - 10:30 AM",
-  "10:30 AM - 11:00 AM",
-  "11:00 AM - 11:30 AM",
-  "11:30 AM - 12:00 PM",
-  "12:00 PM - 12:30 PM",
-  "12:30 PM - 01:00 PM",
-  "01:00 PM - 01:30 PM",
-  "01:30 PM - 02:00 PM",
-  "02:00 PM - 02:30 PM",
-  "02:30 PM - 03:00 PM",
-  "03:00 PM - 03:30 PM",
-  "03:30 PM - 04:00 PM",
-  "04:00 PM - 04:30 PM",
-  "04:30 PM - 05:00 PM",
-  "05:00 PM - 05:30 PM",
-  "05:30 PM - 06:00 PM",
-  "06:00 PM - 06:30 PM",
-  "06:30 PM - 07:00 PM",
-  "07:00 PM - 07:30 PM",
-  "07:30 PM - 08:00 PM",
-  "08:00 PM - 08:30 PM",
-  "08:30 PM - 09:00 PM",
-];
-
-function expandAvailabilityToSlots(raw: string, allSlots: string[]): Record<string, string[]> {
-  const result: Record<string, string[]> = {};
-  if (!raw) return result;
-
-  const entries = raw.split("|").map((e) => e.trim()).filter(Boolean);
-  for (const entry of entries) {
-    const [dayPart, ...rest] = entry.split(":");
-    if (!dayPart || rest.length === 0) continue;
-    const rawDays = dayPart.trim();
-    const slotList = rest.join(":").split(",").map((s) => s.trim()).filter(Boolean);
-
-    let targetDays: string[] = [];
-    if (rawDays.toLowerCase().includes("monday-friday")) {
-      targetDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-    } else if (rawDays.toLowerCase().includes("monday-saturday")) {
-      targetDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    } else {
-      targetDays = [rawDays];
-    }
-
-    for (const day of targetDays) {
-      if (!result[day]) result[day] = [];
-      for (const rangeStr of slotList) {
-        if (allSlots.includes(rangeStr)) {
-          if (!result[day].includes(rangeStr)) result[day].push(rangeStr);
-          continue;
-        }
-        const [rStart, rEnd] = rangeStr.split("-").map((s) => s.trim());
-        if (rStart && rEnd) {
-          const rStartMin = parseTimeToMinutes(rStart);
-          const rEndMin = parseTimeToMinutes(rEnd);
-          for (const s of allSlots) {
-            const [sStart, sEnd] = s.split("-").map((t) => t.trim());
-            const sStartMin = parseTimeToMinutes(sStart);
-            const sEndMin = parseTimeToMinutes(sEnd);
-            if (sStartMin >= rStartMin && sEndMin <= rEndMin) {
-              if (!result[day].includes(s)) result[day].push(s);
-            }
-          }
-        }
-      }
-    }
-  }
-  return result;
-}
-
-function formatSlotsToAvailability(selectedSlots: Record<string, string[]>, _allSlots?: string[]): string {
-  const dayEntries: string[] = [];
-
-  for (const day of DAYS) {
-    const current = selectedSlots[day] || [];
-    if (current.length === 0) continue;
-
-    const sorted = [...current].sort((a, b) => {
-      const aStart = parseTimeToMinutes(a.split("-")[0].trim());
-      const bStart = parseTimeToMinutes(b.split("-")[0].trim());
-      return aStart - bStart;
-    });
-
-    const ranges: { start: string; end: string; startMin: number; endMin: number }[] = [];
-    for (const slot of sorted) {
-      const [sStart, sEnd] = slot.split("-").map((s) => s.trim());
-      const sStartMin = parseTimeToMinutes(sStart);
-      const sEndMin = parseTimeToMinutes(sEnd);
-
-      if (ranges.length === 0) {
-        ranges.push({ start: sStart, end: sEnd, startMin: sStartMin, endMin: sEndMin });
-      } else {
-        const last = ranges[ranges.length - 1];
-        if (last.endMin === sStartMin) {
-          last.end = sEnd;
-          last.endMin = sEndMin;
-        } else {
-          ranges.push({ start: sStart, end: sEnd, startMin: sStartMin, endMin: sEndMin });
-        }
-      }
-    }
-
-    const rangeStrings = ranges.map((r) => `${r.start} - ${r.end}`);
-    dayEntries.push(`${day}: ${rangeStrings.join(", ")}`);
-  }
-
-  return dayEntries.join(" | ");
-}
 
 export function FacultyPage() {
   const [faculty, setFaculty] = useState<FacultyMember[]>([]);
@@ -205,14 +88,6 @@ export function FacultyPage() {
   const [firstNameError, setFirstNameError] = useState<string | null>(null);
   const [lastNameError, setLastNameError] = useState<string | null>(null);
   const [phoneError, setPhoneError] = useState<string | null>(null);
-
-  const [availabilityModalOpen, setAvailabilityModalOpen] = useState(false);
-  const [selectedFacultyForAvail, setSelectedFacultyForAvail] = useState<FacultyMember | null>(null);
-  const [selectedSlots, setSelectedSlots] = useState<Record<string, string[]>>({});
-  const [dragStart, setDragStart] = useState<{ day: string; slotIdx: number } | null>(null);
-  const [dragCurrent, setDragCurrent] = useState<{ day: string; slotIdx: number } | null>(null);
-  const [isDraggingRange, setIsDraggingRange] = useState(false);
-  const [dragIntent, setDragIntent] = useState<"add" | "remove">("add");
 
   const { selectedProgram, matchesProgram } = useProgramContext();
   const { addNotification } = useNotifications();
@@ -362,194 +237,7 @@ export function FacultyPage() {
     }
   };
 
-  const openAvailabilityModal = (f: FacultyMember) => {
-    setSelectedFacultyForAvail(f);
-    const slotsMap = expandAvailabilityToSlots(f.availability || "", SLOTS);
-    setSelectedSlots(slotsMap);
-    setAvailabilityModalOpen(true);
-  };
 
-  const dragRangeInfo = useMemo(() => {
-    if (!isDraggingRange || !dragStart || !dragCurrent) return null;
-    const minSlotIdx = Math.min(dragStart.slotIdx, dragCurrent.slotIdx);
-    const maxSlotIdx = Math.max(dragStart.slotIdx, dragCurrent.slotIdx);
-    const startDayIdx = DAYS.indexOf(dragStart.day);
-    const currentDayIdx = DAYS.indexOf(dragCurrent.day);
-    const minDayIdx = Math.min(startDayIdx, currentDayIdx);
-    const maxDayIdx = Math.max(startDayIdx, currentDayIdx);
-    const targetDays = DAYS.slice(minDayIdx, maxDayIdx + 1);
-
-    const startSlotStr = SLOTS[minSlotIdx].split("-")[0].trim();
-    const endSlotStr = SLOTS[maxSlotIdx].split("-")[1].trim();
-    const hours = (maxSlotIdx - minSlotIdx + 1) * 0.5;
-
-    return {
-      minSlotIdx,
-      maxSlotIdx,
-      targetDays,
-      startSlotStr,
-      endSlotStr,
-      hours,
-    };
-  }, [isDraggingRange, dragStart, dragCurrent]);
-
-  const handleCellMouseDown = (day: string, slotIdx: number) => {
-    if (isProgramHead) return;
-    const slot = SLOTS[slotIdx];
-    const isCurrentlySelected = Boolean(selectedSlots[day]?.includes(slot));
-    const intent: "add" | "remove" = isCurrentlySelected ? "remove" : "add";
-
-    setIsDraggingRange(true);
-    setDragIntent(intent);
-    setDragStart({ day, slotIdx });
-    setDragCurrent({ day, slotIdx });
-  };
-
-  const handleCellMouseEnter = (day: string, slotIdx: number) => {
-    if (!isDraggingRange || isProgramHead) return;
-    setDragCurrent({ day, slotIdx });
-  };
-
-  const handleRangeMouseUp = useCallback(() => {
-    if (!isDraggingRange || !dragStart || !dragCurrent) {
-      setIsDraggingRange(false);
-      setDragStart(null);
-      setDragCurrent(null);
-      return;
-    }
-
-    const minSlotIdx = Math.min(dragStart.slotIdx, dragCurrent.slotIdx);
-    const maxSlotIdx = Math.max(dragStart.slotIdx, dragCurrent.slotIdx);
-    const startDayIdx = DAYS.indexOf(dragStart.day);
-    const currentDayIdx = DAYS.indexOf(dragCurrent.day);
-    const minDayIdx = Math.min(startDayIdx, currentDayIdx);
-    const maxDayIdx = Math.max(startDayIdx, currentDayIdx);
-    const targetDays = DAYS.slice(minDayIdx, maxDayIdx + 1);
-
-    const slotsInRange = SLOTS.slice(minSlotIdx, maxSlotIdx + 1);
-
-    setSelectedSlots((prev) => {
-      const updated = { ...prev };
-      for (const d of targetDays) {
-        const current = updated[d] || [];
-        if (dragIntent === "add") {
-          updated[d] = Array.from(new Set([...current, ...slotsInRange]));
-        } else {
-          updated[d] = current.filter((s) => !slotsInRange.includes(s));
-        }
-      }
-      return updated;
-    });
-
-    setIsDraggingRange(false);
-    setDragStart(null);
-    setDragCurrent(null);
-  }, [isDraggingRange, dragStart, dragCurrent, dragIntent]);
-
-  useEffect(() => {
-    window.addEventListener("mouseup", handleRangeMouseUp);
-    return () => window.removeEventListener("mouseup", handleRangeMouseUp);
-  }, [handleRangeMouseUp]);
-
-  const handleQuickPreset = (preset: "morning" | "afternoon" | "all_day" | "all_slots" | "clear_all") => {
-    if (isProgramHead) return;
-    if (preset === "clear_all") {
-      setSelectedSlots({});
-      return;
-    }
-    if (preset === "all_slots") {
-      const all: Record<string, string[]> = {};
-      for (const d of DAYS) {
-        all[d] = [...SLOTS];
-      }
-      setSelectedSlots(all);
-      return;
-    }
-
-    const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-    const newSlots: Record<string, string[]> = { ...selectedSlots };
-
-    for (const d of weekdays) {
-      let filteredSlots: string[] = [];
-      if (preset === "morning") {
-        filteredSlots = SLOTS.filter((s) => {
-          const startMin = parseTimeToMinutes(s.split("-")[0].trim());
-          return startMin >= 420 && startMin < 720;
-        });
-      } else if (preset === "afternoon") {
-        filteredSlots = SLOTS.filter((s) => {
-          const startMin = parseTimeToMinutes(s.split("-")[0].trim());
-          return startMin >= 780 && startMin < 1020;
-        });
-      } else if (preset === "all_day") {
-        filteredSlots = SLOTS.filter((s) => {
-          const startMin = parseTimeToMinutes(s.split("-")[0].trim());
-          return startMin >= 480 && startMin < 1020;
-        });
-      }
-      const current = newSlots[d] || [];
-      newSlots[d] = Array.from(new Set([...current, ...filteredSlots]));
-    }
-    setSelectedSlots(newSlots);
-  };
-
-  const toggleDayColumn = (day: string) => {
-    if (isProgramHead) return;
-    const current = selectedSlots[day] || [];
-    if (current.length === SLOTS.length) {
-      setSelectedSlots((prev) => ({ ...prev, [day]: [] }));
-    } else {
-      setSelectedSlots((prev) => ({ ...prev, [day]: [...SLOTS] }));
-    }
-  };
-
-  const toggleSlotRow = (slot: string) => {
-    if (isProgramHead) return;
-    const allDaysHaveSlot = DAYS.every((d) => selectedSlots[d]?.includes(slot));
-    setSelectedSlots((prev) => {
-      const updated = { ...prev };
-      for (const d of DAYS) {
-        const cur = updated[d] || [];
-        if (allDaysHaveSlot) {
-          updated[d] = cur.filter((s) => s !== slot);
-        } else {
-          if (!cur.includes(slot)) {
-            updated[d] = [...cur, slot];
-          }
-        }
-      }
-      return updated;
-    });
-  };
-
-  const totalSelectedSlotsCount = useMemo(() => {
-    return Object.values(selectedSlots).reduce((sum, slots) => sum + slots.length, 0);
-  }, [selectedSlots]);
-
-  const saveAvailabilityFromModal = async () => {
-    if (!selectedFacultyForAvail) return;
-    const formatted = formatSlotsToAvailability(selectedSlots, SLOTS);
-
-    try {
-      await api.put(`/faculty/${encodeURIComponent(selectedFacultyForAvail.id)}`, {
-        availability: formatted || "Monday-Friday: 08:00 AM - 05:00 PM",
-      });
-      toast.push(`Updated availability for ${selectedFacultyForAvail.name}`, "success");
-      addNotification({
-        title: "Faculty Availability Updated",
-        message: `Teaching availability timesheet updated for ${selectedFacultyForAvail.name}.`,
-        type: "info",
-        link: "/faculty",
-        targetRole: "admin,program_head,teacher",
-        targetProgram: selectedFacultyForAvail.department,
-        targetTeacherId: selectedFacultyForAvail.id,
-      });
-      setAvailabilityModalOpen(false);
-      fetchFaculty();
-    } catch {
-      toast.push("Failed to update availability", "error");
-    }
-  };
 
   const handleSave = async () => {
     if (!isAdmin) {
@@ -773,7 +461,6 @@ export function FacultyPage() {
       "Department",
       "Employment Status",
       "Max Load (Hours)",
-      "Availability Schedule",
     ];
     const rows = data.map((f) => [
       `"${f.id}"`,
@@ -784,7 +471,6 @@ export function FacultyPage() {
       `"${f.department || ""}"`,
       `"${f.status || ""}"`,
       `"${f.maxLoadHours || (f.status === "Part-Time" ? 12 : 24)}"`,
-      `"${(f.availability || "").replace(/"/g, '""')}"`,
     ]);
     const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -824,12 +510,12 @@ export function FacultyPage() {
         title={
           isProgramHead
             ? `Program Faculty & Major Subject Instructors • ${selectedProgram.label}`
-            : "Faculty & Availability Management"
+            : "Faculty Management"
         }
         description={
           isProgramHead
-            ? `View instructors assigned to ${selectedProgram.label} (${selectedProgram.key || "ITP"}) major subjects, and inspect teaching availability for scheduling.`
-            : "Maintain instructor profiles, full-time / part-time status, teaching load limits, and weekly availability schedules."
+            ? `View instructors assigned to ${selectedProgram.label} (${selectedProgram.key || "ITP"}) major subjects.`
+            : "Maintain instructor profiles, full-time / part-time status, and weekly teaching load limits."
         }
         breadcrumbs={
           isProgramHead ? (
@@ -1057,7 +743,7 @@ export function FacultyPage() {
                   <th>FACULTY MEMBER</th>
                   <th>DEPARTMENT / PROGRAMS</th>
                   <th>STATUS</th>
-                  <th>TEACHING LOAD / AVAILABILITY</th>
+                  <th>TEACHING LOAD (MAX HOURS)</th>
                   <th style={{ textAlign: "right" }}>ACTIONS</th>
                 </tr>
               </thead>
@@ -1090,9 +776,6 @@ export function FacultyPage() {
                   paginatedFaculty.map((f) => {
                     const isSelected = selectedIds.has(f.id);
                     const isActionOpen = openRowActionId === f.id;
-                    const availabilityDays = f.availability
-                      ? f.availability.split("|").length
-                      : 0;
 
                     return (
                       <tr key={f.id} className={isSelected ? "is-selected" : ""}>
@@ -1157,29 +840,12 @@ export function FacultyPage() {
                           </span>
                         </td>
 
-                        {/* Teaching Load / Availability Cell */}
+                        {/* Teaching Load Cell */}
                         <td>
                           <div>
                             <span style={{ fontWeight: 700, color: "var(--srcb-navy)" }}>
                               {f.maxLoadHours || (f.status === "Part-Time" ? 12 : 24)} hrs/wk max
                             </span>
-                            <p
-                              style={{
-                                margin: "3px 0 0",
-                                fontSize: "0.76rem",
-                                color: "var(--srcb-text-muted)",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 4,
-                              }}
-                            >
-                              <Clock size={12} />
-                              {f.availability
-                                ? availabilityDays > 2
-                                  ? `${availabilityDays} Active Days Configured`
-                                  : f.availability
-                                : "Standard Schedule"}
-                            </p>
                           </div>
                         </td>
 
@@ -1205,18 +871,6 @@ export function FacultyPage() {
                             {/* Row Action Dropdown Popover */}
                             {isActionOpen && (
                               <div className="user-mgmt-dropdown-popover" role="menu">
-                                <button
-                                  type="button"
-                                  className="user-mgmt-menu-item"
-                                  onClick={() => {
-                                    setOpenRowActionId(null);
-                                    openAvailabilityModal(f);
-                                  }}
-                                  role="menuitem"
-                                >
-                                  <Clock size={15} style={{ color: "#0284c7" }} />
-                                  <span>Manage Availability</span>
-                                </button>
                                 {canEdit && (
                                   <button
                                     type="button"
@@ -1376,7 +1030,10 @@ export function FacultyPage() {
       {/* Add / Edit Faculty Modal */}
       <Modal
         isOpen={isOpen && canEdit}
+        size="lg"
+        icon={<UserCheck size={20} />}
         title={editingFaculty ? "Edit Faculty Profile" : "Register Faculty Member"}
+        eyebrow="Faculty Directory"
         description="Configure employee details, department, employment status, and weekly limits."
         onClose={() => {
           setIsOpen(false);
@@ -1386,13 +1043,14 @@ export function FacultyPage() {
         <div className="form-grid">
           <div className="field-group">
             <label htmlFor="facultyId">
-              Employee ID <span style={{ color: "#dc2626" }}>*</span>
+              <Hash size={13} /> Employee ID <span className="required-asterisk">*</span>
             </label>
             <input
               id="facultyId"
               value={form.id}
               disabled={!!editingFaculty}
-              onChange={(e) => setForm({ ...form, id: e.target.value })}
+              onChange={(e) => setForm({ ...form, id: e.target.value.toUpperCase() })}
+              placeholder="e.g. FAC-2026-001"
               required
               aria-required="true"
             />
@@ -1402,7 +1060,7 @@ export function FacultyPage() {
           <div style={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             <div className="field-group">
               <label htmlFor="facultyFirstName">
-                First Name <span style={{ color: "#dc2626" }}>*</span>
+                <Users size={13} /> First Name <span className="required-asterisk">*</span>
               </label>
               <input
                 id="facultyFirstName"
@@ -1421,7 +1079,7 @@ export function FacultyPage() {
 
             <div className="field-group">
               <label htmlFor="facultyLastName">
-                Last Name <span style={{ color: "#dc2626" }}>*</span>
+                <Users size={13} /> Last Name <span className="required-asterisk">*</span>
               </label>
               <input
                 id="facultyLastName"
@@ -1440,7 +1098,9 @@ export function FacultyPage() {
           </div>
 
           <div className="field-group">
-            <label htmlFor="facultyEmail">Email Address</label>
+            <label htmlFor="facultyEmail">
+              <Mail size={13} /> Email Address
+            </label>
             <input
               id="facultyEmail"
               type="email"
@@ -1452,7 +1112,9 @@ export function FacultyPage() {
 
           {/* Requirement 3: Phone Number Validation */}
           <div className="field-group">
-            <label htmlFor="facultyPhone">Phone Contact</label>
+            <label htmlFor="facultyPhone">
+              <Phone size={13} /> Phone Contact
+            </label>
             <input
               id="facultyPhone"
               value={phone}
@@ -1467,7 +1129,9 @@ export function FacultyPage() {
           </div>
 
           <div className="field-group">
-            <label htmlFor="facultyDept">Department</label>
+            <label htmlFor="facultyDept">
+              <Building2 size={13} /> Department
+            </label>
             <input
               id="facultyDept"
               value={form.department}
@@ -1476,7 +1140,9 @@ export function FacultyPage() {
           </div>
 
           <div className="field-group">
-            <label htmlFor="facultyStatus">Employment Status</label>
+            <label htmlFor="facultyStatus">
+              <CheckCircle2 size={13} /> Employment Status
+            </label>
             <select
               id="facultyStatus"
               value={form.status}
@@ -1495,7 +1161,9 @@ export function FacultyPage() {
           </div>
 
           <div className="field-group">
-            <label htmlFor="facultyMaxLoad">Maximum Weekly Load (Hours)</label>
+            <label htmlFor="facultyMaxLoad">
+              <Clock size={13} /> Maximum Weekly Load (Hours)
+            </label>
             <input
               id="facultyMaxLoad"
               type="number"
@@ -1507,7 +1175,7 @@ export function FacultyPage() {
           </div>
         </div>
 
-        <div className="modal-actions" style={{ marginTop: 24 }}>
+        <div className="modal-actions">
           <button
             type="button"
             className="cancel-button"
@@ -1521,276 +1189,22 @@ export function FacultyPage() {
           <button
             type="button"
             className="action-button"
-            disabled={loading}
+            disabled={
+              loading ||
+              !form.id.trim() ||
+              !firstName.trim() ||
+              !lastName.trim() ||
+              Boolean(firstNameError || lastNameError || phoneError)
+            }
             onClick={handleSave}
           >
-            {loading ? "Saving..." : editingFaculty ? "Update Profile" : "Register Faculty"}
+            {loading && <Loader2 size={16} className="animate-spin" />}
+            <span>{loading ? "Saving…" : editingFaculty ? "Update Profile" : "Register Faculty"}</span>
           </button>
         </div>
       </Modal>
 
-      {/* Availability Timesheet Grid Modal */}
-      <Modal
-        isOpen={availabilityModalOpen}
-        title={selectedFacultyForAvail ? `Teaching Availability • ${selectedFacultyForAvail.name}` : "Teaching Availability"}
-        description="Click on any start time slot and drag down across the column to your designated end time to quickly select the teaching schedule."
-        onClose={() => setAvailabilityModalOpen(false)}
-      >
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {/* Preset Quick Fill Controls */}
-          {!isProgramHead && (
-            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 12px", background: "var(--srcb-surface-alt, #f8fafc)", borderRadius: 8, border: "1px solid var(--srcb-border, #e2e8f0)" }}>
-              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
-                <span style={{ fontSize: "0.76rem", fontWeight: 700, color: "var(--srcb-navy)" }}>Quick Presets:</span>
-                <button
-                  type="button"
-                  onClick={() => handleQuickPreset("morning")}
-                  className="chip-button"
-                  style={{ fontSize: "0.72rem", padding: "3px 8px", borderRadius: 6, border: "1px solid #cbd5e1", background: "#ffffff", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}
-                >
-                  <Sunrise size={12} color="#f59e0b" /> Morning (7am-12pm)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickPreset("afternoon")}
-                  className="chip-button"
-                  style={{ fontSize: "0.72rem", padding: "3px 8px", borderRadius: 6, border: "1px solid #cbd5e1", background: "#ffffff", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}
-                >
-                  <Sunset size={12} color="#f97316" /> Afternoon (1pm-5pm)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickPreset("all_day")}
-                  className="chip-button"
-                  style={{ fontSize: "0.72rem", padding: "3px 8px", borderRadius: 6, border: "1px solid #cbd5e1", background: "#ffffff", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}
-                >
-                  <Sun size={12} color="#0284c7" /> Full Day (8am-5pm)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickPreset("all_slots")}
-                  className="chip-button"
-                  style={{ fontSize: "0.72rem", padding: "3px 8px", borderRadius: 6, border: "1px solid #a7f3d0", background: "#f0fdf4", color: "#15803d", fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}
-                >
-                  <Check size={12} /> Select All
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickPreset("clear_all")}
-                  className="chip-button"
-                  style={{ fontSize: "0.72rem", padding: "3px 8px", borderRadius: 6, border: "1px solid #fecaca", background: "#fef2f2", color: "#b91c1c", fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}
-                >
-                  <RotateCcw size={12} /> Clear All
-                </button>
-              </div>
 
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: "0.74rem", fontWeight: 700, color: totalSelectedSlotsCount > 0 ? "#15803d" : "#64748b", background: totalSelectedSlotsCount > 0 ? "#dcfce7" : "#f1f5f9", padding: "3px 10px", borderRadius: 12 }}>
-                <CheckCircle2 size={13} />
-                <span>{totalSelectedSlotsCount} Slots Selected ({(totalSelectedSlotsCount * 0.5).toFixed(1)} hrs/wk)</span>
-              </div>
-            </div>
-          )}
-
-          {/* Real-time Designated Time Range Drag Status Banner */}
-          {dragRangeInfo ? (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "8px 14px",
-                borderRadius: 8,
-                background: dragIntent === "add" ? "#ecfdf5" : "#fef2f2",
-                border: `1.5px solid ${dragIntent === "add" ? "#10b981" : "#ef4444"}`,
-                color: dragIntent === "add" ? "#065f46" : "#991b1b",
-                fontSize: "0.82rem",
-                fontWeight: 700,
-                boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <Clock size={16} />
-                <span>
-                  {dragIntent === "add" ? "Designating Time:" : "Clearing Time:"}{" "}
-                  <strong>
-                    {dragRangeInfo.targetDays.length === 1
-                      ? dragRangeInfo.targetDays[0]
-                      : `${dragRangeInfo.targetDays[0]} – ${dragRangeInfo.targetDays[dragRangeInfo.targetDays.length - 1]}`}
-                  </strong>{" "}
-                  • {dragRangeInfo.startSlotStr} to {dragRangeInfo.endSlotStr} ({dragRangeInfo.hours} {dragRangeInfo.hours === 1 ? "hour" : "hours"})
-                </span>
-              </div>
-              <span style={{ fontSize: "0.72rem", background: "#ffffff", padding: "2px 8px", borderRadius: 4, border: "1px solid currentColor" }}>
-                Release mouse to set
-              </span>
-            </div>
-          ) : (
-            <div style={{ fontSize: "0.74rem", color: "var(--srcb-text-muted)", padding: "0 4px" }}>
-              🖱️ <strong>Drag to select time:</strong> Click a start time slot and drag down across the column to your designated time to assign availability (e.g. click 7:00 AM and drag down to 12:00 PM).
-            </div>
-          )}
-
-          {/* Interactive Timesheet Matrix Grid */}
-          <div
-            style={{
-              overflowX: "auto",
-              maxHeight: "440px",
-              border: "1px solid var(--srcb-border, #e2e8f0)",
-              borderRadius: 8,
-              boxShadow: "inset 0 1px 3px rgba(0,0,0,0.04)",
-              userSelect: "none",
-            }}
-          >
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.78rem" }}>
-              <thead style={{ position: "sticky", top: 0, zIndex: 2, background: "var(--srcb-surface-alt, #f8fafc)" }}>
-                <tr>
-                  <th style={{ padding: "8px 10px", textAlign: "left", background: "var(--srcb-surface-alt, #f8fafc)", borderBottom: "2px solid var(--srcb-border, #cbd5e1)", borderRight: "2px solid var(--srcb-border, #cbd5e1)", color: "var(--srcb-navy)", width: 140, fontWeight: 800 }}>
-                    Time Slot (30m)
-                  </th>
-                  {DAYS.map((day) => {
-                    const daySelectedCount = selectedSlots[day]?.length || 0;
-                    return (
-                      <th
-                        key={day}
-                        onClick={() => toggleDayColumn(day)}
-                        title={`Click to toggle all slots for ${day}`}
-                        style={{
-                          padding: "8px 6px",
-                          textAlign: "center",
-                          background: daySelectedCount > 0 ? "rgba(37, 99, 235, 0.05)" : "var(--srcb-surface-alt, #f8fafc)",
-                          borderBottom: "2px solid var(--srcb-border, #cbd5e1)",
-                          borderRight: "1px solid var(--srcb-border, #e2e8f0)",
-                          fontWeight: 700,
-                          color: "var(--srcb-navy)",
-                          cursor: isProgramHead ? "default" : "pointer",
-                          transition: "background 150ms ease",
-                        }}
-                      >
-                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-                          <span>{day}</span>
-                          <span style={{ fontSize: "0.66rem", fontWeight: 600, color: daySelectedCount > 0 ? "#16a34a" : "#94a3b8" }}>
-                            {daySelectedCount}/{SLOTS.length} slots
-                          </span>
-                        </div>
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {SLOTS.map((slot, slotIdx) => {
-                  return (
-                    <tr key={slot}>
-                      <td
-                        onClick={() => toggleSlotRow(slot)}
-                        title="Click to toggle this time slot for all days"
-                        style={{
-                          padding: "5px 8px",
-                          fontWeight: 700,
-                          fontSize: "0.74rem",
-                          color: slot.includes(":00 ") ? "var(--srcb-navy)" : "#64748b",
-                          background: slot.includes(":00 ") ? "var(--srcb-surface-alt, #f1f5f9)" : "#ffffff",
-                          borderRight: "2px solid var(--srcb-border, #cbd5e1)",
-                          borderBottom: "1px solid #e2e8f0",
-                          whiteSpace: "nowrap",
-                          cursor: isProgramHead ? "default" : "pointer",
-                          userSelect: "none",
-                        }}
-                      >
-                        {slot}
-                      </td>
-                      {DAYS.map((day) => {
-                        const isSelected = selectedSlots[day]?.includes(slot);
-                        const isInDrag = Boolean(
-                          dragRangeInfo &&
-                          dragRangeInfo.targetDays.includes(day) &&
-                          slotIdx >= dragRangeInfo.minSlotIdx &&
-                          slotIdx <= dragRangeInfo.maxSlotIdx
-                        );
-                        const willBeSelected = isInDrag ? dragIntent === "add" : isSelected;
-
-                        return (
-                          <td
-                            key={`${day}-${slot}`}
-                            onMouseDown={() => handleCellMouseDown(day, slotIdx)}
-                            onMouseEnter={() => handleCellMouseEnter(day, slotIdx)}
-                            style={{
-                              padding: "4px 2px",
-                              textAlign: "center",
-                              cursor: isProgramHead ? "default" : "pointer",
-                              borderRight: "1px solid #e2e8f0",
-                              borderBottom: "1px solid #e2e8f0",
-                              backgroundColor: isInDrag
-                                ? dragIntent === "add" ? "#bbf7d0" : "#fecaca"
-                                : isSelected ? "#dcfce7" : "transparent",
-                              outline: isInDrag
-                                ? `2px dashed ${dragIntent === "add" ? "#16a34a" : "#dc2626"}`
-                                : "none",
-                              outlineOffset: "-2px",
-                              transition: "background-color 80ms ease",
-                              userSelect: "none",
-                            }}
-                          >
-                            <div
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                width: 22,
-                                height: 22,
-                                borderRadius: 5,
-                                backgroundColor: willBeSelected
-                                  ? "#16a34a"
-                                  : isInDrag && dragIntent === "remove"
-                                    ? "#ef4444"
-                                    : "#f1f5f9",
-                                border: willBeSelected
-                                  ? "1px solid #15803d"
-                                  : isInDrag && dragIntent === "remove"
-                                    ? "1px solid #b91c1c"
-                                    : "1px solid #cbd5e1",
-                                transition: "all 80ms ease",
-                                boxShadow: willBeSelected ? "0 1px 3px rgba(22, 163, 74, 0.25)" : "none",
-                              }}
-                            >
-                              {willBeSelected ? (
-                                <Check size={13} color="#ffffff" strokeWidth={3} />
-                              ) : isInDrag && dragIntent === "remove" ? (
-                                <X size={13} color="#ffffff" strokeWidth={3} />
-                              ) : (
-                                <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#cbd5e1" }} />
-                              )}
-                            </div>
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="modal-actions" style={{ marginTop: 20 }}>
-          <button
-            type="button"
-            className="cancel-button"
-            onClick={() => setAvailabilityModalOpen(false)}
-          >
-            {isProgramHead ? "Close" : "Cancel"}
-          </button>
-          {!isProgramHead && (
-            <button
-              type="button"
-              className="action-button"
-              onClick={saveAvailabilityFromModal}
-            >
-              Save Availability Schedule
-            </button>
-          )}
-        </div>
-      </Modal>
 
       {/* Delete Faculty Confirmation Modal */}
       <ConfirmModal

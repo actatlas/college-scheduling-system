@@ -361,13 +361,12 @@ describe('Comprehensive SRCB Business Logic & Authorization Verification', () =>
     });
   });
 
-  it('4. Part-Time availability completely inside succeeds; outside or partial overlap fails', async () => {
-    // T_PART availability: Tuesday 08:00-12:00
-    // Success: Tuesday 09:00-11:00
+  it('4. Part-Time faculty can be scheduled flexibly without availability restrictions', async () => {
+    // Schedule within or outside availability succeeds flexibly
     const sched = await schedulesService.createSchedule(
       {
         day: 'Tuesday',
-        time: '09:00-11:00',
+        time: '08:00-10:00',
         subjectCode: 'IT102',
         facultyId: 'T_PART',
         room: 'LEC-201',
@@ -377,45 +376,37 @@ describe('Comprehensive SRCB Business Logic & Authorization Verification', () =>
     );
     expect(sched.id).toBeDefined();
 
-    // Partial overlap: Tuesday 11:00-13:00 (extends beyond 12:00) -> fails
-    await expect(
-      schedulesService.createSchedule(
-        {
-          day: 'Tuesday',
-          time: '11:00-13:00',
-          subjectCode: 'IT102',
-          facultyId: 'T_PART',
-          room: 'LEC-201',
-          sectionId: '1',
-        },
-        admin
-      )
-    ).rejects.toMatchObject({
-      code: 'FACULTY_UNAVAILABLE',
-      statusCode: 409,
-    });
+    // Partial overlap or outside window: Tuesday 11:00-13:00 now succeeds
+    const sched2 = await schedulesService.createSchedule(
+      {
+        day: 'Tuesday',
+        time: '11:00-13:00',
+        subjectCode: 'IT102',
+        facultyId: 'T_PART',
+        room: 'LEC-201',
+        sectionId: '1',
+      },
+      admin
+    );
+    expect(sched2.id).toBeDefined();
 
-    // Part-time faculty with no registered availability -> fails
-    await expect(
-      schedulesService.createSchedule(
-        {
-          day: 'Wednesday',
-          time: '08:00-10:00',
-          subjectCode: 'IT102',
-          facultyId: 'T_PART_EMPTY',
-          room: 'LEC-201',
-          sectionId: '1',
-        },
-        admin
-      )
-    ).rejects.toMatchObject({
-      code: 'FACULTY_UNAVAILABLE',
-      statusCode: 409,
-    });
+    // Part-time faculty with no registered availability now also succeeds flexibly
+    const sched3 = await schedulesService.createSchedule(
+      {
+        day: 'Wednesday',
+        time: '08:00-10:00',
+        subjectCode: 'IT102',
+        facultyId: 'T_PART_EMPTY',
+        room: 'LEC-201',
+        sectionId: '1',
+      },
+      admin
+    );
+    expect(sched3.id).toBeDefined();
   });
 
-  it('5. Full-Time availability respects standard vs admin configured availability', async () => {
-    // T_FULL has no restricted availability configured -> can schedule standard slot
+  it('5. Full-Time faculty can be scheduled flexibly across any slots', async () => {
+    // T_FULL can schedule standard or configured slots without restriction
     const sched = await schedulesService.createSchedule(
       {
         day: 'Wednesday',
@@ -428,33 +419,6 @@ describe('Comprehensive SRCB Business Logic & Authorization Verification', () =>
       admin
     );
     expect(sched.facultyId).toBe('T_FULL');
-
-    // If admin explicitly configured availability for T_FULL: Wednesday 08:00-12:00
-    state.teacher_availability.push({
-      id: 2,
-      teacher_id: 'T_FULL',
-      day_of_week: 'Wednesday',
-      start_time: '08:00:00',
-      end_time: '12:00:00',
-    });
-
-    // Wednesday 13:00-15:00 now falls outside configured availability -> fails
-    await expect(
-      schedulesService.createSchedule(
-        {
-          day: 'Wednesday',
-          time: '13:00-15:00',
-          subjectCode: 'IT101',
-          facultyId: 'T_FULL',
-          room: 'LAB-101',
-          sectionId: '1',
-        },
-        admin
-      )
-    ).rejects.toMatchObject({
-      code: 'FACULTY_UNAVAILABLE',
-      statusCode: 409,
-    });
   });
 
   it('6. Room capacity: rejects room smaller than section headcount', async () => {

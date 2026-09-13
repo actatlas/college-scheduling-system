@@ -31,10 +31,14 @@ import {
   Sparkles,
   CheckCircle2,
   Building2,
-  AlertTriangle,
   AlertCircle,
+  AlertTriangle,
   Lock,
-  Lightbulb,
+  Shield,
+  Mail,
+  Phone,
+  Loader2,
+  Users,
 } from "lucide-react";
 import type { UserAccount, UserRole, ProgramItem, FacultyMember } from "../types";
 import { formatSystemId } from "../utils/idFormatter";
@@ -803,7 +807,7 @@ export function UserManagementPage() {
           role: form.role,
           password: form.password ? form.password.trim() : undefined,
           program: form.role === "program_head" ? form.program : undefined,
-          teacherId: form.role === "teacher" || form.role === "program_head" ? form.teacherId : undefined,
+          teacherId: editingUser.teacherId || undefined,
           status: form.status,
         });
         toast.push("User profile and permissions updated successfully", "success");
@@ -821,7 +825,7 @@ export function UserManagementPage() {
           role: form.role,
           password: form.password ? form.password.trim() : "@srcb123",
           program: form.role === "program_head" ? form.program : undefined,
-          teacherId: form.role === "teacher" || form.role === "program_head" ? form.teacherId : undefined,
+          teacherId: undefined,
           status: form.status,
         });
         toast.push(`Account registered for ${fullName} with initial password`, "success");
@@ -1531,8 +1535,10 @@ export function UserManagementPage() {
       {/* View User Profile / Dossier Modal */}
       <Modal
         isOpen={Boolean(viewingUser)}
+        size="md"
         title="User Account Details"
         description="Comprehensive institutional profile, security parameters, and access permissions."
+        eyebrow="Account Details"
         onClose={() => setViewingUser(null)}
       >
         {viewingUser && (
@@ -1600,7 +1606,7 @@ export function UserManagementPage() {
               )}
             </div>
 
-            <div className="modal-actions" style={{ marginTop: 16 }}>
+            <div className="modal-actions">
               <button
                 type="button"
                 className="user-mgmt-secondary-btn"
@@ -1633,8 +1639,10 @@ export function UserManagementPage() {
       {/* Dedicated Reset Password Dialog Modal */}
       <Modal
         isOpen={Boolean(resettingUser)}
+        size="sm"
         title="Reset User Password"
         description={`Set a new institutional password for ${resettingUser?.name} (${resettingUser?.email}).`}
+        eyebrow="Security & Credentials"
         onClose={() => setResettingUser(null)}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1705,7 +1713,7 @@ export function UserManagementPage() {
             </p>
           </div>
 
-          <div className="modal-actions" style={{ marginTop: 8 }}>
+          <div className="modal-actions">
             <button
               type="button"
               className="cancel-button"
@@ -1776,12 +1784,15 @@ export function UserManagementPage() {
       {/* Create / Edit User Modal */}
       <Modal
         isOpen={isOpen}
+        size="lg"
+        icon={<Shield size={20} />}
         title={editingUser ? "Edit User Profile" : "Create Institutional Account"}
         description={
           editingUser
             ? "Update user profile, contact details, and department permissions."
             : "Register a new institutional user with automatic initial credentials."
         }
+        eyebrow={editingUser ? "Account Management" : "User Registration"}
         onClose={() => setIsOpen(false)}
       >
         <div className="form-grid">
@@ -1796,7 +1807,7 @@ export function UserManagementPage() {
           >
             <div className="field-group">
               <label htmlFor="userFirstName">
-                First Name <span style={{ color: "#dc2626" }}>*</span>
+                <Users size={13} /> First Name <span className="required-asterisk">*</span>
               </label>
               <input
                 id="userFirstName"
@@ -1815,7 +1826,7 @@ export function UserManagementPage() {
 
             <div className="field-group">
               <label htmlFor="userMiddleName">
-                Middle Name{" "}
+                <Users size={13} /> Middle Name{" "}
                 <span style={{ color: "var(--srcb-text-muted)", fontSize: "0.75rem" }}>
                   (Optional)
                 </span>
@@ -1835,7 +1846,7 @@ export function UserManagementPage() {
 
             <div className="field-group">
               <label htmlFor="userLastName">
-                Last Name <span style={{ color: "#dc2626" }}>*</span>
+                <Users size={13} /> Last Name <span className="required-asterisk">*</span>
               </label>
               <input
                 id="userLastName"
@@ -1855,7 +1866,7 @@ export function UserManagementPage() {
 
           <div className="field-group">
             <label htmlFor="userEmail">
-              School Email <span style={{ color: "#dc2626" }}>*</span>
+              <Mail size={13} /> School Email <span className="required-asterisk">*</span>
             </label>
             <input
               id="userEmail"
@@ -1870,7 +1881,7 @@ export function UserManagementPage() {
 
           <div className="field-group">
             <label htmlFor="userPhone">
-              Phone Number{" "}
+              <Phone size={13} /> Phone Number{" "}
               <span style={{ color: "var(--srcb-text-muted)", fontSize: "0.75rem" }}>
                 (Optional)
               </span>
@@ -1889,7 +1900,9 @@ export function UserManagementPage() {
           </div>
 
           <div className="field-group">
-            <label htmlFor="userRole">Assigned System Role</label>
+            <label htmlFor="userRole">
+              <Shield size={13} /> Assigned System Role
+            </label>
             <select
               id="userRole"
               value={form.role}
@@ -1916,7 +1929,9 @@ export function UserManagementPage() {
           </div>
 
           <div className="field-group">
-            <label htmlFor="userStatus">Account Status</label>
+            <label htmlFor="userStatus">
+              <CheckCircle2 size={13} /> Account Status
+            </label>
             <select
               id="userStatus"
               value={form.status}
@@ -1932,7 +1947,9 @@ export function UserManagementPage() {
           {/* Initial Password Information / Password Change */}
           {editingUser ? (
             <div className="field-group" style={{ gridColumn: "1 / -1" }}>
-              <label htmlFor="userPassword">Change Password (Optional)</label>
+              <label htmlFor="userPassword">
+                <Lock size={13} /> Change Password (Optional)
+              </label>
               <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
                 <input
                   id="userPassword"
@@ -2004,7 +2021,9 @@ export function UserManagementPage() {
 
           {form.role === "program_head" && (
             <div className="field-group" style={{ gridColumn: "1 / -1" }}>
-              <label htmlFor="userProgram">Assigned Academic Program</label>
+              <label htmlFor="userProgram">
+                <Building2 size={13} /> Assigned Academic Program
+              </label>
               <select
                 id="userProgram"
                 value={form.program}
@@ -2019,49 +2038,11 @@ export function UserManagementPage() {
             </div>
           )}
 
-          {(form.role === "teacher" || form.role === "program_head") && (
-            <div className="field-group" style={{ gridColumn: "1 / -1" }}>
-              <label htmlFor="userTeacher">
-                {form.role === "program_head"
-                  ? "Link to Faculty Teaching Profile"
-                  : "Link to Faculty Profile"}
-              </label>
-              <select
-                id="userTeacher"
-                value={form.teacherId}
-                onChange={(e) => setForm({ ...form, teacherId: e.target.value })}
-              >
-                <option value="">-- No link (Standalone Account) --</option>
-                {faculty.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name} ({f.department} · {f.status})
-                  </option>
-                ))}
-              </select>
-              {form.role === "program_head" && (
-                <p
-                  style={{
-                    margin: "6px 0 0",
-                    fontSize: "0.78rem",
-                    color: "var(--srcb-navy)",
-                    lineHeight: 1.4,
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 6,
-                  }}
-                >
-                  <Lightbulb size={15} style={{ flexShrink: 0, marginTop: 1 }} />
-                  <span>
-                    <strong>Teaching Load Notice:</strong> Program Heads teach major subjects (such as 3rd Year classes). Linking a faculty profile enables them to be assigned to classes and view their teaching schedule.
-                  </span>
-                </p>
-              )}
-            </div>
-          )}
-
           {editingUser && (
             <div className="field-group" style={{ gridColumn: "1 / -1" }}>
-              <label htmlFor="modalUserStatus">Account Access Status</label>
+              <label htmlFor="modalUserStatus">
+                <CheckCircle2 size={13} /> Account Access Status
+              </label>
               <select
                 id="modalUserStatus"
                 value={form.status}
@@ -2074,7 +2055,7 @@ export function UserManagementPage() {
           )}
         </div>
 
-        <div className="modal-actions" style={{ marginTop: 24 }}>
+        <div className="modal-actions">
           <button
             type="button"
             className="cancel-button"
@@ -2085,14 +2066,23 @@ export function UserManagementPage() {
           <button
             type="button"
             className="action-button"
-            disabled={loading}
+            disabled={
+              loading ||
+              !firstName.trim() ||
+              !lastName.trim() ||
+              !form.email.trim() ||
+              Boolean(firstNameError || middleNameError || lastNameError || phoneError)
+            }
             onClick={handleSave}
           >
-            {loading
-              ? "Saving..."
-              : editingUser
-                ? "Update User Profile"
-                : "Create Account"}
+            {loading && <Loader2 size={16} className="animate-spin" />}
+            <span>
+              {loading
+                ? "Saving…"
+                : editingUser
+                  ? "Update User Profile"
+                  : "Create Account"}
+            </span>
           </button>
         </div>
       </Modal>

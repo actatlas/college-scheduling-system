@@ -17,6 +17,10 @@ import {
   GraduationCap,
   Users,
   Layers,
+  Hash,
+  Award,
+  UserCheck,
+  Loader2,
 } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
 import { getProgramLogo } from "../utils/programLogos";
@@ -101,8 +105,8 @@ export function CoursesPage() {
     name: "",
     programCode: "BAP",
     units: "3",
-    lectureHours: "3",
-    labHours: "0",
+    lectureHours: "2",
+    labHours: "3",
     semester: "1st Semester",
     instructorId: "",
   });
@@ -248,8 +252,8 @@ export function CoursesPage() {
       name: "",
       programCode: activeProgramTab !== "ALL" ? activeProgramTab : "BAP",
       units: "3",
-      lectureHours: "3",
-      labHours: "0",
+      lectureHours: "2",
+      labHours: "3",
       semester: "1st Semester",
       instructorId: "",
     });
@@ -961,52 +965,53 @@ export function CoursesPage() {
       {/* Add / Edit Major Subject Modal */}
       <Modal
         isOpen={isSubjectModalOpen}
+        size="lg"
+        icon={<BookOpen size={20} />}
         onClose={() => setIsSubjectModalOpen(false)}
+        eyebrow="Curriculum Catalog"
         title={editingSubject ? `Edit Major Subject (${editingSubject.code})` : "Register Program Major Subject"}
         description="Configure official major subject details, academic program affiliation, and credit unit parameters."
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 12 }}>
-            <div>
-              <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, marginBottom: 4 }}>
-                Subject Code *
+            <div className="field-group">
+              <label htmlFor="modalSubjectCode">
+                <Hash size={13} /> Subject Code <span className="required-asterisk">*</span>
               </label>
               <input
+                id="modalSubjectCode"
                 type="text"
-                className="user-mgmt-modal-input"
                 placeholder="e.g. IT101, BA101"
                 value={subjectForm.code}
                 disabled={Boolean(editingSubject)}
                 onChange={(e) => setSubjectForm({ ...subjectForm, code: e.target.value.toUpperCase() })}
-                style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--srcb-border)" }}
                 required
               />
             </div>
 
-            <div>
-              <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, marginBottom: 4 }}>
-                Major Subject Title *
+            <div className="field-group">
+              <label htmlFor="modalSubjectName">
+                <BookOpen size={13} /> Major Subject Title <span className="required-asterisk">*</span>
               </label>
               <input
+                id="modalSubjectName"
                 type="text"
-                className="user-mgmt-modal-input"
                 placeholder="e.g. Computer Programming 1"
                 value={subjectForm.name}
                 onChange={(e) => setSubjectForm({ ...subjectForm, name: e.target.value })}
-                style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--srcb-border)" }}
                 required
               />
             </div>
           </div>
 
-          <div>
-            <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, marginBottom: 4 }}>
-              Assigned Academic Program *
+          <div className="field-group">
+            <label htmlFor="modalSubjectProgram">
+              <Building2 size={13} /> Assigned Academic Program <span className="required-asterisk">*</span>
             </label>
             <select
+              id="modalSubjectProgram"
               value={subjectForm.programCode}
               onChange={(e) => setSubjectForm({ ...subjectForm, programCode: e.target.value })}
-              style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)" }}
             >
               {ACADEMIC_PROGRAMS.map((p) => (
                 <option key={p.code} value={p.code}>
@@ -1017,59 +1022,61 @@ export function CoursesPage() {
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-            <div>
-              <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, marginBottom: 4 }}>
-                Units *
+            <div className="field-group">
+              <label htmlFor="modalSubjectUnits">
+                <Award size={13} /> Units <span className="required-asterisk">*</span>
               </label>
               <input
+                id="modalSubjectUnits"
                 type="number"
                 min="1"
                 max="10"
                 value={subjectForm.units}
                 onChange={(e) => setSubjectForm({ ...subjectForm, units: e.target.value })}
-                style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--srcb-border)" }}
                 required
               />
             </div>
 
-            <div>
-              <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, marginBottom: 4 }}>
-                Lecture Hours
+            <div className="field-group">
+              <label htmlFor="modalSubjectLecHours">
+                <Clock size={13} /> Lecture Hours (2h standard)
               </label>
               <input
+                id="modalSubjectLecHours"
                 type="number"
+                step="0.5"
                 min="0"
                 max="10"
                 value={subjectForm.lectureHours}
                 onChange={(e) => setSubjectForm({ ...subjectForm, lectureHours: e.target.value })}
-                style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--srcb-border)" }}
               />
             </div>
 
-            <div>
-              <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, marginBottom: 4 }}>
-                Lab Hours
+            <div className="field-group">
+              <label htmlFor="modalSubjectLabHours">
+                <Clock size={13} /> Lab Hours (3h standard)
               </label>
               <input
+                id="modalSubjectLabHours"
                 type="number"
+                step="0.5"
                 min="0"
                 max="10"
                 value={subjectForm.labHours}
                 onChange={(e) => setSubjectForm({ ...subjectForm, labHours: e.target.value })}
-                style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--srcb-border)" }}
               />
             </div>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div>
-              <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, marginBottom: 4 }}>
-                Semester *
+            <div className="field-group">
+              <label htmlFor="modalSubjectSemester">
+                <Layers size={13} /> Semester <span className="required-asterisk">*</span>
               </label>
               <select
+                id="modalSubjectSemester"
                 value={subjectForm.semester}
                 onChange={(e) => setSubjectForm({ ...subjectForm, semester: e.target.value })}
-                style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)" }}
               >
                 <option value="1st Semester">1st Semester</option>
                 <option value="2nd Semester">2nd Semester</option>
@@ -1077,14 +1084,14 @@ export function CoursesPage() {
               </select>
             </div>
 
-            <div>
-              <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, marginBottom: 4 }}>
-                Assigned Faculty Instructor
+            <div className="field-group">
+              <label htmlFor="modalSubjectInstructor">
+                <UserCheck size={13} /> Assigned Faculty Instructor
               </label>
               <select
+                id="modalSubjectInstructor"
                 value={subjectForm.instructorId}
                 onChange={(e) => setSubjectForm({ ...subjectForm, instructorId: e.target.value })}
-                style={{ width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)" }}
               >
                 <option value="">-- Unassigned --</option>
                 {faculty.map((f) => (
@@ -1096,12 +1103,22 @@ export function CoursesPage() {
             </div>
           </div>
 
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
-            <button className="secondary-button" type="button" onClick={() => setIsSubjectModalOpen(false)}>
+          <div className="modal-actions">
+            <button
+              className="cancel-button"
+              type="button"
+              onClick={() => setIsSubjectModalOpen(false)}
+            >
               Cancel
             </button>
-            <button className="action-button" type="button" onClick={handleSaveSubject} disabled={loading}>
-              {loading ? "Saving..." : editingSubject ? "Save Changes" : "Register Major Subject"}
+            <button
+              className="action-button"
+              type="button"
+              onClick={handleSaveSubject}
+              disabled={loading || !subjectForm.code.trim() || !subjectForm.name.trim() || !subjectForm.units.trim()}
+            >
+              {loading && <Loader2 size={16} className="animate-spin" />}
+              <span>{loading ? "Saving…" : editingSubject ? "Save Changes" : "Register Major Subject"}</span>
             </button>
           </div>
         </div>
@@ -1110,48 +1127,52 @@ export function CoursesPage() {
       {/* Add / Edit Degree Course Modal */}
       <Modal
         isOpen={isCourseModalOpen}
+        size="md"
+        icon={<GraduationCap size={20} />}
         onClose={() => setIsCourseModalOpen(false)}
+        eyebrow="Degree Programs"
         title={editingCourse ? `Edit Degree Course (${editingCourse.code})` : "Register New Degree Course"}
+        description="Register degree course acronym, title, duration, and affiliated academic program."
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <div>
-            <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, marginBottom: 4 }}>
-              Course Code (Acronym) *
+          <div className="field-group">
+            <label htmlFor="modalCourseCode">
+              <Hash size={13} /> Course Code (Acronym) <span className="required-asterisk">*</span>
             </label>
             <input
+              id="modalCourseCode"
               type="text"
-              className="user-mgmt-modal-input"
               placeholder="e.g. BSIT, BSBA, BSHM, BSCRIM"
               value={courseForm.code}
               disabled={Boolean(editingCourse)}
               onChange={(e) => setCourseForm({ ...courseForm, code: e.target.value.toUpperCase() })}
-              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--srcb-border)" }}
+              required
             />
           </div>
 
-          <div>
-            <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, marginBottom: 4 }}>
-              Official Degree Title *
+          <div className="field-group">
+            <label htmlFor="modalCourseName">
+              <GraduationCap size={13} /> Official Degree Title <span className="required-asterisk">*</span>
             </label>
             <input
+              id="modalCourseName"
               type="text"
-              className="user-mgmt-modal-input"
               placeholder="e.g. Bachelor of Science in Information Technology"
               value={courseForm.name}
               onChange={(e) => setCourseForm({ ...courseForm, name: e.target.value })}
-              style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--srcb-border)" }}
+              required
             />
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div>
-              <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, marginBottom: 4 }}>
-                Department / Program
+            <div className="field-group">
+              <label htmlFor="modalCourseProg">
+                <Building2 size={13} /> Department / Program
               </label>
               <select
+                id="modalCourseProg"
                 value={courseForm.programCode}
                 onChange={(e) => setCourseForm({ ...courseForm, programCode: e.target.value })}
-                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)" }}
               >
                 {programs.length > 0 ? (
                   programs
@@ -1171,11 +1192,12 @@ export function CoursesPage() {
               </select>
             </div>
 
-            <div>
-              <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, marginBottom: 4 }}>
-                Degree Duration (Years) <span style={{ color: "#dc2626" }}>*</span>
+            <div className="field-group">
+              <label htmlFor="modalCourseDuration">
+                <Clock size={13} /> Degree Duration (Years) <span className="required-asterisk">*</span>
               </label>
               <select
+                id="modalCourseDuration"
                 value={durationMode}
                 onChange={(e) => {
                   setDurationMode(e.target.value);
@@ -1183,7 +1205,6 @@ export function CoursesPage() {
                     setCourseForm({ ...courseForm, year: e.target.value });
                   }
                 }}
-                style={{ width: "100%", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)" }}
               >
                 <option value="4">4 Years (Standard Baccalaureate)</option>
                 <option value="3">3 Years</option>
@@ -1193,10 +1214,11 @@ export function CoursesPage() {
               </select>
               {durationMode === "other" && (
                 <div style={{ marginTop: 8 }}>
-                  <label style={{ display: "block", fontSize: "0.76rem", fontWeight: 600, marginBottom: 3, color: "var(--srcb-navy)" }}>
+                  <label htmlFor="modalCourseCustomDur" style={{ display: "block", fontSize: "0.76rem", fontWeight: 600, marginBottom: 3, color: "var(--srcb-navy)" }}>
                     Enter Custom Duration (Years) *
                   </label>
                   <input
+                    id="modalCourseCustomDur"
                     type="number"
                     min="1"
                     max="10"
@@ -1206,7 +1228,6 @@ export function CoursesPage() {
                       setCustomDuration(e.target.value);
                       setCourseForm({ ...courseForm, year: e.target.value });
                     }}
-                    style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--srcb-border)" }}
                     required
                   />
                 </div>
@@ -1214,12 +1235,27 @@ export function CoursesPage() {
             </div>
           </div>
 
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
-            <button className="secondary-button" type="button" onClick={() => setIsCourseModalOpen(false)}>
+          <div className="modal-actions">
+            <button
+              className="cancel-button"
+              type="button"
+              onClick={() => setIsCourseModalOpen(false)}
+            >
               Cancel
             </button>
-            <button className="action-button" type="button" onClick={handleSaveCourse} disabled={loading}>
-              {loading ? "Saving..." : editingCourse ? "Save Changes" : "Register Course"}
+            <button
+              className="action-button"
+              type="button"
+              onClick={handleSaveCourse}
+              disabled={
+                loading ||
+                !courseForm.code.trim() ||
+                !courseForm.name.trim() ||
+                (durationMode === "other" && (!customDuration.trim() || Number(customDuration) < 1 || Number(customDuration) > 10))
+              }
+            >
+              {loading && <Loader2 size={16} className="animate-spin" />}
+              <span>{loading ? "Saving…" : editingCourse ? "Save Changes" : "Register Course"}</span>
             </button>
           </div>
         </div>
