@@ -29,6 +29,16 @@ async function ensureCatalogSeed() {
     // ignore if already exists or unsupported
   }
 
+  try {
+    await query("UPDATE courses SET program_code = 'BAP' WHERE program_code = 'BSA'");
+    await query("UPDATE subjects SET program_code = 'BAP' WHERE program_code = 'BSA'");
+    await query("UPDATE program_majors SET program_code = 'BAP' WHERE program_code = 'BSA'");
+    await query("UPDATE users SET program = 'BAP' WHERE program = 'BSA'");
+    await query("DELETE FROM programs WHERE code = 'BSA'");
+  } catch (e) {
+    // ignore if table structure or constraint doesn't exist
+  }
+
   const standardPrograms = [
     ['BAP', 'Business Administration Program', 'BAP Focus'],
     ['ITP', 'Information Technology Program', 'ITP Focus'],
@@ -60,13 +70,30 @@ async function ensureDefaultUsers() {
   const defaultUsers = [
     { email: process.env.SEED_SUPERADMIN_EMAIL || 'superadmin@srcb.edu.ph', password: process.env.SEED_SUPERADMIN_PASSWORD || '@superadmin123', name: 'ICT Super Administrator', role: 'super_admin' },
     { email: process.env.SEED_ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL, password: process.env.SEED_ADMIN_PASSWORD || DEFAULT_ADMIN_PASSWORD, name: DEFAULT_ADMIN_NAME, role: 'admin' },
-    { email: 'programhead@srcb.edu.ph', password: '@program123', name: 'Dr. Reyes (IT Head)', role: 'program_head' },
-    { email: process.env.SEED_TEACHER_EMAIL || 'teacher@srcb.edu.ph', password: process.env.SEED_TEACHER_PASSWORD || '@teacher123', name: 'Maria Santos', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T001' },
+    // 5 Program Heads (Exactly 1 per program)
+    { email: 'ithead@srcb.edu.ph', password: '@program123', name: 'Dr. Alan Turing', role: 'program_head', program: 'ITP', majorCode: 'BSIT' },
+    { email: 'businesshead@srcb.edu.ph', password: '@program123', name: 'Dr. Peter Drucker', role: 'program_head', program: 'BSA', majorCode: 'BSBA' },
+    { email: 'crimhead@srcb.edu.ph', password: '@program123', name: 'Dr. August Vollmer', role: 'program_head', program: 'CJEP', majorCode: 'BSCRIM' },
+    { email: 'hmhead@srcb.edu.ph', password: '@program123', name: 'Prof. Georges Escoffier', role: 'program_head', program: 'HMP', majorCode: 'BSHM' },
+    { email: 'educhead@srcb.edu.ph', password: '@program123', name: 'Dr. Maria Montessori', role: 'program_head', program: 'TEP', majorCode: 'BSED' },
+    // Major Subject Teachers
+    { email: 'adalovelace-it@srcb.edu.ph', password: '@teacher123', name: 'Prof. Ada Lovelace', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T-IT-001', majorCode: 'BSIT', program: 'ITP' },
+    { email: 'gracehopper-it@srcb.edu.ph', password: '@teacher123', name: 'Prof. Grace Hopper', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T-IT-002', majorCode: 'BSIT', program: 'ITP' },
+    { email: 'warrenbuffett-ba@srcb.edu.ph', password: '@teacher123', name: 'Prof. Warren Buffett', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T-BA-001', majorCode: 'BSBA', program: 'BSA' },
+    { email: 'philipkotler-ba@srcb.edu.ph', password: '@teacher123', name: 'Prof. Philip Kotler', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T-BA-002', majorCode: 'BSBA', program: 'BSA' },
+    { email: 'cesarebeccaria-crim@srcb.edu.ph', password: '@teacher123', name: 'Atty. Cesare Beccaria', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T-CRIM-001', majorCode: 'BSCRIM', program: 'CJEP' },
+    { email: 'hansgross-crim@srcb.edu.ph', password: '@teacher123', name: 'Capt. Hans Gross', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T-CRIM-002', majorCode: 'BSCRIM', program: 'CJEP' },
+    { email: 'gordonramsay-hm@srcb.edu.ph', password: '@teacher123', name: 'Chef Gordon Ramsay', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T-HM-001', majorCode: 'BSHM', program: 'HMP' },
+    { email: 'juliachild-hm@srcb.edu.ph', password: '@teacher123', name: 'Chef Julia Child', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T-HM-002', majorCode: 'BSHM', program: 'HMP' },
+    { email: 'johndewey-educ@srcb.edu.ph', password: '@teacher123', name: 'Prof. John Dewey', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T-ED-001', majorCode: 'BSED', program: 'TEP' },
+    { email: 'levvygotsky-educ@srcb.edu.ph', password: '@teacher123', name: 'Prof. Lev Vygotsky', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T-ED-002', majorCode: 'BSED', program: 'TEP' },
+    { email: 'socrates-gen@srcb.edu.ph', password: '@teacher123', name: 'Prof. Socrates Santos', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T-GEN-001', majorCode: null, program: 'ALL' },
+    { email: 'rizal-gen@srcb.edu.ph', password: '@teacher123', name: 'Prof. Jose Rizal', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T-GEN-002', majorCode: null, program: 'ALL' },
   ];
 
-  // Purge legacy part-time faculty accounts so only one official faculty account exists
+  // Purge legacy part-time faculty accounts so only official faculty accounts exist
   try {
-    await query("DELETE FROM users WHERE email IN ('parttime@srcb.edu.ph', 'faculty.parttime@srcb.edu.ph')");
+    await query("DELETE FROM users WHERE email IN ('parttime@srcb.edu.ph', 'faculty.parttime@srcb.edu.ph', 'liezel@srcb.edu.ph')");
   } catch (err) {
     // ignore if table doesn't exist
   }
@@ -78,40 +105,33 @@ async function ensureDefaultUsers() {
     if (existing) {
       userId = existing.id;
       const passwordHash = await bcrypt.hash(user.password, 10);
-      await query('UPDATE users SET name = ?, role = ?, password_hash = ? WHERE id = ?', [user.name, user.role, passwordHash, userId]);
+      try {
+        await query('UPDATE users SET name = ?, role = ?, password_hash = ?, status = "Active", program = ? WHERE id = ?', [user.name, user.role, passwordHash, user.program || null, userId]);
+      } catch (e) {
+        await query('UPDATE users SET name = ?, role = ?, password_hash = ?, status = "Active" WHERE id = ?', [user.name, user.role, passwordHash, userId]);
+      }
     } else {
       const passwordHash = await bcrypt.hash(user.password, 10);
-      const [result] = await query('INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)', [user.name, user.email, passwordHash, user.role]);
-      userId = (Array.isArray(result) ? result[0] : result)?.insertId || result.insertId;
+      try {
+        const [result] = await query('INSERT INTO users (name, email, password_hash, role, status, program) VALUES (?, ?, ?, ?, "Active", ?)', [user.name, user.email, passwordHash, user.role, user.program || null]);
+        userId = (Array.isArray(result) ? result[0] : result)?.insertId || result.insertId;
+      } catch (e) {
+        const [result] = await query('INSERT INTO users (name, email, password_hash, role, status) VALUES (?, ?, ?, ?, "Active")', [user.name, user.email, passwordHash, user.role]);
+        userId = (Array.isArray(result) ? result[0] : result)?.insertId || result.insertId;
+      }
     }
 
-    if (user.role === 'program_head') {
-      const [major] = await query('SELECT id FROM program_majors WHERE code = ? LIMIT 1', ['BSIT']);
+    if (user.role === 'program_head' && user.majorCode) {
+      const [major] = await query('SELECT id FROM program_majors WHERE code = ? LIMIT 1', [user.majorCode]);
       if (major) {
         await query('UPDATE program_majors SET program_head_id = ? WHERE id = ?', [userId, major.id]);
-      }
-
-      // Program Heads in SRCB also teach major subjects (e.g. 3rd year classes)
-      const headFacultyId = 'FAC-003';
-      const [teacher] = await query('SELECT id FROM teachers WHERE id = ? OR LOWER(email) = LOWER(?) LIMIT 1', [headFacultyId, user.email]);
-      if (!teacher) {
-        await query('INSERT INTO teachers (id, name, email, phone, status, program_major_id) VALUES (?, ?, ?, ?, ?, ?)', [
-          headFacultyId,
-          user.name,
-          user.email,
-          '09191112233',
-          'Full-Time',
-          major?.id || null,
-        ]);
-      } else {
-        await query('UPDATE teachers SET name = ?, status = ?, email = COALESCE(email, ?) WHERE id = ?', [user.name, 'Full-Time', user.email, teacher.id]);
       }
     }
 
     if (user.role === 'teacher') {
-      const teacherId = user.teacherId || 'T001';
+      const teacherId = user.teacherId || `T${Date.now().toString().slice(-6)}`;
       const teacherStatus = user.teacherStatus || 'Full-Time';
-      const [major] = await query('SELECT id FROM program_majors WHERE code = ? LIMIT 1', ['BSIT']);
+      const [major] = user.majorCode ? await query('SELECT id FROM program_majors WHERE code = ? LIMIT 1', [user.majorCode]) : [null];
       const [teacher] = await query('SELECT id FROM teachers WHERE id = ? OR LOWER(email) = LOWER(?) LIMIT 1', [teacherId, user.email]);
 
       if (!teacher) {
@@ -119,12 +139,12 @@ async function ensureDefaultUsers() {
           teacherId,
           user.name,
           user.email,
-          '123-456',
+          '0917-000-0000',
           teacherStatus,
           major?.id || null,
         ]);
       } else {
-        await query('UPDATE teachers SET name = ?, status = ?, email = COALESCE(email, ?) WHERE id = ?', [user.name, teacherStatus, user.email, teacher.id]);
+        await query('UPDATE teachers SET name = ?, status = ?, email = COALESCE(email, ?), program_major_id = COALESCE(?, program_major_id) WHERE id = ?', [user.name, teacherStatus, user.email, major?.id || null, teacher.id]);
       }
     }
   }
@@ -348,13 +368,13 @@ async function getCurrentUser({ sub, id }) {
       [user.id]
     );
     if (majors && majors.length > 0) {
-      payload.program = majors[0].code || majors[0].program_code;
-      payload.programCode = majors[0].program_code;
+      payload.program = user.program || majors[0].code || majors[0].program_code;
+      payload.programCode = user.program || majors[0].program_code;
       payload.programs = majors.map((m) => m.code);
     } else {
-      payload.program = 'BSIT';
-      payload.programCode = 'ITP';
-      payload.programs = ['BSIT'];
+      payload.program = user.program || 'ITP';
+      payload.programCode = user.program || 'ITP';
+      payload.programs = [user.program || 'ITP'];
     }
   }
 

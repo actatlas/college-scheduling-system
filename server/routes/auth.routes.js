@@ -4,6 +4,7 @@ const { validateRequest } = require('../middleware/validateRequest');
 const {
   authRegister,
   authLogin,
+  authLogout,
   authForgot,
   authReset,
   authMe,
@@ -46,6 +47,7 @@ router.post(
 );
 
 router.get('/me', authMiddleware, authMe);
+router.post('/logout', authMiddleware, authLogout);
 
 router.post(
   '/change-password',

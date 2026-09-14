@@ -1,8 +1,9 @@
 const { programsService } = require('../services/programs.service');
+const { logAction } = require('../services/systemLogs.service');
 
 async function listPrograms(req, res, next) {
   try {
-    const rows = await programsService.listPrograms();
+    const rows = await programsService.listPrograms(req.user);
     res.json({ data: rows });
   } catch (err) {
     next(err);
@@ -16,6 +17,18 @@ async function createProgram(req, res, next) {
     }
     const payload = req.body || {};
     const row = await programsService.createProgram(payload);
+
+    await logAction({
+      req,
+      user: req.user,
+      module: 'Academic Management',
+      action: 'Created Program',
+      description: `Created academic program ${row.name || row.code} (${row.code}).`,
+      targetId: row.code,
+      targetType: 'Program',
+      status: 'Success',
+    });
+
     res.status(201).json({ data: row });
   } catch (err) {
     if (err && err.code === 'ER_DUP_ENTRY') {
@@ -33,6 +46,18 @@ async function updateProgram(req, res, next) {
     const code = req.params.code;
     const payload = req.body || {};
     const row = await programsService.updateProgram(code, payload);
+
+    await logAction({
+      req,
+      user: req.user,
+      module: 'Academic Management',
+      action: 'Updated Program',
+      description: `Updated academic program ${code}.`,
+      targetId: code,
+      targetType: 'Program',
+      status: 'Success',
+    });
+
     res.json({ data: row });
   } catch (err) {
     next(err);
@@ -46,6 +71,18 @@ async function deleteProgram(req, res, next) {
     }
     const code = req.params.code;
     await programsService.deleteProgram(code);
+
+    await logAction({
+      req,
+      user: req.user,
+      module: 'Academic Management',
+      action: 'Deleted Program',
+      description: `Deleted academic program ${code}.`,
+      targetId: code,
+      targetType: 'Program',
+      status: 'Success',
+    });
+
     res.status(204).end();
   } catch (err) {
     next(err);

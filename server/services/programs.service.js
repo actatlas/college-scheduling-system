@@ -1,10 +1,16 @@
 const { query } = require('../utils/db');
+const { resolveUserProgramScope, isProgramMatch } = require('../utils/programScope');
 
-async function listPrograms() {
+async function listPrograms(user = null) {
+  const scope = await resolveUserProgramScope(user);
   const rows = await query(
-    `SELECT code, name, COALESCE(focus, '') AS focus FROM programs ORDER BY name ASC`
+    `SELECT code, name, COALESCE(focus, '') AS focus FROM programs WHERE code NOT IN ('BSA', 'BSIT', 'BSBA', 'BSED', 'BEED', 'BSCRIM', 'BSHM') ORDER BY name ASC`
   );
-  return rows.map((r) => ({ id: r.code, code: r.code, name: r.name, focus: r.focus }));
+  let mapped = rows.map((r) => ({ id: r.code, code: r.code, name: r.name, focus: r.focus }));
+  if (scope.isProgramHead) {
+    mapped = mapped.filter((r) => scope.allowedProgramCodes.some((allowed) => isProgramMatch(r.code, allowed)));
+  }
+  return mapped;
 }
 
 async function createProgram({ code, name, focus }) {

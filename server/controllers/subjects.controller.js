@@ -1,10 +1,12 @@
 const { subjectsService } = require('../services/subjects.service');
 const { query } = require('../utils/db');
+const { logAction } = require('../services/systemLogs.service');
 
 async function listSubjects(req, res, next) {
   try {
-    const department = req.query.department;
-    const rows = await subjectsService.listSubjects(department);
+    const department = req.query.department || req.query.program;
+    const forExam = req.query.forExam === 'true' || req.query.forExam === '1';
+    const rows = await subjectsService.listSubjects(department, req.user, { forExam });
     res.json({ data: rows });
   } catch (err) {
     next(err);
@@ -21,6 +23,19 @@ async function createSubject(req, res, next) {
       return res.status(400).json({ error: 'Subject code and name are required' });
     }
     const row = await subjectsService.createSubject(payload);
+
+    await logAction({
+      req,
+      user: req.user,
+      module: 'Academic Management',
+      action: 'Created Subject',
+      description: `Created curriculum subject ${row.name || row.code} (${row.code}) for program ${row.program_code || 'General'}.`,
+      targetId: row.code,
+      targetType: 'Subject',
+      status: 'Success',
+      details: { code: row.code, name: row.name, units: row.units, program: row.program_code },
+    });
+
     res.status(201).json({ data: row });
   } catch (err) {
     if (err && (err.code === 'ER_DUP_ENTRY' || err.statusCode === 400)) {
@@ -40,6 +55,18 @@ async function deleteSubject(req, res, next) {
     }
     const code = req.params.code;
     await subjectsService.deleteSubject(code);
+
+    await logAction({
+      req,
+      user: req.user,
+      module: 'Academic Management',
+      action: 'Deleted Subject',
+      description: `Deleted curriculum subject ${code}.`,
+      targetId: code,
+      targetType: 'Subject',
+      status: 'Success',
+    });
+
     res.status(204).end();
   } catch (err) {
     next(err);
@@ -72,6 +99,7 @@ async function updateSubject(req, res, next) {
       }
       if (req.user?.program) allowedPrograms.push(req.user.program);
       if (req.user?.programCode) allowedPrograms.push(req.user.programCode);
+
       allowedPrograms = [...new Set(allowedPrograms.map((p) => String(p).toUpperCase()))];
 
       const subProg = String(subjectRow.program_code || '').toUpperCase();
@@ -92,6 +120,19 @@ async function updateSubject(req, res, next) {
     }
 
     const row = await subjectsService.updateSubject(code, payload);
+
+    await logAction({
+      req,
+      user: req.user,
+      module: 'Academic Management',
+      action: 'Updated Subject',
+      description: `Updated subject ${code} (${row?.name || ''}).`,
+      targetId: code,
+      targetType: 'Subject',
+      status: 'Success',
+      details: { instructorId: payload.instructor_id || payload.instructorId },
+    });
+
     res.json({ data: row });
   } catch (err) {
     if (err && (err.code === 'ER_DUP_ENTRY' || err.statusCode === 400)) {

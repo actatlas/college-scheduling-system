@@ -15,6 +15,8 @@ import { api } from "../data/apiClient";
 import { useToast } from "../components/common/Toast";
 import Logo from "../assets/images/Logo.png";
 
+import { showSuccessAlert, showErrorAlert, showWarningAlert } from "../utils/alerts";
+
 export function LoginPage() {
   const [searchParams] = useSearchParams();
   // Requirement 2: Email and Password MUST start completely empty
@@ -75,7 +77,8 @@ export function LoginPage() {
         }
       }
 
-      toast.push("Successfully logged in to SRCB Scheduling System", "success");
+      // SweetAlert2 Success Alert
+      await showSuccessAlert("Welcome!", "You have successfully logged in.", 1500);
       navigate("/dashboard");
     } catch (err: any) {
       const isSuspended =
@@ -92,15 +95,11 @@ export function LoginPage() {
           "Your account has been suspended. Please contact the ICT Office or system administrator.";
         setSuspensionNotice(msg);
         setAuthError(null);
-        toast.push(msg, "error");
+        await showWarningAlert("Account Suspended", msg);
       } else {
-        const msg =
-          err?.response?.data?.message ||
-          err?.response?.data?.error ||
-          err?.message ||
-          "Invalid email or password. Please check your credentials.";
+        const msg = "Invalid username or password.";
         setAuthError(msg);
-        toast.push(msg, "error");
+        await showErrorAlert("Login failed", msg);
       }
     } finally {
       setIsSubmitting(false);
@@ -111,6 +110,7 @@ export function LoginPage() {
     e.preventDefault();
     if (!email.trim() || !password.trim()) {
       setAuthError("Please enter your email and password.");
+      await showErrorAlert("Login failed", "Please enter both email and password.");
       return;
     }
     await handleLoginWithCredentials(email.trim(), password);

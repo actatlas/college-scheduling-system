@@ -38,15 +38,40 @@ async function resolveForeignKeys({ instructorId, programCode, program, courseCo
   return { validInstructorId, validProgramCode, validSemesterId };
 }
 
-function isGeneralEducationSubject(code, programCode) {
+const { resolveUserProgramScope, getProgramFamily, isProgramMatch } = require('../utils/programScope');
+
+function isGeneralEducationSubject(code, programCode, name) {
   const cleanCode = String(code || '').trim().toUpperCase();
   const cleanProg = String(programCode || '').trim().toUpperCase();
-  if (cleanProg === 'ALL' || cleanProg === 'GEN' || cleanProg === 'GENERAL EDUCATION') return true;
-  return /^(GE|GEC|NSTP|PE|PATHFIT|RIZAL|MATH|ENG|FIL|SOC|HUM|HIST)\b/i.test(cleanCode);
+  const cleanName = String(name || '').trim().toUpperCase();
+  if (['ALL', 'GEN', 'GENED', 'GENERAL EDUCATION', 'UNIVERSAL'].includes(cleanProg)) return true;
+  if (/^(GE|GEC|NSTP|PE|PATHFIT|RIZAL|MATH|ENG|FIL|SOC|HUM|HIST|RS|THEOLOGY|CWTS|ROTC)\b/i.test(cleanCode)) return true;
+  if (/^GE[\s-]*\d+/i.test(cleanCode) || /^PE[\s-]*\d+/i.test(cleanCode) || /^NSTP[\s-]*\d+/i.test(cleanCode) || /^RS[\s-]*\d+/i.test(cleanCode) || /^PATHFIT[\s-]*\d+/i.test(cleanCode)) return true;
+  if (cleanName.includes('GENERAL EDUCATION') || cleanName.includes('UNDERSTANDING THE SELF') || cleanName.includes('READINGS IN PHILIPPINE') || cleanName.includes('PURPOSIVE COMMUNICATION')) return true;
+  return false;
 }
 
-async function listSubjects(programCode) {
+async function listSubjects(programCodeOrUser, userParam = null, options = {}) {
   try {
+    let user = userParam;
+    let programCode = programCodeOrUser;
+    if (programCodeOrUser && typeof programCodeOrUser === 'object' && ('role' in programCodeOrUser || 'id' in programCodeOrUser || 'sub' in programCodeOrUser)) {
+      user = programCodeOrUser;
+      programCode = null;
+    }
+
+    const role = String(user?.role || '').toLowerCase();
+    const isExamQuery = options.forExam === true;
+
+    // 1. Teachers have NO Exam Subject Palette subjects
+    if (role === 'teacher' && isExamQuery) {
+      return [];
+    }
+
+    // 2. Resolve Program Head assigned programs
+    const scope = resolveUserProgramScope(user);
+    const programHeadAllowedPrograms = scope.allowedProgramCodes;
+
     let sql = `SELECT s.code, s.name, s.units, s.lecture_hours, s.lab_hours, s.semester_id, sem.name AS semester_name, s.program_code, s.instructor_id,
               COALESCE(t.name, '') AS instructor
        FROM subjects s
@@ -54,16 +79,24 @@ async function listSubjects(programCode) {
        LEFT JOIN semesters sem ON sem.id = s.semester_id`;
     const params = [];
     const cleanProgramCode = typeof programCode === 'string' && programCode.trim() ? programCode.trim() : null;
-    if (cleanProgramCode && cleanProgramCode !== 'ALL') {
+
+    if (role === 'program_head') {
+      if (programHeadAllowedPrograms.length > 0) {
+        const placeholders = programHeadAllowedPrograms.map(() => '?').join(',');
+        sql += ` WHERE (s.program_code IN (${placeholders}))`;
+        params.push(...programHeadAllowedPrograms);
+      }
+    } else if (cleanProgramCode && cleanProgramCode !== 'ALL') {
       sql += ' WHERE (s.program_code = ? OR s.program_code = "ALL" OR s.program_code = "GEN" OR s.code LIKE "GE%" OR s.code LIKE "GEC%" OR s.code LIKE "NSTP%" OR s.code LIKE "PE%" OR s.code LIKE "PATHFIT%" OR s.code LIKE ?)';
       params.push(cleanProgramCode, `%${cleanProgramCode}%`);
     }
+
     sql += ' ORDER BY s.code ASC';
     const rows = await query(sql, params);
     if (!Array.isArray(rows)) return [];
 
-    return rows.map((s) => {
-      const isGE = isGeneralEducationSubject(s.code, s.program_code);
+    const mapped = rows.map((s) => {
+      const isGE = isGeneralEducationSubject(s.code, s.program_code, s.name);
       return {
         code: s.code || '',
         name: s.name || '',
@@ -74,12 +107,27 @@ async function listSubjects(programCode) {
         department: isGE ? 'General Education' : (s.program_code || ''),
         programCode: isGE ? 'ALL' : (s.program_code || ''),
         program: isGE ? 'ALL' : (s.program_code || ''),
-        courseCode: isGE ? 'ALL' : (s.program_code || ''),
+        courseCode: s.program_code || '',
         isMajor: !isGE,
+        instructorId: s.instructor_id ? String(s.instructor_id) : '',
         instructor: s.instructor || 'Unassigned',
-        instructorId: s.instructor_id || '',
       };
     });
+
+    // Do not show major subjects from other programs.
+    if (role === 'program_head') {
+      return mapped.filter((sub) => {
+        // Strict exclusion of Minor / General Education
+        if (!sub.isMajor || isGeneralEducationSubject(sub.code, sub.programCode, sub.name)) {
+          return false;
+        }
+        // Strict inclusion of ONLY subjects matching the Program Head's assigned program family
+        const subProg = sub.department || sub.programCode || sub.program || '';
+        return programHeadAllowedPrograms.length === 0 || programHeadAllowedPrograms.some((allowed) => isProgramMatch(subProg, allowed));
+      });
+    }
+
+    return mapped;
   } catch (err) {
     console.error('[backend] listSubjects error:', err);
     return [];
@@ -188,5 +236,19 @@ async function updateSubject(code, { name, units, lectureHours, labHours, semest
   };
 }
 
-const subjectsService = { listSubjects, createSubject, deleteSubject, updateSubject };
-module.exports = { subjectsService };
+const subjectsService = {
+  listSubjects,
+  createSubject,
+  deleteSubject,
+  updateSubject,
+  isGeneralEducationSubject,
+  getProgramFamily,
+  isProgramMatch,
+};
+module.exports = {
+  subjectsService,
+  isGeneralEducationSubject,
+  getProgramFamily,
+  isProgramMatch,
+};
+

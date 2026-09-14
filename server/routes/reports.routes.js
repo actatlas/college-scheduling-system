@@ -1,6 +1,7 @@
 const express = require('express');
 const { authMiddleware } = require('../middleware/authMiddleware');
 const { query } = require('../utils/db');
+const { resolveUserProgramScope, isProgramMatch } = require('../utils/programScope');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -53,31 +54,22 @@ router.get('/', async (req, res, next) => {
         examRows = examRows.filter((e) => String(e.proctor_id) === String(teacherId));
       }
     } else if (role === 'program_head') {
-      let allowedPrograms = [];
-      if (req.user.sub) {
-        const majors = await query('SELECT program_code, code FROM program_majors WHERE program_head_id = ?', [req.user.sub]);
-        for (const m of majors) {
-          if (m.program_code) allowedPrograms.push(m.program_code);
-          if (m.code) allowedPrograms.push(m.code);
-        }
-      }
-      if (req.user.program) allowedPrograms.push(req.user.program);
-      if (req.user.programCode) allowedPrograms.push(req.user.programCode);
-      allowedPrograms = [...new Set(allowedPrograms.map((p) => String(p).toUpperCase()))];
+      const scope = resolveUserProgramScope(req.user);
+      const allowedPrograms = scope.allowedProgramCodes;
 
       if (allowedPrograms.length > 0) {
         facultyRows = facultyRows.filter((f) => {
           const dept = String(f.department_code || f.department || '').toUpperCase();
-          return allowedPrograms.includes(dept) || allowedPrograms.some((p) => dept.includes(p));
+          return allowedPrograms.some((p) => isProgramMatch(dept, p));
         });
         scheduleRows = scheduleRows.filter((s) => {
           const subP = String(s.program_code || '').toUpperCase();
           const secC = String(s.course_code || '').toUpperCase();
-          return allowedPrograms.includes(subP) || allowedPrograms.includes(secC) || allowedPrograms.some((p) => subP.includes(p) || secC.includes(p));
+          return allowedPrograms.some((p) => isProgramMatch(subP, p) || isProgramMatch(secC, p));
         });
         examRows = examRows.filter((e) => {
           const ep = String(e.program_code || '').toUpperCase();
-          return allowedPrograms.includes(ep) || allowedPrograms.some((p) => ep.includes(p));
+          return allowedPrograms.some((p) => isProgramMatch(ep, p));
         });
       }
     }
@@ -88,7 +80,7 @@ router.get('/', async (req, res, next) => {
     if (semesterId) {
       scheduleRows = scheduleRows.filter((s) => String(s.semester_id) === String(semesterId));
     }
-    if (program || department) {
+    if ((program || department) && role !== 'program_head') {
       const pFilter = String(program || department).toUpperCase();
       facultyRows = facultyRows.filter((f) => String(f.department_code || f.department || '').toUpperCase().includes(pFilter));
       scheduleRows = scheduleRows.filter((s) => String(s.program_code || s.course_code || '').toUpperCase().includes(pFilter));

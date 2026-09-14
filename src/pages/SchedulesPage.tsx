@@ -40,6 +40,7 @@ import {
   Copy,
   Loader2,
   Printer,
+  ArrowRightLeft,
 } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
 import {
@@ -53,14 +54,17 @@ import {
   getExpectedSubjectDuration,
   calculateEndTimeFromStart,
   SRCB_STANDARD_TIME_SLOTS,
+  isSrcbStandaloneDay,
 } from "../utils/scheduling";
 import { getProgramTheme, getProgramColor } from "../utils/programColors";
 import { ScheduleDetailsModal } from "../components/schedule/ScheduleDetailsModal";
+import { ScheduleAdjustmentRequestModal } from "../components/schedule/ScheduleAdjustmentRequestModal";
+import { AdminAdjustmentReviewModal } from "../components/schedule/AdminAdjustmentReviewModal";
 import { TimetableSkeleton, CardGridSkeleton } from "../components/common/Skeleton";
 import { Tooltip } from "../components/common/Tooltip";
 import { SearchableSelect, type SearchableOption } from "../components/common/SearchableSelect";
 import { useNotifications } from "../contexts/NotificationContext";
-import type { ClassScheduleItem, ClassModality, BuildingType } from "../types";
+import type { ClassScheduleItem, ClassModality, BuildingType, ScheduleAdjustmentRequest } from "../types";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const TIME_SLOTS = [
@@ -449,11 +453,9 @@ function StackedScheduleCell({
         onClick={(e) => {
           e.stopPropagation();
           setFrontCardId(item.id);
-          if (!canCreate) {
-            onView(item);
-          }
+          onView(item);
         }}
-        title={canCreate ? "Drag to reschedule to another slot" : "Click to view official assigned schedule details"}
+        title="Click to view official schedule details and actions"
         style={{
           borderLeft: `5px solid ${cardBorderColor}`,
           borderRadius: 6,
@@ -498,15 +500,15 @@ function StackedScheduleCell({
               </span>
               {item.classMode === "Laboratory" || String(item.roomType || "").toLowerCase().includes("lab") ? (
                 <span className="pill pill--purple" style={{ fontSize: "0.6rem", fontWeight: 700, padding: "1px 4px" }} title="Major Laboratory Session (3 Hours)">
-                  Lab 3h
+                  Major Lab (3h)
                 </span>
               ) : item.isMajor ? (
                 <span className="pill pill--blue" style={{ fontSize: "0.6rem", fontWeight: 700, padding: "1px 4px" }} title="Major Lecture Session (2 Hours)">
-                  Lec 2h
+                  Major Lec (2h)
                 </span>
               ) : (
                 <span className="pill pill--amber" style={{ fontSize: "0.6rem", fontWeight: 700, padding: "1px 4px" }} title="Minor / Gen Ed Session (1 Hour 30 Mins)">
-                  1.5h
+                  Minor (1.5h)
                 </span>
               )}
               {item.modality === "Online" && (
@@ -584,8 +586,8 @@ function StackedScheduleCell({
                 e.stopPropagation();
                 onAddAtSlot(day, item.time || slot);
               }}
-              title={`Add another schedule to this time slot (${day} ${item.time || slot})`}
-              aria-label={`Add another schedule to slot ${day} ${item.time || slot}`}
+              title={`+ Add Subject / Add another subject to slot (${day} ${item.time || slot})`}
+              aria-label={`+ Add Subject / Add another subject to slot ${day} ${item.time || slot}`}
               style={{ width: 22, height: 22, padding: 0, color: "var(--srcb-royal, #2563eb)" }}
             >
               <Plus size={11} />
@@ -773,6 +775,9 @@ export function SchedulesPage() {
   const [modalStep, setModalStep] = useState<1 | 2>(1);
   const [editingSchedule, setEditingSchedule] = useState<ClassScheduleItem | null>(null);
   const [viewingSchedule, setViewingSchedule] = useState<ClassScheduleItem | null>(null);
+  const [scheduleToAdjust, setScheduleToAdjust] = useState<ClassScheduleItem | null>(null);
+  const [requestToReview, setRequestToReview] = useState<ScheduleAdjustmentRequest | null>(null);
+  const [adjustmentRequests, setAdjustmentRequests] = useState<ScheduleAdjustmentRequest[]>([]);
   const [scheduleToDelete, setScheduleToDelete] = useState<ClassScheduleItem | null>(null);
   const [isDraggingGrid, setIsDraggingGrid] = useState(false);
   const [dragStart, setDragStart] = useState<{ day: string; slotIdx: number } | null>(null);
@@ -1010,10 +1015,33 @@ export function SchedulesPage() {
     warnings: string[];
   }>({ valid: true, errors: [], warnings: [] });
 
+  const fetchAdjustmentRequests = async () => {
+    try {
+      const res = await api.get("/schedule-adjustment-requests");
+      const list = Array.isArray(res?.data?.data)
+        ? res.data.data
+        : Array.isArray(res?.data)
+        ? res.data
+        : Array.isArray(res)
+        ? res
+        : [];
+      setAdjustmentRequests(list);
+    } catch {
+      setAdjustmentRequests([]);
+    }
+  };
+
   const fetchSchedules = async () => {
     try {
       const res = await api.get("/schedules");
-      setScheduleItems(res.data?.data || []);
+      const list = Array.isArray(res?.data?.data)
+        ? res.data.data
+        : Array.isArray(res?.data)
+        ? res.data
+        : Array.isArray(res)
+        ? res
+        : [];
+      setScheduleItems(list);
     } catch {
       setScheduleItems([]);
     }
@@ -1023,6 +1051,7 @@ export function SchedulesPage() {
     setIsFetching(true);
     Promise.all([
       fetchSchedules(),
+      fetchAdjustmentRequests(),
       api.get("/faculty").then((res: any) => setFacultyList(res.data?.data || [])).catch(() => setFacultyList([])),
       api.get("/subjects").then((res: any) => setSubjectsList(res.data?.data || [])).catch(() => setSubjectsList([])),
       api.get("/rooms").then((res: any) => setRoomsList(res.data?.data || [])).catch(() => setRoomsList([])),
@@ -1031,6 +1060,20 @@ export function SchedulesPage() {
       setIsFetching(false);
     });
   }, []);
+
+  useEffect(() => {
+    const reqId = searchParams.get("requestId");
+    if (reqId) {
+      api
+        .get(`/schedule-adjustment-requests/${reqId}`)
+        .then((res: any) => {
+          if (res.data?.data) {
+            setRequestToReview(res.data.data);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [searchParams]);
 
   const availableSubjects = useMemo(() => {
     if (role === "program_head") {
@@ -1284,6 +1327,15 @@ export function SchedulesPage() {
     });
   }, [availableSectionsForSlot, availableSections, sectionsList]);
 
+  const selectedSubjectObj = useMemo(() => {
+    if (!form.subjectCode) return null;
+    return (
+      availableSubjects.find((s) => s.code === form.subjectCode) ||
+      subjectsList.find((s) => s.code === form.subjectCode) ||
+      null
+    );
+  }, [form.subjectCode, availableSubjects, subjectsList]);
+
   const pairedDay = useMemo(() => {
     return getPairedDay(form.day);
   }, [form.day]);
@@ -1296,11 +1348,8 @@ export function SchedulesPage() {
   }, [form.isMajor, form.classMode]);
 
   const pairedDuration = useMemo(() => {
-    if (form.isMajor) {
-      return pairedClassMode === "Laboratory" ? 180 : 120;
-    }
-    return 90;
-  }, [form.isMajor, pairedClassMode]);
+    return getExpectedSubjectDuration(selectedSubjectObj, pairedClassMode);
+  }, [selectedSubjectObj, pairedClassMode]);
 
   const pairedTime = useMemo(() => {
     const startPart = form.time.split("-")[0]?.trim() || "07:00 AM";
@@ -1326,15 +1375,6 @@ export function SchedulesPage() {
   const isStep1ResourcesAvailable = useMemo(() => {
     return Boolean(form.subjectCode && form.day && form.time);
   }, [form.subjectCode, form.day, form.time]);
-
-  const selectedSubjectObj = useMemo(() => {
-    if (!form.subjectCode) return null;
-    return (
-      availableSubjects.find((s) => s.code === form.subjectCode) ||
-      subjectsList.find((s) => s.code === form.subjectCode) ||
-      null
-    );
-  }, [form.subjectCode, availableSubjects, subjectsList]);
 
   const selectedFacultyMember = useMemo(() => {
     return (
@@ -1424,7 +1464,7 @@ export function SchedulesPage() {
     setEditingSchedule(null);
     const isMajor = Boolean(sub?.isMajor) && !isGeneralSubject(sub);
     const mode: "Lecture" | "Laboratory" = isMajor && Number(sub?.labHours || 0) > 0 ? "Laboratory" : "Lecture";
-    const duration = isMajor ? (mode === "Laboratory" ? 180 : 120) : 90;
+    const duration = getExpectedSubjectDuration(sub, mode);
     const calculatedEndTime = calculateEndTimeFromStart("07:00 AM", duration);
     const labRoom = roomsList.find((r) => /lab/i.test(r.type || "") || /lab/i.test(r.number || ""));
     const defPairedRoom = mode === "Lecture" ? (labRoom?.number || "COL-101") : "COL-101";
@@ -1458,7 +1498,7 @@ export function SchedulesPage() {
 
     const isMajor = Boolean(sub.isMajor) && !isGeneralSubject(sub);
     const mode: "Lecture" | "Laboratory" = isMajor ? (form.classMode || "Lecture") : "Lecture";
-    const duration = isMajor ? (mode === "Laboratory" ? 180 : 120) : 90;
+    const duration = getExpectedSubjectDuration(sub, mode);
     const startPart = form.time.split("-")[0]?.trim() || "07:00 AM";
     const endPart = calculateEndTimeFromStart(startPart, duration);
 
@@ -1481,8 +1521,7 @@ export function SchedulesPage() {
   };
 
   const handleClassModeChange = (mode: "Lecture" | "Laboratory") => {
-    const isMajor = form.isMajor;
-    const duration = isMajor ? (mode === "Laboratory" ? 180 : 120) : 90;
+    const duration = getExpectedSubjectDuration(selectedSubjectObj, mode);
     const startPart = form.time.split("-")[0]?.trim() || "07:00 AM";
     const endPart = calculateEndTimeFromStart(startPart, duration);
 
@@ -1606,7 +1645,7 @@ export function SchedulesPage() {
   const handleDuplicate = (item: ClassScheduleItem) => {
     if (!canCreate) return;
     setEditingSchedule(null);
-    const targetDay = getPairedDay(item.day) || (item.day === "Monday" ? "Thursday" : "Friday");
+    const targetDay = getPairedDay(item.day) || item.day;
     const isMajor = Boolean(item.isMajor);
     const resolvedMode: "Lecture" | "Laboratory" =
       (item.classMode as "Lecture" | "Laboratory") ||
@@ -1629,7 +1668,7 @@ export function SchedulesPage() {
       classMode: resolvedMode,
       program: item.program || selectedProgram.key || "BSIT",
     });
-    setPairedEnabled(true);
+    setPairedEnabled(Boolean(getPairedDay(targetDay)));
     setModalStep(1);
     setIsOpen(true);
     toast.push(`Duplicating schedule for ${item.subjectCode} to ${targetDay}.`, "info");
@@ -1663,6 +1702,16 @@ export function SchedulesPage() {
     if (!form.subjectCode || !form.section || !form.faculty) {
       toast.push("Please select Subject, Section, and Faculty", "error");
       return;
+    }
+
+    const [sPart, ePart] = form.time.split("-").map((t) => t.trim());
+    if (sPart && ePart) {
+      const actMin = parseTimeToMinutes(ePart) - parseTimeToMinutes(sPart);
+      const expMin = getExpectedSubjectDuration(selectedSubjectObj, form.classMode);
+      if (actMin !== expMin && !isSrcbStandaloneDay(form.day)) {
+        toast.push(`Invalid schedule duration: ${form.subjectCode} (${form.classMode}) requires ${expMin / 60} hour(s) (${expMin} mins).`, "error");
+        return;
+      }
     }
 
     if (!validationFeedback.valid && validationFeedback.errors.length > 0) {
@@ -2051,7 +2100,7 @@ export function SchedulesPage() {
                 const freeRoom = findAvailableRoomForSlot("Monday", "07:00 AM - 08:30 AM", roomsList, scheduleItems);
                 const isFirstMajor = Boolean(firstSub?.isMajor) && !isGeneralSubject(firstSub);
                 const defMode: "Lecture" | "Laboratory" = isFirstMajor && Number(firstSub?.labHours || 0) > 0 ? "Laboratory" : "Lecture";
-                const duration = isFirstMajor ? (defMode === "Laboratory" ? 180 : 120) : 90;
+                const duration = getExpectedSubjectDuration(firstSub, defMode);
                 const calculatedEnd = calculateEndTimeFromStart("07:00 AM", duration);
                 const labRoom = roomsList.find((r) => /lab/i.test(r.type || "") || /lab/i.test(r.number || ""));
                 const defPairedRoom = defMode === "Lecture" ? (labRoom?.number || "COL-101") : "COL-101";
@@ -2408,6 +2457,45 @@ export function SchedulesPage() {
             {viewMode === "grid" && (
               <div className="timetable-workspace">
                 <div className="timetable-workspace-main">
+                  {/* Admin Pending Adjustment Requests Banner */}
+                  {(role === "admin" || role === "dsa") && adjustmentRequests.filter((r) => r.status === "Pending").length > 0 && (
+                    <div
+                      role="region"
+                      aria-label="Pending Schedule Adjustment Requests"
+                      style={{
+                        marginBottom: 12,
+                        padding: "10px 14px",
+                        background: "rgba(245, 158, 11, 0.1)",
+                        border: "1px solid rgba(245, 158, 11, 0.3)",
+                        borderLeft: "4px solid #f59e0b",
+                        borderRadius: 8,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        flexWrap: "wrap",
+                        gap: 10,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.85rem", color: "#b45309" }}>
+                        <ArrowRightLeft size={16} />
+                        <span>
+                          <strong>{adjustmentRequests.filter((r) => r.status === "Pending").length} Schedule Adjustment Request(s)</strong> pending review from Program Heads.
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="action-button"
+                        onClick={() => {
+                          const firstPending = adjustmentRequests.find((r) => r.status === "Pending");
+                          if (firstPending) setRequestToReview(firstPending);
+                        }}
+                        style={{ padding: "4px 12px", fontSize: "0.78rem" }}
+                      >
+                        Review Requests
+                      </button>
+                    </div>
+                  )}
+
                   {/* Institutional Timetable Matrix Banner */}
                   <div className="timetable-matrix-institutional-banner">
                     <div>
@@ -2432,10 +2520,23 @@ export function SchedulesPage() {
 
                     <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                       {/* Institutional Class Durations Guidelines */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.74rem", fontWeight: 600 }}>
-                        <span className="pill pill--amber" style={{ fontSize: "0.62rem", padding: "1px 6px" }}>Gen Ed (1.5h)</span>
-                        <span className="pill pill--blue" style={{ fontSize: "0.62rem", padding: "1px 6px" }}>Major Lec (2h)</span>
-                        <span className="pill pill--purple" style={{ fontSize: "0.62rem", padding: "1px 6px" }}>Major Lab (3h)</span>
+                      <div
+                        role="region"
+                        aria-label="Institutional Class Duration Guidelines"
+                        style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.74rem", fontWeight: 600, flexWrap: "wrap" }}
+                      >
+                        <span className="pill pill--amber" style={{ fontSize: "0.62rem", padding: "1px 6px" }}>
+                          Minor: 1 hr 30 mins (1.5h)
+                        </span>
+                        <span className="pill pill--blue" style={{ fontSize: "0.62rem", padding: "1px 6px" }}>
+                          Major Lecture (2h)
+                        </span>
+                        <span className="pill pill--purple" style={{ fontSize: "0.62rem", padding: "1px 6px" }}>
+                          Major Lab (3h)
+                        </span>
+                        <span style={{ fontSize: "0.65rem", color: "var(--srcb-text-muted)" }}>
+                          (Starts at 7:00 AM or 7:30 AM)
+                        </span>
                       </div>
 
                       <button
@@ -2457,7 +2558,7 @@ export function SchedulesPage() {
                       <div className="timetable-timeline-header" role="row">
                         <div className="timetable-timeline-corner-cell" role="columnheader">
                           <Clock size={14} style={{ marginRight: 5, verticalAlign: "middle" }} />
-                          <span>TIME</span>
+                          <span>Class Time</span>
                         </div>
                         {DAYS.map((d) => {
                           const count = visibleSchedules.filter((s) => s.day.toLowerCase() === d.toLowerCase()).length;
@@ -3206,7 +3307,14 @@ export function SchedulesPage() {
                   <select
                     id="schedDay"
                     value={form.day}
-                    onChange={(e) => setForm({ ...form, day: e.target.value })}
+                    onChange={(e) => {
+                      const newDay = e.target.value;
+                      const hasPair = Boolean(getPairedDay(newDay));
+                      setForm({ ...form, day: newDay });
+                      if (!editingSchedule) {
+                        setPairedEnabled(hasPair);
+                      }
+                    }}
                   >
                     {DAYS.map((d) => (
                       <option key={d} value={d}>
@@ -3259,33 +3367,18 @@ export function SchedulesPage() {
 
                     <div>
                       <label htmlFor="schedEndTime" style={{ fontSize: "0.7rem", color: "var(--srcb-text-muted)", display: "block", marginBottom: 2, fontWeight: 600 }}>
-                        End Time
+                        End Time (Auto-calculated)
                       </label>
                       <select
                         id="schedEndTime"
                         value={form.time.split("-")[1]?.trim() || "08:30 AM"}
-                        onChange={(e) => {
-                          const curStart = form.time.split("-")[0]?.trim() || "07:00 AM";
-                          const newEnd = e.target.value;
-                          setForm({ ...form, time: `${curStart} - ${newEnd}` });
-                        }}
+                        disabled
+                        style={{ background: "var(--srcb-surface-alt)", cursor: "not-allowed", opacity: 0.95 }}
+                        title="End time is automatically calculated from the required subject component duration."
                       >
-                        {TIME_POINTS.map((tp) => {
-                          const curStart = form.time.split("-")[0]?.trim() || "07:00 AM";
-                          const startMin = parseTimeToMinutes(curStart);
-                          const endMin = parseTimeToMinutes(tp);
-                          if (endMin <= startMin) return null;
-                          const diff = endMin - startMin;
-                          const hrs = diff / 60;
-                          const diffLabel = hrs % 1 === 0 ? `${hrs}h` : `${hrs.toFixed(1)}h`;
-                          const duration = getExpectedSubjectDuration(selectedSubjectObj, form.classMode);
-                          const isRecommended = diff === duration;
-                          return (
-                            <option key={tp} value={tp}>
-                              {tp} ({diffLabel}){isRecommended ? " ★ Recommended" : ""}
-                            </option>
-                          );
-                        })}
+                        <option value={form.time.split("-")[1]?.trim() || "08:30 AM"}>
+                          {form.time.split("-")[1]?.trim() || "08:30 AM"} ({getTimeDurationStr(form.time) || "Auto"})
+                        </option>
                       </select>
                     </div>
                   </div>
@@ -3822,6 +3915,52 @@ export function SchedulesPage() {
         onClose={() => setViewingSchedule(null)}
         schedule={viewingSchedule}
         onDuplicate={canCreate ? handleDuplicate : undefined}
+        onRequestAdjustment={(sched) => setScheduleToAdjust(sched)}
+        onReviewAdjustment={(req) => setRequestToReview(req)}
+        adjustmentRequest={
+          adjustmentRequests.find(
+            (r) =>
+              (String(r.scheduleId) === String(viewingSchedule?.id) ||
+                String((r as any).schedule_id) === String(viewingSchedule?.id) ||
+                Number(r.scheduleId) === Number(viewingSchedule?.id) ||
+                Number((r as any).schedule_id) === Number(viewingSchedule?.id) ||
+                (r.subjectCode && viewingSchedule?.subjectCode && r.subjectCode.toUpperCase() === viewingSchedule.subjectCode.toUpperCase() && (!r.currentDay || r.currentDay.toLowerCase() === viewingSchedule.day.toLowerCase()))) &&
+              (r.status === "Pending" || String(r.status || "").toLowerCase() === "pending")
+          ) ||
+          adjustmentRequests.find(
+            (r) =>
+              String(r.scheduleId) === String(viewingSchedule?.id) ||
+              String((r as any).schedule_id) === String(viewingSchedule?.id) ||
+              Number(r.scheduleId) === Number(viewingSchedule?.id) ||
+              Number((r as any).schedule_id) === Number(viewingSchedule?.id) ||
+              (r.subjectCode && viewingSchedule?.subjectCode && r.subjectCode.toUpperCase() === viewingSchedule.subjectCode.toUpperCase() && (!r.currentDay || r.currentDay.toLowerCase() === viewingSchedule.day.toLowerCase()))
+          )
+        }
+        userRole={role}
+      />
+
+      {/* Program Head Schedule Adjustment Request Modal */}
+      <ScheduleAdjustmentRequestModal
+        isOpen={Boolean(scheduleToAdjust)}
+        onClose={() => setScheduleToAdjust(null)}
+        schedule={scheduleToAdjust}
+        roomsList={roomsList}
+        onSubmitSuccess={() => {
+          fetchAdjustmentRequests();
+          fetchSchedules();
+        }}
+      />
+
+      {/* Admin Schedule Adjustment Review Modal */}
+      <AdminAdjustmentReviewModal
+        isOpen={Boolean(requestToReview)}
+        onClose={() => setRequestToReview(null)}
+        request={requestToReview}
+        roomsList={roomsList}
+        onReviewed={() => {
+          fetchAdjustmentRequests();
+          fetchSchedules();
+        }}
       />
 
       {/* Delete Schedule Block Confirmation Modal (Heuristic 3 & 5) */}

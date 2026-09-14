@@ -10,11 +10,11 @@ import {
   DoorOpen,
   ShieldCheck,
   Plus,
-  Clock,
   GraduationCap,
   FileBarChart,
   UserCircle,
   X,
+  ScrollText,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import Logo from "../../assets/images/Logo.png";
@@ -58,7 +58,6 @@ interface SidebarProps {
 export function Sidebar({ isMobileOpen = false, onClose }: SidebarProps) {
   const navigate = useNavigate();
   const role = getRole();
-  const teacherStatus = window.localStorage.getItem("teacherStatus") || "";
 
   // Administrator IA (Programs -> Courses -> Subjects -> Sections -> Faculty -> Rooms -> Schedules -> Exams)
   const adminGroups: NavGroup[] = [
@@ -138,6 +137,7 @@ export function Sidebar({ isMobileOpen = false, onClose }: SidebarProps) {
       groupTitle: "ICT & User Governance",
       items: [
         { to: "/users", label: "User Accounts", icon: Users },
+        { to: "/system-logs", label: "System Logs", icon: ScrollText },
       ],
     },
     {
@@ -157,9 +157,6 @@ export function Sidebar({ isMobileOpen = false, onClose }: SidebarProps) {
       items: [
         { to: "/schedules", label: "Class Schedules", icon: CalendarDays },
         { to: "/exams", label: "Assigned Exam Duties", icon: CalendarCheck },
-        ...(teacherStatus === "Part-Time"
-          ? [{ to: "/dashboard", label: "Weekly Availability", icon: Clock }]
-          : []),
       ],
     },
     {

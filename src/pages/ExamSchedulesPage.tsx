@@ -99,6 +99,38 @@ const EXAM_TIME_SLOTS = [
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
+const getProgramFamily = (str?: string | null): string => {
+  if (!str) return "";
+  const s = String(str).toUpperCase().trim();
+  if (["ALL", "GEN", "GENED", "GENERAL EDUCATION", "UNIVERSAL"].includes(s)) return "GENED";
+
+  const IT_KEYS = ["ITP", "BSIT", "BSCS", "INFORMATION TECHNOLOGY", "COMPUTER SCIENCE"];
+  const CRIM_KEYS = ["CJEP", "BSCRIM", "CRIMINOLOGY", "CRIMINAL JUSTICE"];
+  const BUS_KEYS = ["BAP", "BSA", "BSBA", "ACCOUNTANCY", "BUSINESS ADMINISTRATION", "BUSINESS"];
+  const HM_KEYS = ["HMP", "BSHM", "HOSPITALITY MANAGEMENT", "HOTEL AND RESTAURANT"];
+  const EDUC_KEYS = ["TEP", "BSED", "BEED", "TEACHER EDUCATION"];
+
+  if (IT_KEYS.some((k) => s === k || s.startsWith(k) || k.startsWith(s))) return "IT";
+  if (CRIM_KEYS.some((k) => s === k || s.startsWith(k) || k.startsWith(s))) return "CRIM";
+  if (BUS_KEYS.some((k) => s === k || s.startsWith(k) || k.startsWith(s))) return "BUS";
+  if (HM_KEYS.some((k) => s === k || s.startsWith(k) || k.startsWith(s))) return "HM";
+  if (EDUC_KEYS.some((k) => s === k || s.startsWith(k) || k.startsWith(s))) return "EDUC";
+  return s;
+};
+
+const matchesProgramFamily = (progA?: string | null, progB?: string | null): boolean => {
+  if (!progA || !progB) return false;
+  const a = String(progA).toUpperCase().trim();
+  const b = String(progB).toUpperCase().trim();
+  if (!a || !b) return false;
+  if (a === "ALL" || b === "ALL") return false;
+  if (a === b) return true;
+  const famA = getProgramFamily(a);
+  const famB = getProgramFamily(b);
+  if (!famA || !famB || famA === "GENED" || famB === "GENED") return false;
+  return famA === famB;
+};
+
 export function ExamSchedulesPage() {
   const [exams, setExams] = useState<ExamScheduleItem[]>([]);
   const [sectionsList, setSectionsList] = useState<SectionItem[]>([]);
@@ -199,9 +231,12 @@ export function ExamSchedulesPage() {
 
   const { selectedProgram, matchesProgram } = useProgramContext();
   const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
-  const canManage = role === "super_admin" || role === "admin" || role === "program_head";
-  const canEditOfficialDates = role === "super_admin" || role === "admin";
+  const isAdmin = role === "super_admin" || role === "admin";
   const isProgramHead = role === "program_head";
+  const isTeacher = role === "teacher";
+  const canManage = isAdmin || isProgramHead;
+  const canEditOfficialDates = isAdmin;
+  const storedUserProgram = window.localStorage.getItem("userProgram") || window.localStorage.getItem("selectedProgram") || selectedProgram.key || "";
 
   const storedTeacherId = window.localStorage.getItem("teacherId") || "";
   const userName = window.localStorage.getItem("userName") || "";
@@ -262,7 +297,7 @@ export function ExamSchedulesPage() {
         api.get("/sections").catch(() => ({ data: { data: [] } })),
         api.get("/rooms").catch(() => ({ data: { data: [] } })),
         api.get("/faculty").catch(() => ({ data: { data: [] } })),
-        api.get("/subjects").catch(() => ({ data: { data: [] } })),
+        api.get("/subjects?forExam=true").catch(() => ({ data: { data: [] } })),
       ]);
 
       setSectionsList(sRes.data?.data || []);
@@ -388,14 +423,41 @@ export function ExamSchedulesPage() {
   }, [facultyList]);
 
   const availableSubjects = useMemo(() => {
+    if (isTeacher) return [];
+
     return subjectsList.filter((s) => {
       const status = String(s.status || "").toLowerCase();
       if (status === "inactive" || status === "archived") return false;
+
+      // General Education / Minor detection
+      const isGenEd =
+        isGeneralSubject(s) ||
+        s.isMajor === false ||
+        s.isGeneralEducation ||
+        s.classification === "General Education" ||
+        s.program === "ALL" ||
+        s.programCode === "ALL" ||
+        s.department === "General Education" ||
+        /^GE[\s-]*\d+/i.test(s.code || "") ||
+        s.code?.startsWith("PE") ||
+        s.code?.startsWith("NSTP") ||
+        s.code?.startsWith("RS") ||
+        s.code?.startsWith("PATHFIT");
+
+      if (isProgramHead) {
+        // Program Head: ONLY Major subjects belonging to their assigned program
+        if (isGenEd) return false;
+        const assignedProg = storedUserProgram || selectedProgram.key;
+        const subProg = s.program || s.programCode || s.department || s.courseCode;
+        return matchesProgramFamily(subProg, assignedProg);
+      }
+
+      // Admin / DSA: Full catalog
       if (selectedProgram.key === "ALL") return true;
-      if (s.isGeneralEducation || s.classification === "General Education" || s.program === "ALL") return true;
+      if (isGenEd) return true;
       return matchesProgram(s.program || s.department);
     });
-  }, [subjectsList, selectedProgram.key, matchesProgram]);
+  }, [subjectsList, isTeacher, isProgramHead, storedUserProgram, selectedProgram.key, matchesProgram]);
 
   const availableSections = useMemo(() => {
     return sectionsList.filter((sec) => {
@@ -2238,18 +2300,20 @@ export function ExamSchedulesPage() {
                 </table>
               </div>
             </div>
-            <SubjectPalette
-              subjects={availableSubjects}
-              scheduledSubjectCodes={scheduledExamSubjectCodes}
-              canSchedule={canManage}
-              onSelectSubject={(sub) => handleScheduleExamForSubject(sub)}
-              isExamMode={true}
-              isOpen={isSubjectPaletteOpen}
-              onToggleOpen={() => setIsSubjectPaletteOpen(!isSubjectPaletteOpen)}
-              title="Exam Subject Palette"
-              selectedProgramKey={selectedProgram.key}
-              side="right"
-            />
+            {!isTeacher && (
+              <SubjectPalette
+                subjects={availableSubjects}
+                scheduledSubjectCodes={scheduledExamSubjectCodes}
+                canSchedule={canManage}
+                onSelectSubject={(sub) => handleScheduleExamForSubject(sub)}
+                isExamMode={true}
+                isOpen={isSubjectPaletteOpen}
+                onToggleOpen={() => setIsSubjectPaletteOpen(!isSubjectPaletteOpen)}
+                title="Exam Subject Palette"
+                selectedProgramKey={isProgramHead ? (storedUserProgram || selectedProgram.key) : selectedProgram.key}
+                side="right"
+              />
+            )}
           </div>
         )}
 

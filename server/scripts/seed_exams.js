@@ -50,7 +50,7 @@ async function seedExams() {
         building: 'Annex',
         proctor_id: 'T353225',
         proctor_name: 'Jovann Achas',
-        program_code: 'BSA',
+        program_code: 'BAP',
         color: '#0284c7',
       },
       {
@@ -128,7 +128,7 @@ async function seedExams() {
         building: 'Annex',
         proctor_id: 'T353225',
         proctor_name: 'Jovann Achas',
-        program_code: 'BSA',
+        program_code: 'BAP',
         color: '#d97706',
       },
 

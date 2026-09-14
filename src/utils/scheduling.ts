@@ -326,10 +326,8 @@ export function buildAiRecommendations(scheduleItems: ClassScheduleItem[]): AiRe
 export const DAY_PAIRS: Record<string, string> = {
   Monday: 'Thursday',
   Tuesday: 'Friday',
-  Wednesday: 'Saturday',
   Thursday: 'Monday',
   Friday: 'Tuesday',
-  Saturday: 'Wednesday',
 }
 
 export function getPairedDay(day: string): string | null {
@@ -342,10 +340,8 @@ export function getDayPairLabel(day: string): string {
   if (!paired) return day
   if (day === 'Monday') return 'Monday & Thursday (M-Th)'
   if (day === 'Tuesday') return 'Tuesday & Friday (T-F)'
-  if (day === 'Wednesday') return 'Wednesday & Saturday (W-Sa)'
   if (day === 'Thursday') return 'Thursday & Monday (Th-M)'
   if (day === 'Friday') return 'Friday & Tuesday (F-T)'
-  if (day === 'Saturday') return 'Saturday & Wednesday (Sa-W)'
   return `${day} & ${paired}`
 }
 
@@ -381,19 +377,37 @@ export function canProgramTakeSubject(sub: any, programCode?: string): boolean {
 
 /**
  * Returns the expected duration in minutes for a schedule session:
- * - Minor / General Education subjects: 90 minutes (1 hour 30 mins)
- * - Major subjects - Lecture: 120 minutes (2 hours)
- * - Major subjects - Laboratory: 180 minutes (3 hours)
+ * - Reads configured Lecture Hours or Laboratory Hours from the subject.
+ * - Defaults:
+ *   - Minor / General Education subjects: 90 minutes (1 hour 30 mins)
+ *   - Major subjects - Lecture: 120 minutes (2 hours)
+ *   - Major subjects - Laboratory: 180 minutes (3 hours)
  */
 export function getExpectedSubjectDuration(sub: any, classMode: 'Lecture' | 'Laboratory' | string = 'Lecture'): number {
-  if (!sub || isGeneralSubject(sub) || sub.isMajor === false) {
-    return 90 // 1 hour 30 mins
-  }
+  if (!sub) return 90
   const modeClean = String(classMode || '').toLowerCase().trim()
-  if (modeClean === 'laboratory' || modeClean === 'lab') {
-    return 180 // 3 hours
+  const isLab = modeClean === 'laboratory' || modeClean === 'lab'
+
+  if (isLab) {
+    const labH = Number(sub.labHours ?? sub.lab_hours)
+    if (!isNaN(labH) && labH > 0) {
+      return Math.round(labH * 60)
+    }
+    return 180 // 3 hours fallback for laboratory
   }
-  return 120 // 2 hours for lecture
+
+  // Lecture component
+  const lecH = Number(sub.lectureHours ?? sub.lecture_hours ?? sub.lecHours)
+  if (!isNaN(lecH) && lecH > 0) {
+    return Math.round(lecH * 60)
+  }
+
+  // Institutional fallbacks if hours not explicitly configured
+  const isMinor = isGeneralSubject(sub) || sub.isMajor === false
+  if (isMinor) {
+    return 90 // 1.5 hours (1h 30m)
+  }
+  return 120 // 2 hours for major lecture
 }
 
 /**
@@ -523,5 +537,66 @@ export function evaluateFacultyLoad(units: number, isFullTime: boolean): Faculty
   }
 }
 
+export const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
+export const TIME_SLOTS = [
+  '07:00 AM - 07:30 AM',
+  '07:30 AM - 08:00 AM',
+  '08:00 AM - 08:30 AM',
+  '08:30 AM - 09:00 AM',
+  '09:00 AM - 09:30 AM',
+  '09:30 AM - 10:00 AM',
+  '10:00 AM - 10:30 AM',
+  '10:30 AM - 11:00 AM',
+  '11:00 AM - 11:30 AM',
+  '11:30 AM - 12:00 PM',
+  '12:00 PM - 12:30 PM',
+  '12:30 PM - 01:00 PM',
+  '01:00 PM - 01:30 PM',
+  '01:30 PM - 02:00 PM',
+  '02:00 PM - 02:30 PM',
+  '02:30 PM - 03:00 PM',
+  '03:00 PM - 03:30 PM',
+  '03:30 PM - 04:00 PM',
+  '04:00 PM - 04:30 PM',
+  '04:30 PM - 05:00 PM',
+  '05:00 PM - 05:30 PM',
+  '05:30 PM - 06:00 PM',
+  '06:00 PM - 06:30 PM',
+  '06:30 PM - 07:00 PM',
+  '07:00 PM - 07:30 PM',
+  '07:30 PM - 08:00 PM',
+  '08:00 PM - 08:30 PM',
+  '08:30 PM - 09:00 PM',
+]
 
+export const TIME_POINTS = [
+  '07:00 AM',
+  '07:30 AM',
+  '08:00 AM',
+  '08:30 AM',
+  '09:00 AM',
+  '09:30 AM',
+  '10:00 AM',
+  '10:30 AM',
+  '11:00 AM',
+  '11:30 AM',
+  '12:00 PM',
+  '12:30 PM',
+  '01:00 PM',
+  '01:30 PM',
+  '02:00 PM',
+  '02:30 PM',
+  '03:00 PM',
+  '03:30 PM',
+  '04:00 PM',
+  '04:30 PM',
+  '05:00 PM',
+  '05:30 PM',
+  '06:00 PM',
+  '06:30 PM',
+  '07:00 PM',
+  '07:30 PM',
+  '08:00 PM',
+  '08:30 PM',
+]

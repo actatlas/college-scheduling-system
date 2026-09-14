@@ -29,7 +29,7 @@ let testState = {
   ],
   schedules: [],
   subjects: [
-    { code: 'CS101', name: 'Intro to Programming', units: 3, lecture_hours: 3, lab_hours: 0, program_code: 'ITP', instructor_id: 'FAC-003' },
+    { code: 'CS101', name: 'Intro to Programming', units: 3, lecture_hours: 2, lab_hours: 0, program_code: 'ITP', instructor_id: 'FAC-003' },
   ],
   sections: [
     { id: 1, course_code: 'BSIT', year_level: 1, section_label: 'A', students: 30 },

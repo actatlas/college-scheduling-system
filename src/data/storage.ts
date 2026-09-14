@@ -189,7 +189,7 @@ class LocalStorageService {
   // --- Programs ---
   getPrograms() {
     const raw = this.getItem(STORAGE_KEYS.PROGRAMS, defaultPrograms);
-    const invalidCodes = new Set(['BSIT', 'BSBA', 'BSED', 'BEED', 'BSCRIM', 'BSHM']);
+    const invalidCodes = new Set(['BSIT', 'BSBA', 'BSA', 'BSED', 'BEED', 'BSCRIM', 'BSHM']);
     const sanitized = (Array.isArray(raw) ? raw : []).filter(
       (p: any) => p && p.code && !invalidCodes.has(String(p.code).trim().toUpperCase())
     );

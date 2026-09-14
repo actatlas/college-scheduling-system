@@ -37,6 +37,22 @@ export const allProgramsOption: ProgramOption = {
   shortLabel: "All Programs",
 };
 
+const IT_KEYS = ["ITP", "BSIT", "BSCS", "IT", "INFORMATION TECHNOLOGY", "COMPUTER"];
+const CRIM_KEYS = ["CJEP", "BSCRIM", "CRIMINOLOGY", "CRIM", "CRIMINAL JUSTICE"];
+const BUS_KEYS = ["BAP", "BSA", "BSBA", "BUSINESS", "ACCOUNTANCY", "ADMINISTRATION"];
+const HM_KEYS = ["HMP", "BSHM", "HOSPITALITY", "HOTEL", "TOURISM"];
+const EDUC_KEYS = ["TEP", "BSED", "BEED", "EDUCATION", "TEACHER"];
+
+function getFamily(k: string) {
+  const upper = String(k || "").toUpperCase().trim();
+  if (IT_KEYS.some((x) => upper.includes(x))) return "IT";
+  if (CRIM_KEYS.some((x) => upper.includes(x))) return "CRIM";
+  if (BUS_KEYS.some((x) => upper.includes(x))) return "BUS";
+  if (HM_KEYS.some((x) => upper.includes(x))) return "HM";
+  if (EDUC_KEYS.some((x) => upper.includes(x))) return "EDUC";
+  return "";
+}
+
 export function ProgramProvider({ children }: { children: ReactNode }) {
   const [programOptions, setProgramOptions] = useState<ProgramOption[]>([allProgramsOption]);
   const [selectedProgramKey, setSelectedProgramKeyState] =
@@ -47,7 +63,9 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
     try {
-      const invalidCodes = new Set(["BSIT", "BSBA", "BSED", "BEED", "BSCRIM", "BSHM"]);
+      const role = (window.localStorage.getItem("userRole") || "").toLowerCase();
+      const isProgramHead = role === "program_head";
+      const invalidCodes = new Set(["BSIT", "BSBA", "BSA", "BSED", "BEED", "BSCRIM", "BSHM"]);
 
       const applyPrograms = (rows: any[]) => {
         const sanitized = (Array.isArray(rows) ? rows : []).filter(
@@ -59,7 +77,27 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
           shortLabel: String(row.code || row.name || ""),
         }));
 
+        if (isProgramHead) {
+          const userProg = window.localStorage.getItem("userProgram") || window.localStorage.getItem("programCode") || window.localStorage.getItem("selectedProgram") || "ITP";
+          const fam = getFamily(userProg);
+          const matchedPrograms = specificPrograms.filter((p) => getFamily(p.key) === fam || p.key === userProg);
+          const headProgKey = matchedPrograms[0]?.key || userProg;
+          const headValues: ProgramOption[] = matchedPrograms.length > 0 ? matchedPrograms : [
+            {
+              key: headProgKey,
+              label: `${headProgKey} Academic Program`,
+              shortLabel: headProgKey,
+            },
+          ];
+
+          setProgramOptions(headValues);
+          setSelectedProgramKeyState(headProgKey);
+          window.localStorage.setItem("selectedProgram", headProgKey);
+          return;
+        }
+
         const values: ProgramOption[] = [allProgramsOption, ...specificPrograms];
+
         setProgramOptions((prev) => {
           if (
             prev.length === values.length &&
@@ -94,7 +132,9 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
             (p: any) => p && p.code && !invalidCodes.has(String(p.code).trim().toUpperCase())
           );
           if (sanitizedRemote.length > 0) {
-            storage.setPrograms(sanitizedRemote);
+            if (!isProgramHead) {
+              storage.setPrograms(sanitizedRemote);
+            }
             applyPrograms(sanitizedRemote);
           }
         }
@@ -116,6 +156,11 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
   }, [loadPrograms]);
 
   const setSelectedProgramKey = useCallback((value: ProgramKey) => {
+    const role = (window.localStorage.getItem("userRole") || "").toLowerCase();
+    if (role === "program_head") {
+      // Program Heads are locked to their assigned program
+      return;
+    }
     const val = value || "ALL";
     setSelectedProgramKeyState(val);
     window.localStorage.setItem("selectedProgram", val);
@@ -124,6 +169,7 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
   const selectedProgram = useMemo(
     () =>
       programOptions.find((option) => option.key === selectedProgramKey) ??
+      programOptions[0] ??
       allProgramsOption,
     [programOptions, selectedProgramKey],
   );

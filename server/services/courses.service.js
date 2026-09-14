@@ -1,18 +1,26 @@
 const { query } = require('../utils/db');
+const { resolveUserProgramScope, isProgramMatch } = require('../utils/programScope');
 
-async function listCourses() {
+async function listCourses(user = null) {
+  const scope = await resolveUserProgramScope(user);
   const rows = await query(
     `SELECT code, name, COALESCE(year_duration, '') AS year_duration, COALESCE(program_code, '') AS program_code
      FROM courses
      ORDER BY code ASC`
   );
 
-  return rows.map((c) => ({
+  let mapped = rows.map((c) => ({
     code: c.code,
     name: c.name,
     year: c.year_duration,
     programCode: c.program_code,
   }));
+
+  if (scope.isProgramHead) {
+    mapped = mapped.filter((c) => scope.allowedProgramCodes.some((allowed) => isProgramMatch(c.code, allowed) || isProgramMatch(c.programCode, allowed)));
+  }
+
+  return mapped;
 }
 
 async function createCourse({ code, name, year, programCode, program }) {

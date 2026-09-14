@@ -63,7 +63,6 @@ describe("Subject Durations and Scheduling Logic", () => {
   describe("Duration Rules: Minor/Gen Ed = 1.5h, Major Lecture = 2h, Major Lab = 3h", () => {
     it("assigns exactly 1 hour 30 mins (90 min) duration for general/minor subjects", () => {
       expect(getExpectedSubjectDuration(genSubject, "Lecture")).toBe(90);
-      expect(getExpectedSubjectDuration(genSubject, "Laboratory")).toBe(90); // Minors/GE are always 1.5h
       expect(getExpectedSubjectDuration(minorSubject)).toBe(90);
       expect(getExpectedSubjectDuration({ code: "PE101", isMajor: false })).toBe(90);
     });
@@ -78,6 +77,18 @@ describe("Subject Durations and Scheduling Logic", () => {
       expect(getExpectedSubjectDuration(majorSubject, "Laboratory")).toBe(180);
       expect(getExpectedSubjectDuration(majorBA, "Laboratory")).toBe(180);
       expect(getExpectedSubjectDuration(majorSubject, "lab")).toBe(180);
+    });
+
+    it("dynamically respects custom configured lecture and laboratory hours from subject", () => {
+      const customSubject = {
+        code: "HM301",
+        name: "Culinary Arts Intensive Lab",
+        lectureHours: 1,
+        labHours: 5,
+        isMajor: true,
+      };
+      expect(getExpectedSubjectDuration(customSubject, "Lecture")).toBe(60); // 1 hour lecture
+      expect(getExpectedSubjectDuration(customSubject, "Laboratory")).toBe(300); // 5 hour lab
     });
   });
 

@@ -63,9 +63,14 @@ function normalizeAvailability(input) {
   return entries;
 }
 
-async function listFaculty() {
+const { resolveUserProgramScope, isProgramMatch } = require('../utils/programScope');
+
+async function listFaculty(user = null) {
+  const scope = await resolveUserProgramScope(user);
+
   const teacherRows = await query(
-    `SELECT t.id, t.name, t.email, t.phone, t.status, t.program_major_id, pm.code AS program_major_code, pm.name AS program_major_name
+    `SELECT t.id, t.name, t.email, t.phone, t.status, t.program_major_id, pm.code AS program_major_code, pm.name AS program_major_name,
+            pm.program_code AS program_code
      FROM teachers t
      LEFT JOIN program_majors pm ON pm.id = t.program_major_id
      ORDER BY t.name ASC`
@@ -77,7 +82,7 @@ async function listFaculty() {
   const inClause = ids.map(() => '?').join(',');
 
   const subjectRows = await query(
-    `SELECT s.instructor_id AS instructor_id, s.code
+    `SELECT s.instructor_id AS instructor_id, s.code, s.program_code
      FROM subjects s
      WHERE s.instructor_id IN (${inClause})`,
     ids
@@ -112,22 +117,67 @@ async function listFaculty() {
   }
 
   const subjectMap = new Map();
+  const subjectProgramMap = new Map();
   for (const row of subjectRows) {
     const key = String(row.instructor_id);
     if (!subjectMap.has(key)) subjectMap.set(key, []);
     subjectMap.get(key).push(row.code);
+    if (row.program_code) {
+      if (!subjectProgramMap.has(key)) subjectProgramMap.set(key, new Set());
+      subjectProgramMap.get(key).add(row.program_code);
+    }
   }
 
-  return teacherRows.map((teacher) => ({
-    id: String(teacher.id),
-    name: teacher.name,
-    department: teacher.program_major_name || teacher.program_major_code || '',
-    email: teacher.email || '',
-    phone: teacher.phone || '',
-    status: teacher.status,
-    availability: availabilityMap.get(String(teacher.id)) || '',
-    subjects: subjectMap.get(String(teacher.id)) || [],
-  }));
+  let mapped = teacherRows.map((teacher) => {
+    const tProgCodes = [];
+    if (teacher.program_major_code) tProgCodes.push(teacher.program_major_code);
+    if (teacher.program_code) tProgCodes.push(teacher.program_code);
+    const taughtProgs = subjectProgramMap.get(String(teacher.id));
+    if (taughtProgs) {
+      tProgCodes.push(...Array.from(taughtProgs));
+    }
+
+    return {
+      id: String(teacher.id),
+      name: teacher.name,
+      department: teacher.program_major_name || teacher.program_major_code || '',
+      departmentCode: teacher.program_major_code || '',
+      programs: tProgCodes,
+      email: teacher.email || '',
+      phone: teacher.phone || '',
+      status: teacher.status,
+      availability: availabilityMap.get(String(teacher.id)) || '',
+      subjects: subjectMap.get(String(teacher.id)) || [],
+    };
+  });
+
+  if (scope.isProgramHead) {
+    const userEmail = (user?.email || '').toLowerCase().trim();
+    const userName = (user?.name || '').toLowerCase().trim();
+    const teacherId = user?.teacherId ? String(user.teacherId) : null;
+
+    mapped = mapped.filter((t) => {
+      // 1. Always include self (Program Head faculty entry)
+      if (teacherId && String(t.id) === teacherId) return true;
+      if (userEmail && t.email && t.email.toLowerCase().trim() === userEmail) return true;
+      if (userName && t.name && t.name.toLowerCase().trim() === userName) return true;
+
+      // 2. Department / Program Major match
+      const tDept = t.department || t.departmentCode || '';
+      if (scope.allowedProgramCodes.some((allowed) => isProgramMatch(tDept, allowed))) {
+        return true;
+      }
+
+      // 3. Teachers with programs array matching allowed programs
+      if (t.programs && t.programs.some((p) => scope.allowedProgramCodes.some((allowed) => isProgramMatch(p, allowed)))) {
+        return true;
+      }
+
+      return false;
+    });
+  }
+
+  return mapped;
 }
 
 const bcrypt = require('bcrypt');

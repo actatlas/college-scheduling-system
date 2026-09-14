@@ -20,6 +20,8 @@ const pageTitles: Record<string, string> = {
   "/exams": "Examination Schedules",
   "/reports": "Reports & Analytics",
   "/users": "User Management (ICT)",
+  "/system-logs": "System Logs (Audit Trail)",
+  "/audit-logs": "System Logs (Audit Trail)",
   "/settings": "System Settings",
 };
 

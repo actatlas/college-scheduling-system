@@ -40,8 +40,8 @@ let state = {
   ],
   subjects: [
     { code: 'IT101', name: 'Computer Programming 1', program_code: 'ITP', instructor_id: 'T_FULL', lab_hours: 3, lecture_hours: 2 },
-    { code: 'IT102', name: 'Data Structures', program_code: 'ITP', instructor_id: 'T_PART', lab_hours: 0, lecture_hours: 3 },
-    { code: 'CRIM101', name: 'Intro to Criminology', program_code: 'CJEP', instructor_id: null, lab_hours: 0, lecture_hours: 3 },
+    { code: 'IT102', name: 'Data Structures', program_code: 'ITP', instructor_id: 'T_PART', lab_hours: 0, lecture_hours: 2 },
+    { code: 'CRIM101', name: 'Intro to Criminology', program_code: 'CJEP', instructor_id: null, lab_hours: 0, lecture_hours: 2 },
   ],
   sections: [
     { id: 1, course_code: 'BSIT', year_level: 1, section_label: 'A', students: 30 },
@@ -306,7 +306,7 @@ describe('Comprehensive SRCB Business Logic & Authorization Verification', () =>
       schedulesService.createSchedule(
         {
           day: 'Monday',
-          time: '09:00-10:30',
+          time: '09:00-11:00',
           subjectCode: 'IT102',
           facultyId: 'T_FULL',
           room: 'LEC-201',
@@ -326,7 +326,7 @@ describe('Comprehensive SRCB Business Logic & Authorization Verification', () =>
       schedulesService.createSchedule(
         {
           day: 'Monday',
-          time: '10:00-11:30',
+          time: '10:00-12:00',
           subjectCode: 'IT102',
           facultyId: 'T_FULL',
           room: 'LAB-101',
@@ -342,12 +342,12 @@ describe('Comprehensive SRCB Business Logic & Authorization Verification', () =>
 
   it('3. Section conflict rejected', async () => {
     // Section 1 already booked Monday 08:00-11:00 with T_FULL in LAB-101
-    // Adding another class for Section 1 on Monday 08:30-10:00 with available instructor T_OTHER in available room LEC-201
+    // Adding another class for Section 1 on Monday 08:30-10:30 with available instructor T_OTHER in available room LEC-201
     await expect(
       schedulesService.createSchedule(
         {
           day: 'Monday',
-          time: '08:30-10:00',
+          time: '08:30-10:30',
           subjectCode: 'IT102',
           facultyId: 'T_OTHER',
           room: 'LEC-201',
@@ -410,11 +410,12 @@ describe('Comprehensive SRCB Business Logic & Authorization Verification', () =>
     const sched = await schedulesService.createSchedule(
       {
         day: 'Wednesday',
-        time: '13:00-15:00',
+        time: '13:00-16:00',
         subjectCode: 'IT101',
         facultyId: 'T_FULL',
         room: 'LAB-101',
         sectionId: '1',
+        classMode: 'Laboratory',
       },
       admin
     );

@@ -240,7 +240,7 @@ export function LandingPage() {
           </div>
           <div className="landing-program-card">
             <img src={baLogo} alt="Business Administration Program" className="landing-program-img" />
-            <div className="landing-program-badge">BSA</div>
+            <div className="landing-program-badge">BAP</div>
             <div className="landing-program-name">Business Administration Program</div>
           </div>
           <div className="landing-program-card">

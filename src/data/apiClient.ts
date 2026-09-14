@@ -67,15 +67,28 @@ const handleResponse = async (response: Response) => {
     return { data: json };
   }
   if (json.data !== undefined) {
-    return { data: { success: true, data: json.data } };
+    return { data: { success: true, ...json } };
   }
   // For login responses like { token, user }
   return { data: { success: true, ...json } };
 };
 
 export const api = {
-  async get(url: string) {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
+  async get(url: string, options?: { params?: Record<string, any> }) {
+    let fullUrl = `${API_BASE_URL}${url}`;
+    if (options?.params) {
+      const searchParams = new URLSearchParams();
+      Object.entries(options.params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          searchParams.append(key, String(value));
+        }
+      });
+      const qs = searchParams.toString();
+      if (qs) {
+        fullUrl += (fullUrl.includes('?') ? '&' : '?') + qs;
+      }
+    }
+    const response = await fetch(fullUrl, {
       method: 'GET',
       headers: getHeaders(),
     });

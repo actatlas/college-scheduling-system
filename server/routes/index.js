@@ -19,6 +19,8 @@ const conflictsRoutes = require('./conflicts.routes');
 const reportsRoutes = require('./reports.routes');
 const academicTermsRoutes = require('./academicTerms.routes');
 const notificationsRoutes = require('./notifications.routes');
+const scheduleAdjustmentRequestsRoutes = require('./scheduleAdjustmentRequests.routes');
+const systemLogsRoutes = require('./systemLogs.routes');
 
 const router = express.Router();
 
@@ -31,6 +33,7 @@ router.use('/sections', sectionRoutes);
 router.use('/buildings', buildingsRoutes);
 router.use('/rooms', roomRoutes);
 router.use('/schedules', scheduleRoutes);
+router.use('/schedule-adjustment-requests', scheduleAdjustmentRequestsRoutes);
 router.use('/exam-schedules', examSchedulesRoutes);
 router.use('/exams', examSchedulesRoutes);
 router.use('/conflicts', conflictsRoutes);
@@ -42,6 +45,9 @@ router.use('/users', userRoutes);
 router.use('/terms', academicTermsRoutes);
 router.use('/system-settings', academicTermsRoutes);
 router.use('/notifications', notificationsRoutes);
+router.use('/system-logs', systemLogsRoutes);
+router.use('/audit-logs', systemLogsRoutes);
 
 module.exports = router;
+
 

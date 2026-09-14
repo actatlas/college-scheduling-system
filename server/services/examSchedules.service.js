@@ -1,5 +1,8 @@
 const { query } = require('../utils/db');
 const { schedulesService } = require('./schedules.service');
+const { isGeneralEducationSubject } = require('./subjects.service');
+const { resolveUserProgramScope, isProgramMatch } = require('../utils/programScope');
+
 
 function normalizeTime(value) {
   if (!value) return null;
@@ -172,26 +175,37 @@ async function validateExamPayload({
 
   // 3. Program Head authorization
   if (user && String(user.role).toLowerCase() === 'program_head') {
-    let allowedPrograms = [];
-    if (user.sub) {
-      const majors = await query('SELECT program_code, code FROM program_majors WHERE program_head_id = ?', [user.sub]);
-      for (const m of majors) {
-        if (m.program_code) allowedPrograms.push(m.program_code);
-        if (m.code) allowedPrograms.push(m.code);
-      }
-    }
-    if (user.program) allowedPrograms.push(user.program);
-    if (user.programCode) allowedPrograms.push(user.programCode);
-    allowedPrograms = [...new Set(allowedPrograms.map((p) => String(p).toUpperCase()))];
-
-    const targetProg = String(program || '').toUpperCase();
-    const isAllowed = allowedPrograms.length === 0 || allowedPrograms.includes(targetProg) || allowedPrograms.some((p) => targetProg.includes(p));
+    const scope = resolveUserProgramScope(user);
+    const targetProg = String(program || '').toUpperCase().trim();
+    const isAllowed = scope.allowedProgramCodes.some((p) => isProgramMatch(targetProg, p));
 
     if (!isAllowed) {
-      const err = new Error(`Unauthorized: Program Heads can only manage exam schedules within their assigned program (${allowedPrograms.join(', ')}).`);
+      const err = new Error(`Unauthorized: Program Heads can only manage exam schedules within their assigned program (${scope.allowedProgramCodes.join(', ')}).`);
       err.statusCode = 403;
       err.code = 'UNAUTHORIZED_PROGRAM_ACCESS';
       throw err;
+    }
+
+    if (subjectCode) {
+      const [subRow] = await query('SELECT code, name, program_code FROM subjects WHERE code = ? LIMIT 1', [subjectCode]);
+      if (subRow) {
+        const isGE = isGeneralEducationSubject(subRow.code, subRow.program_code, subRow.name);
+        if (isGE) {
+          const err = new Error('Unauthorized: Program Heads can only schedule examinations for Major subjects within their assigned program. General Education and Minor subjects are managed by Administrators.');
+          err.statusCode = 403;
+          err.code = 'UNAUTHORIZED_EXAM_SUBJECT';
+          throw err;
+        }
+
+        const subProg = String(subRow.program_code || '').toUpperCase().trim();
+        const matchesSubProg = scope.allowedProgramCodes.some((p) => isProgramMatch(subProg, p));
+        if (!matchesSubProg) {
+          const err = new Error(`Unauthorized: Subject ${subRow.code} belongs to another academic program and cannot be scheduled by this Program Head.`);
+          err.statusCode = 403;
+          err.code = 'UNAUTHORIZED_PROGRAM_ACCESS';
+          throw err;
+        }
+      }
     }
   }
 
@@ -321,22 +335,13 @@ async function listExamSchedules({ user, program } = {}) {
       return [];
     }
   } else if (role === 'program_head') {
-    let progCodes = [];
-    if (user?.sub) {
-      const majors = await query('SELECT program_code, code FROM program_majors WHERE program_head_id = ?', [user.sub]);
-      for (const m of majors) {
-        if (m.program_code) progCodes.push(m.program_code);
-        if (m.code) progCodes.push(m.code);
-      }
-    }
-    if (progCodes.length === 0 && user?.program) progCodes.push(user.program);
-    if (progCodes.length === 0 && user?.programCode) progCodes.push(user.programCode);
-    progCodes = [...new Set(progCodes)];
+    const scope = resolveUserProgramScope(user);
+    const progCodes = scope.allowedProgramCodes;
 
     if (progCodes.length > 0) {
       const placeholders = progCodes.map(() => '?').join(',');
-      conditions.push(`(es.program_code IN (${placeholders}) OR es.program_code = 'ALL' OR sub.program_code = 'ALL' OR es.program_code IS NULL OR es.program_code = '')`);
-      params.push(...progCodes);
+      conditions.push(`(es.program_code IN (${placeholders}) OR sub.program_code IN (${placeholders}))`);
+      params.push(...progCodes, ...progCodes);
     }
   } else if (program) {
     conditions.push('(es.program_code = ? OR es.program_code = \'ALL\' OR sub.program_code = \'ALL\')');
@@ -543,6 +548,17 @@ async function updateExamSchedule(id, payload, user) {
       throw err;
     }
 
+    if (user && String(user.role).toLowerCase() === 'program_head') {
+      const scope = resolveUserProgramScope(user);
+      const isAllowed = scope.allowedProgramCodes.some((p) => isProgramMatch(existing.program_code, p));
+      if (!isAllowed) {
+        const err = new Error(`Unauthorized: Program Heads can only update exam schedules within their assigned program (${scope.allowedProgramCodes.join(', ')}).`);
+        err.statusCode = 403;
+        err.code = 'UNAUTHORIZED_PROGRAM_ACCESS';
+        throw err;
+      }
+    }
+
     await validateExamPayload({
       id,
       term: term || existing.term,
@@ -612,23 +628,11 @@ async function deleteExamSchedule(id, user) {
   }
 
   if (user && String(user.role).toLowerCase() === 'program_head') {
-    let allowedPrograms = [];
-    if (user.sub) {
-      const majors = await query('SELECT program_code, code FROM program_majors WHERE program_head_id = ?', [user.sub]);
-      for (const m of majors) {
-        if (m.program_code) allowedPrograms.push(m.program_code);
-        if (m.code) allowedPrograms.push(m.code);
-      }
-    }
-    if (user.program) allowedPrograms.push(user.program);
-    if (user.programCode) allowedPrograms.push(user.programCode);
-    allowedPrograms = [...new Set(allowedPrograms.map((p) => String(p).toUpperCase()))];
-
-    const targetProg = String(existing.program_code || '').toUpperCase();
-    const isAllowed = allowedPrograms.length === 0 || allowedPrograms.includes(targetProg) || allowedPrograms.some((p) => targetProg.includes(p));
+    const scope = resolveUserProgramScope(user);
+    const isAllowed = scope.allowedProgramCodes.some((p) => isProgramMatch(existing.program_code, p));
 
     if (!isAllowed) {
-      const err = new Error(`Unauthorized: Program Heads can only delete exam schedules within their assigned program (${allowedPrograms.join(', ')}).`);
+      const err = new Error(`Unauthorized: Program Heads can only delete exam schedules within their assigned program (${scope.allowedProgramCodes.join(', ')}).`);
       err.statusCode = 403;
       err.code = 'UNAUTHORIZED_PROGRAM_ACCESS';
       throw err;

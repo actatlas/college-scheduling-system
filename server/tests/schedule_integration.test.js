@@ -26,8 +26,8 @@ let tableData = {
   ],
   subjects: [
     { code: 'CS101', name: 'Intro to Programming', program_code: 'ITP', instructor_id: 'T001', units: 3, lecture_hours: 2, lab_hours: 3 },
-    { code: 'CS102', name: 'Data Structures', program_code: 'ITP', instructor_id: 'T002', units: 3, lecture_hours: 3, lab_hours: 0 },
-    { code: 'CRI101', name: 'Intro to Criminology', program_code: 'CJEP', instructor_id: null, units: 3, lecture_hours: 3, lab_hours: 0 },
+    { code: 'CS102', name: 'Data Structures', program_code: 'ITP', instructor_id: 'T002', units: 3, lecture_hours: 2, lab_hours: 0 },
+    { code: 'CRI101', name: 'Intro to Criminology', program_code: 'CJEP', instructor_id: null, units: 3, lecture_hours: 2, lab_hours: 0 },
   ],
   sections: [
     { id: 1, course_code: 'BSCS', year_level: 1, section_label: 'A', adviser_id: 'T001', students: 30 },
@@ -292,12 +292,12 @@ describe('SRCB Scheduling Engine Business Logic & Security Integration', () => {
 
   it('1. FACULTY_CONFLICT: rejects scheduling a teacher who already has an overlapping class', async () => {
     // Schedule 1: Teacher T001 is already booked on Monday 08:00-11:00 in LAB-02 for section 1
-    // Attempting to schedule T001 on Monday 09:00-10:30 in R-101 for section 1 must fail with FACULTY_CONFLICT
+    // Attempting to schedule T001 on Monday 09:00-11:00 in R-101 for section 1 must fail with FACULTY_CONFLICT
     await expect(
       schedulesService.createSchedule(
         {
           day: 'Monday',
-          time: '09:00-10:30',
+          time: '09:00-11:00',
           subjectCode: 'CS102',
           facultyId: 'T001',
           room: 'R-101',
@@ -334,12 +334,12 @@ describe('SRCB Scheduling Engine Business Logic & Security Integration', () => {
 
   it('3. SECTION_CONFLICT: rejects a section attending two classes at the same time', async () => {
     // Section 1 has CS101 on Monday 08:00-11:00
-    // Attempting to schedule another class for Section 1 on Monday 08:30-10:00 must fail with SECTION_CONFLICT
+    // Attempting to schedule another class for Section 1 on Monday 08:00-10:00 must fail with SECTION_CONFLICT
     await expect(
       schedulesService.createSchedule(
         {
           day: 'Monday',
-          time: '08:30-10:00',
+          time: '08:00-10:00',
           subjectCode: 'CS102',
           facultyId: 'T001',
           room: 'R-101',
@@ -491,7 +491,7 @@ describe('SRCB Scheduling Engine Business Logic & Security Integration', () => {
       schedulesService.createSchedule(
         {
           day: 'Wednesday',
-          time: '08:00-11:00',
+          time: '08:00-10:00',
           subjectCode: 'CRI101',
           facultyId: 'T001',
           room: 'R-101',

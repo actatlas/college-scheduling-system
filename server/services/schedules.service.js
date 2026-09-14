@@ -1,4 +1,5 @@
 const { query } = require('../utils/db');
+const { resolveUserProgramScope, isProgramMatch } = require('../utils/programScope');
 
 const VALID_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -32,6 +33,32 @@ function isGeneralEducationSubject(code, programCode) {
   const cleanCode = String(code || '').toUpperCase().trim();
   return /^(GE|GEC|NSTP|PE|PATHFIT|RIZAL|MATH|ENG|FIL|SOC|HUM|HIST)\b/i.test(cleanCode);
 }
+
+function getExpectedSubjectDuration(subjectRow, classMode = 'Lecture') {
+  if (!subjectRow) return 90;
+  const modeClean = String(classMode || '').toLowerCase().trim();
+  const isLab = modeClean === 'laboratory' || modeClean === 'lab';
+
+  if (isLab) {
+    const labH = Number(subjectRow.lab_hours ?? subjectRow.labHours);
+    if (!isNaN(labH) && labH > 0) {
+      return Math.round(labH * 60);
+    }
+    return 180; // 3 hours fallback
+  }
+
+  const lecH = Number(subjectRow.lecture_hours ?? subjectRow.lectureHours);
+  if (!isNaN(lecH) && lecH > 0) {
+    return Math.round(lecH * 60);
+  }
+
+  const isGeneral = isGeneralEducationSubject(subjectRow.code, subjectRow.program_code);
+  if (isGeneral) {
+    return 90; // 1.5 hours fallback
+  }
+  return 120; // 2 hours fallback for major lecture
+}
+
 
 function normalizeTime(value) {
   if (!value) return null;
@@ -92,6 +119,8 @@ async function validateSchedulePayload({
   faculty_id,
   room_number,
   modality = 'Face-to-Face',
+  classMode = null,
+  class_mode = null,
   user = null,
   is_combined_cohort = false,
   isCombinedCohort = false,
@@ -179,35 +208,52 @@ async function validateSchedulePayload({
     sectionRow = sec;
   }
 
-  // 4. Program Head Authorization
-  if (user && String(user.role).toLowerCase() === 'program_head') {
-    let allowedPrograms = [];
-    if (user.sub) {
-      const majors = await query('SELECT program_code, code FROM program_majors WHERE program_head_id = ?', [user.sub]);
-      for (const m of majors) {
-        if (m.program_code) allowedPrograms.push(m.program_code);
-        if (m.code) allowedPrograms.push(m.code);
-      }
-    }
-    if (user.program) allowedPrograms.push(user.program);
-    if (user.programCode) allowedPrograms.push(user.programCode);
-    allowedPrograms = [...new Set(allowedPrograms.map((p) => String(p).toUpperCase()))];
+  // 4. Validate Class Duration (Dynamic Configuration)
+  const actualDurationMinutes = endMin - startMin;
 
+  let effectiveClassMode = classMode || class_mode;
+  if (!effectiveClassMode) {
+    if (actualDurationMinutes >= 180 && Number(subjectRow.lab_hours || 0) > 0) {
+      effectiveClassMode = 'Laboratory';
+    } else if (roomRow && (/lab/i.test(roomRow.type || '') || /lab/i.test(roomRow.building || '') || /lab/i.test(roomRow.number || '')) && Number(subjectRow.lab_hours || 0) > 0) {
+      effectiveClassMode = 'Laboratory';
+    } else {
+      effectiveClassMode = 'Lecture';
+    }
+  }
+
+  const expectedDurationMinutes = getExpectedSubjectDuration(subjectRow, effectiveClassMode);
+
+  if (actualDurationMinutes !== expectedDurationMinutes) {
+    const hoursExpected = expectedDurationMinutes / 60;
+    const hoursStr = hoursExpected % 1 === 0 ? `${hoursExpected} hour(s)` : `${hoursExpected} hours`;
+    const err = new Error(
+      `Invalid schedule duration: Subject ${subjectRow.code} (${effectiveClassMode}) requires ${hoursStr} (${expectedDurationMinutes} minutes), but actual allocated duration is ${actualDurationMinutes} minutes (${start.slice(0, 5)} - ${end.slice(0, 5)}).`
+    );
+    err.statusCode = 400;
+    err.code = 'INVALID_CLASS_DURATION';
+    throw err;
+  }
+
+  // 5. Program Head Authorization
+  if (user && String(user.role).toLowerCase() === 'program_head') {
+    const scope = resolveUserProgramScope(user);
     const subProg = String(subjectRow.program_code || '').toUpperCase();
     const secProg = String(sectionRow?.course_code || '').toUpperCase();
 
-    const isSubAllowed = allowedPrograms.length === 0 || allowedPrograms.includes(subProg) || allowedPrograms.some((p) => subProg.includes(p));
-    const isSecAllowed = !sectionRow || allowedPrograms.length === 0 || allowedPrograms.includes(secProg) || allowedPrograms.some((p) => secProg.includes(p));
+    const isGeneral = isGeneralEducationSubject(subjectRow.code, subjectRow.program_code);
+    const isSubAllowed = isGeneral || scope.allowedProgramCodes.some((code) => isProgramMatch(subProg, code));
+    const isSecAllowed = !sectionRow || scope.allowedProgramCodes.some((code) => isProgramMatch(secProg, code));
 
-    if (!isSubAllowed && !isSecAllowed) {
-      const err = new Error(`Unauthorized: Program Heads can only manage schedules within their assigned program (${allowedPrograms.join(', ')}).`);
+    if (!isSubAllowed || !isSecAllowed) {
+      const err = new Error(`Unauthorized: Program Heads can only manage schedules within their assigned program (${scope.allowedProgramCodes.join(', ')}).`);
       err.statusCode = 403;
       err.code = 'UNAUTHORIZED_PROGRAM_ACCESS';
       throw err;
     }
   }
 
-  // 5. Room Status Usability Check
+  // 6. Room Status Usability Check
   if (roomRow) {
     const status = String(roomRow.status || '').trim().toLowerCase();
     const isUnavailable = ['maintenance', 'under maintenance', 'inactive', 'unavailable', 'closed', 'disabled'].includes(status);
@@ -219,7 +265,7 @@ async function validateSchedulePayload({
     }
   }
 
-  // 6. Subject-Section Program Relationship Compatibility
+  // 7. Subject-Section Program Relationship Compatibility
   if (subjectRow && sectionRow) {
     const subProg = String(subjectRow.program_code || '').trim().toUpperCase();
     const secCourse = String(sectionRow.course_code || '').trim().toUpperCase();
@@ -242,7 +288,7 @@ async function validateSchedulePayload({
     }
   }
 
-  // 7. Room Capacity Check
+  // 8. Room Capacity Check
   if (roomRow && sectionRow && !isOnline && !isCombined) {
     const roomCap = Number(roomRow.capacity) || 0;
     const secStudents = Number(sectionRow.students) || 0;
@@ -254,12 +300,12 @@ async function validateSchedulePayload({
     }
   }
 
-  // 8. Subject & Room Type Compatibility (Laboratory vs Lecture)
-  if (roomRow && subjectRow) {
-    const isLabSubject = Number(subjectRow.lab_hours || 0) > 0;
-    const isLabRoom = /lab/i.test(roomRow.type || '') || /lab/i.test(roomRow.building || '');
-    if (isLabSubject && !isLabRoom) {
-      const err = new Error(`Subject "${subjectRow.code}" requires a Laboratory room, but room "${roomRow.number}" is a ${roomRow.type || 'Lecture'} room.`);
+  // 9. Subject & Room Type Compatibility (Laboratory vs Lecture)
+  if (roomRow && !isOnline) {
+    const isLabRoom = /lab/i.test(roomRow.type || '') || /lab/i.test(roomRow.building || '') || /lab/i.test(roomRow.number || '');
+    const isLabComponent = String(effectiveClassMode || '').toLowerCase().trim() === 'laboratory' || String(effectiveClassMode || '').toLowerCase().trim() === 'lab';
+    if (isLabComponent && !isLabRoom) {
+      const err = new Error(`Subject "${subjectRow.code}" (${effectiveClassMode}) requires a Laboratory room, but room "${roomRow.number}" is a ${roomRow.type || 'Lecture'} room.`);
       err.statusCode = 409;
       err.code = 'ROOM_TYPE_MISMATCH';
       throw err;
@@ -401,21 +447,8 @@ async function listSchedules({ user, department, facultyId, program } = {}) {
       return [];
     }
   } else if (role === 'program_head') {
-    let progCodes = [];
-    if (user?.sub) {
-      const majors = await query('SELECT program_code, code FROM program_majors WHERE program_head_id = ?', [user.sub]);
-      for (const m of majors) {
-        if (m.program_code) progCodes.push(m.program_code);
-        if (m.code) progCodes.push(m.code);
-      }
-    }
-    if (progCodes.length === 0 && user?.program) {
-      progCodes.push(user.program);
-    }
-    if (progCodes.length === 0 && user?.programCode) {
-      progCodes.push(user.programCode);
-    }
-    progCodes = [...new Set(progCodes)];
+    const scope = resolveUserProgramScope(user);
+    const progCodes = scope.allowedProgramCodes;
 
     const orConds = [];
     if (progCodes.length > 0) {
@@ -618,6 +651,8 @@ async function createSchedule(payload, user) {
     faculty_id: validFacultyId,
     room_number: validRoomNumber,
     modality: payload.modality || payload.classMode || (String(rawRoom || '').toLowerCase().includes('virtual') ? 'Online' : 'Face-to-Face'),
+    classMode: payload.classMode || payload.class_mode,
+    class_mode: payload.class_mode || payload.classMode,
     user,
     is_combined_cohort: Boolean(payload.is_combined_cohort || payload.isCombinedCohort),
   });
@@ -653,6 +688,35 @@ async function updateSchedule(id, payload, user) {
     err.statusCode = 403;
     err.code = 'UNAUTHORIZED_ROLE';
     throw err;
+  }
+
+  if (user && String(user.role).toLowerCase() === 'program_head') {
+    const [schedRow] = await query(
+      `SELECT sc.id, sub.program_code, sec.course_code
+       FROM schedules sc
+       LEFT JOIN subjects sub ON sub.code = sc.subject_code
+       LEFT JOIN sections sec ON sec.id = sc.section_id
+       WHERE sc.id = ? LIMIT 1`,
+      [id]
+    );
+
+    if (!schedRow) {
+      const err = new Error('Schedule not found');
+      err.statusCode = 404;
+      err.code = 'SCHEDULE_NOT_FOUND';
+      throw err;
+    }
+
+    const scope = resolveUserProgramScope(user);
+    const subProg = String(schedRow.program_code || '').toUpperCase();
+    const secProg = String(schedRow.course_code || '').toUpperCase();
+    const isAllowed = scope.allowedProgramCodes.some((code) => isProgramMatch(subProg, code) || isProgramMatch(secProg, code));
+    if (!isAllowed) {
+      const err = new Error(`Unauthorized: Program Heads can only update schedules within their assigned program (${scope.allowedProgramCodes.join(', ')}).`);
+      err.statusCode = 403;
+      err.code = 'UNAUTHORIZED_PROGRAM_ACCESS';
+      throw err;
+    }
   }
 
   let {
@@ -707,6 +771,8 @@ async function updateSchedule(id, payload, user) {
     faculty_id: validFacultyId,
     room_number: validRoomNumber,
     modality: payload.modality || payload.classMode || (String(rawRoom || '').toLowerCase().includes('virtual') ? 'Online' : 'Face-to-Face'),
+    classMode: payload.classMode || payload.class_mode,
+    class_mode: payload.class_mode || payload.classMode,
     user,
     is_combined_cohort: Boolean(payload.is_combined_cohort || payload.isCombinedCohort),
   });
@@ -753,24 +819,13 @@ async function deleteSchedule(id, user) {
   }
 
   if (user && String(user.role).toLowerCase() === 'program_head') {
-    let allowedPrograms = [];
-    if (user.sub) {
-      const majors = await query('SELECT program_code, code FROM program_majors WHERE program_head_id = ?', [user.sub]);
-      for (const m of majors) {
-        if (m.program_code) allowedPrograms.push(m.program_code);
-        if (m.code) allowedPrograms.push(m.code);
-      }
-    }
-    if (user.program) allowedPrograms.push(user.program);
-    if (user.programCode) allowedPrograms.push(user.programCode);
-    allowedPrograms = [...new Set(allowedPrograms.map((p) => String(p).toUpperCase()))];
-
+    const scope = resolveUserProgramScope(user);
     const subProg = String(schedRow.program_code || '').toUpperCase();
     const secProg = String(schedRow.course_code || '').toUpperCase();
 
-    const isAllowed = allowedPrograms.length === 0 || allowedPrograms.includes(subProg) || allowedPrograms.includes(secProg);
+    const isAllowed = scope.allowedProgramCodes.some((code) => isProgramMatch(subProg, code) || isProgramMatch(secProg, code));
     if (!isAllowed) {
-      const err = new Error(`Unauthorized: Program Heads can only delete schedules within their assigned program (${allowedPrograms.join(', ')}).`);
+      const err = new Error(`Unauthorized: Program Heads can only delete schedules within their assigned program (${scope.allowedProgramCodes.join(', ')}).`);
       err.statusCode = 403;
       err.code = 'UNAUTHORIZED_PROGRAM_ACCESS';
       throw err;
@@ -824,22 +879,11 @@ async function generateSchedules({ user } = {}) {
 
   let targetSections = sections;
   if (user && String(user.role).toLowerCase() === 'program_head') {
-    let allowedPrograms = [];
-    if (user.sub) {
-      const majors = await query('SELECT program_code, code FROM program_majors WHERE program_head_id = ?', [user.sub]);
-      for (const m of majors) {
-        if (m.program_code) allowedPrograms.push(m.program_code);
-        if (m.code) allowedPrograms.push(m.code);
-      }
-    }
-    if (user.program) allowedPrograms.push(user.program);
-    if (user.programCode) allowedPrograms.push(user.programCode);
-    allowedPrograms = [...new Set(allowedPrograms.map((p) => String(p).toUpperCase()))];
-
-    if (allowedPrograms.length > 0) {
+    const scope = resolveUserProgramScope(user);
+    if (scope.allowedProgramCodes.length > 0) {
       targetSections = sections.filter((sec) => {
         const secCourse = String(sec.course_code || '').toUpperCase();
-        return allowedPrograms.includes(secCourse) || allowedPrograms.some((p) => secCourse.includes(p));
+        return scope.allowedProgramCodes.some((code) => isProgramMatch(secCourse, code));
       });
     }
   }
@@ -1093,6 +1137,7 @@ const schedulesService = {
   deleteSchedule,
   updateSchedule,
   validateSchedulePayload,
+  getExpectedSubjectDuration,
   timesOverlap,
 };
 

@@ -135,10 +135,11 @@ describe("Paired Day Scheduling Logic", () => {
     expect(getDayPairLabel("Tuesday")).toBe("Tuesday & Friday (T-F)");
   });
 
-  it("pairs Wednesday with Saturday (W-Sa)", () => {
-    expect(getPairedDay("Wednesday")).toBe("Saturday");
-    expect(getPairedDay("Saturday")).toBe("Wednesday");
-    expect(getDayPairLabel("Wednesday")).toBe("Wednesday & Saturday (W-Sa)");
+  it("treats Wednesday and Saturday as standalone schedule days (no automatic pairing)", () => {
+    expect(getPairedDay("Wednesday")).toBeNull();
+    expect(getPairedDay("Saturday")).toBeNull();
+    expect(getDayPairLabel("Wednesday")).toBe("Wednesday");
+    expect(getDayPairLabel("Saturday")).toBe("Saturday");
   });
 
   it("validates paired day availability without cross-day collisions", () => {

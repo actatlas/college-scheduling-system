@@ -1,0 +1,50 @@
+/* SweetAlert2 Theme Customization for SRCB Scheduling System */
+
+.srcb-swal-popup {
+  border-radius: 16px !important;
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.05) !important;
+  font-family: inherit !important;
+  padding: 1.75rem !important;
+}
+
+.srcb-swal-title {
+  font-size: 1.35rem !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em !important;
+  margin-bottom: 0.5rem !important;
+}
+
+.srcb-swal-html {
+  font-size: 0.95rem !important;
+  line-height: 1.5 !important;
+  color: #64748b !important;
+}
+
+html[data-theme="dark"] .srcb-swal-html {
+  color: #94a3b8 !important;
+}
+
+.srcb-swal-btn-confirm {
+  border-radius: 10px !important;
+  font-weight: 600 !important;
+  font-size: 0.9rem !important;
+  padding: 0.65rem 1.4rem !important;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25) !important;
+  transition: all 0.15s ease !important;
+}
+
+.srcb-swal-btn-confirm:hover {
+  transform: translateY(-1px) !important;
+}
+
+.srcb-swal-btn-cancel {
+  border-radius: 10px !important;
+  font-weight: 600 !important;
+  font-size: 0.9rem !important;
+  padding: 0.65rem 1.4rem !important;
+  transition: all 0.15s ease !important;
+}
+
+.srcb-swal-btn-cancel:hover {
+  transform: translateY(-1px) !important;
+}

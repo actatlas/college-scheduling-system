@@ -1,4 +1,5 @@
 const { roomsService } = require('../services/rooms.service');
+const { logAction } = require('../services/systemLogs.service');
 
 async function listRooms(req, res, next) {
   try {
@@ -19,6 +20,19 @@ async function createRoom(req, res, next) {
       return res.status(400).json({ error: 'room number is required' });
     }
     const row = await roomsService.createRoom(payload);
+
+    await logAction({
+      req,
+      user: req.user,
+      module: 'Room Management',
+      action: 'Created Room',
+      description: `Created campus room ${row.number} in ${row.building || 'Campus'} (capacity: ${row.capacity || 0}).`,
+      targetId: row.number,
+      targetType: 'Room',
+      status: 'Success',
+      details: { number: row.number, building: row.building, capacity: row.capacity, type: row.type },
+    });
+
     res.status(201).json({ data: row });
   } catch (err) {
     if (err && err.code === 'ER_DUP_ENTRY') {
@@ -35,6 +49,18 @@ async function deleteRoom(req, res, next) {
     }
     const number = req.params.number;
     await roomsService.deleteRoom(number);
+
+    await logAction({
+      req,
+      user: req.user,
+      module: 'Room Management',
+      action: 'Deleted Room',
+      description: `Deleted campus room ${number}.`,
+      targetId: number,
+      targetType: 'Room',
+      status: 'Success',
+    });
+
     res.status(204).end();
   } catch (err) {
     if (err && (err.code === 'ER_ROW_IS_REFERENCED_2' || err.errno === 1451)) {
@@ -55,6 +81,19 @@ async function updateRoom(req, res, next) {
     const number = req.params.number;
     const payload = req.body || {};
     const row = await roomsService.updateRoom(number, payload);
+
+    await logAction({
+      req,
+      user: req.user,
+      module: 'Room Management',
+      action: 'Updated Room',
+      description: `Updated campus room ${number}.`,
+      targetId: number,
+      targetType: 'Room',
+      status: 'Success',
+      details: { building: row.building, capacity: row.capacity, status: row.status },
+    });
+
     res.json({ data: row });
   } catch (err) {
     next(err);

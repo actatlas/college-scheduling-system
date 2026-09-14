@@ -29,7 +29,7 @@ const mockData = {
     },
   ],
   subjects: [
-    { code: 'CS101', name: 'Intro to CS', program_code: 'ITP', instructor_id: 'T001', lab_hours: 0, lecture_hours: 3 },
+    { code: 'CS101', name: 'Intro to CS', program_code: 'ITP', instructor_id: 'T001', lab_hours: 0, lecture_hours: 2 },
   ],
   sections: [
     { id: 1, course_code: 'BSIT', year_level: 1, section_label: 'A', students: 30 },

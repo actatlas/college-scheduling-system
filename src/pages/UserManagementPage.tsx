@@ -8,6 +8,7 @@ import { Modal } from "../components/common/Modal";
 import { ConfirmModal } from "../components/common/ConfirmModal";
 import { TableSkeleton } from "../components/common/Skeleton";
 import { useNotifications } from "../contexts/NotificationContext";
+import { showSuccessAlert, showErrorAlert } from "../utils/alerts";
 import {
   UserCheck,
   UserX,
@@ -50,6 +51,38 @@ export const ASSIGNED_ACADEMIC_PROGRAMS: ProgramItem[] = [
   { code: "TEP", name: "Teacher Education Program" },
   { code: "HMP", name: "Hospitality Management Program" },
 ];
+
+export const getProgramFamily = (str?: string | null): string => {
+  if (!str) return "";
+  const s = String(str).toUpperCase().trim();
+  if (["ALL", "GEN", "GENED", "GENERAL EDUCATION", "UNIVERSAL"].includes(s)) return "GENED";
+
+  const IT_KEYS = ["ITP", "BSIT", "BSCS", "INFORMATION TECHNOLOGY", "COMPUTER SCIENCE"];
+  const CRIM_KEYS = ["CJEP", "BSCRIM", "CRIMINOLOGY", "CRIMINAL JUSTICE", "CRIM"];
+  const BUS_KEYS = ["BAP", "BSA", "BSBA", "ACCOUNTANCY", "BUSINESS ADMINISTRATION", "BUSINESS"];
+  const HM_KEYS = ["HMP", "BSHM", "HOSPITALITY MANAGEMENT", "HOTEL AND RESTAURANT", "HM"];
+  const EDUC_KEYS = ["TEP", "BSED", "BEED", "TEACHER EDUCATION", "EDUCATION"];
+
+  if (IT_KEYS.some((k) => s === k || s.startsWith(k) || k.startsWith(s))) return "IT";
+  if (CRIM_KEYS.some((k) => s === k || s.startsWith(k) || k.startsWith(s))) return "CRIM";
+  if (BUS_KEYS.some((k) => s === k || s.startsWith(k) || k.startsWith(s))) return "BUS";
+  if (HM_KEYS.some((k) => s === k || s.startsWith(k) || k.startsWith(s))) return "HM";
+  if (EDUC_KEYS.some((k) => s === k || s.startsWith(k) || k.startsWith(s))) return "EDUC";
+  return s;
+};
+
+export const matchesProgramFamily = (progA?: string | null, progB?: string | null): boolean => {
+  if (!progA || !progB) return false;
+  const a = String(progA).toUpperCase().trim();
+  const b = String(progB).toUpperCase().trim();
+  if (!a || !b) return false;
+  if (a === "ALL" || b === "ALL") return false;
+  if (a === b) return true;
+  const famA = getProgramFamily(a);
+  const famB = getProgramFamily(b);
+  if (!famA || !famB || famA === "GENED" || famB === "GENED") return false;
+  return famA === famB;
+};
 
 export function UserManagementPage() {
   const [searchParams] = useSearchParams();
@@ -135,34 +168,43 @@ export function UserManagementPage() {
   });
 
   const assignedProgramOptions = useMemo(() => {
-    const invalidCodes = new Set(["BSIT", "BSBA", "BSED", "BEED", "BSCRIM", "BSHM"]);
-    const list = [...ASSIGNED_ACADEMIC_PROGRAMS];
-    if (
-      form.program &&
-      !invalidCodes.has(form.program.toUpperCase()) &&
-      !list.some((item) => item.code.toUpperCase() === form.program.toUpperCase())
-    ) {
-      const match = programs.find(
-        (p) => p.code.toUpperCase() === form.program.toUpperCase()
-      );
-      list.push(match || { code: form.program, name: form.program });
+    const map = new Map<string, ProgramItem>();
+
+    // Dynamic programs from database
+    programs.forEach((p) => {
+      if (p.code) {
+        map.set(p.code.toUpperCase(), { code: p.code, name: p.name });
+      }
+    });
+
+    // Default programs for fallback
+    ASSIGNED_ACADEMIC_PROGRAMS.forEach((p) => {
+      if (!map.has(p.code.toUpperCase())) {
+        map.set(p.code.toUpperCase(), p);
+      }
+    });
+
+    // If current selected program not in map, preserve it
+    if (form.program && !map.has(form.program.toUpperCase())) {
+      map.set(form.program.toUpperCase(), { code: form.program, name: form.program });
     }
-    return list;
+
+    return Array.from(map.values());
   }, [form.program, programs]);
 
   const filterProgramOptions = useMemo(() => {
-    const invalidCodes = new Set(["BSIT", "BSBA", "BSED", "BEED", "BSCRIM", "BSHM"]);
-    const list = [...ASSIGNED_ACADEMIC_PROGRAMS];
+    const map = new Map<string, ProgramItem>();
     programs.forEach((p) => {
-      if (
-        p.code &&
-        !invalidCodes.has(p.code.toUpperCase()) &&
-        !list.some((item) => item.code.toUpperCase() === p.code.toUpperCase())
-      ) {
-        list.push(p);
+      if (p.code) {
+        map.set(p.code.toUpperCase(), p);
       }
     });
-    return list;
+    ASSIGNED_ACADEMIC_PROGRAMS.forEach((p) => {
+      if (!map.has(p.code.toUpperCase())) {
+        map.set(p.code.toUpperCase(), p);
+      }
+    });
+    return Array.from(map.values());
   }, [programs]);
 
   // Handle outside clicks for popovers
@@ -592,6 +634,7 @@ export function UserManagementPage() {
     try {
       await api.delete(`/users/${encodeURIComponent(userToDelete.id)}`);
       toast.push("User account removed successfully", "success");
+      await showSuccessAlert("Account Deleted", `Account for ${userToDelete.name} was successfully removed.`);
       addNotification({
         title: "User Account Removed",
         message: `Account for ${userToDelete.name} (${userToDelete.email}) was removed from the system.`,
@@ -604,6 +647,7 @@ export function UserManagementPage() {
       fetchUsers();
     } catch (err: any) {
       toast.push(err?.message || "Failed to delete user", "error");
+      await showErrorAlert("Failed to delete user", err?.message || "An error occurred while deleting user.");
     } finally {
       setLoading(false);
       setUserToDelete(null);
@@ -798,6 +842,32 @@ export function UserManagementPage() {
       .filter(Boolean)
       .join(" ");
 
+    if (form.role === "program_head") {
+      if (!form.program || !form.program.trim()) {
+        toast.push("Please select a program for the Program Head", "error");
+        return;
+      }
+      // Validate One Program Head Per Program rule in client
+      const duplicateHead = users.find((u) => {
+        if (editingUser && String(u.id) === String(editingUser.id)) {
+          return false;
+        }
+        if (u.role !== "program_head") {
+          return false;
+        }
+        const isUserActive = String(u.status || "active").toLowerCase() !== "suspended";
+        if (!isUserActive) {
+          return false;
+        }
+        return matchesProgramFamily(u.program, form.program);
+      });
+
+      if (duplicateHead) {
+        toast.push("This program already has a Program Head assigned.", "error");
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       if (editingUser) {
@@ -811,6 +881,7 @@ export function UserManagementPage() {
           status: form.status,
         });
         toast.push("User profile and permissions updated successfully", "success");
+        await showSuccessAlert("Account Updated", `${fullName}'s profile and permissions updated successfully.`);
         addNotification({
           title: "User Account Updated",
           message: `${fullName} (${form.role}) profile updated.`,
@@ -829,6 +900,7 @@ export function UserManagementPage() {
           status: form.status,
         });
         toast.push(`Account registered for ${fullName} with initial password`, "success");
+        await showSuccessAlert("Account Created", `Account successfully registered for ${fullName}.`);
         addNotification({
           title: "New Account Registered",
           message: `${fullName} (${form.email}) was registered as ${form.role}.`,
@@ -843,6 +915,7 @@ export function UserManagementPage() {
       fetchUsers();
     } catch (err: any) {
       toast.push(err?.message || "Failed to save user", "error");
+      await showErrorAlert("Failed to save user", err?.message || "An error occurred while saving the user account.");
     } finally {
       setLoading(false);
     }
@@ -2022,10 +2095,11 @@ export function UserManagementPage() {
           {form.role === "program_head" && (
             <div className="field-group" style={{ gridColumn: "1 / -1" }}>
               <label htmlFor="userProgram">
-                <Building2 size={13} /> Assigned Academic Program
+                <Building2 size={13} /> Assigned Academic Program <span style={{ color: "#dc2626" }}>*</span>
               </label>
               <select
                 id="userProgram"
+                required
                 value={form.program}
                 onChange={(e) => setForm({ ...form, program: e.target.value })}
               >

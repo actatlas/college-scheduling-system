@@ -17,10 +17,10 @@ describe("Schedule Duplication and Custom Time Logic", () => {
   it("suggests the paired collegiate day when duplicating a schedule", () => {
     expect(getPairedDay("Monday")).toBe("Thursday");
     expect(getPairedDay("Tuesday")).toBe("Friday");
-    expect(getPairedDay("Wednesday")).toBe("Saturday");
     expect(getPairedDay("Thursday")).toBe("Monday");
     expect(getPairedDay("Friday")).toBe("Tuesday");
-    expect(getPairedDay("Saturday")).toBe("Wednesday");
+    expect(getPairedDay("Wednesday")).toBeNull();
+    expect(getPairedDay("Saturday")).toBeNull();
   });
 
   it("extracts clean program codes without description text for badges", () => {

@@ -72,6 +72,11 @@ const UserManagementPage = lazy(() =>
     default: module.UserManagementPage,
   })),
 );
+const SystemLogsPage = lazy(() =>
+  import("../pages/SystemLogsPage").then((module) => ({
+    default: module.SystemLogsPage,
+  })),
+);
 const LandingPage = lazy(() =>
   import("../pages/LandingPage").then((module) => ({
     default: module.LandingPage,
@@ -143,7 +148,7 @@ export function AppRoutes() {
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
 
-          {/* Super Admin only: User Account Management */}
+          {/* Super Admin only: User Account Management & System Audit Logs */}
           <Route
             element={
               <ProtectedRoute
@@ -152,6 +157,8 @@ export function AppRoutes() {
             }
           >
             <Route path="/users" element={<UserManagementPage />} />
+            <Route path="/system-logs" element={<SystemLogsPage />} />
+            <Route path="/audit-logs" element={<SystemLogsPage />} />
           </Route>
 
           {/* General paths accessible by Super Admin, Admin, Program Head, Teacher */}

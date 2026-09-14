@@ -1,8 +1,10 @@
 const { query } = require('../utils/db');
+const { resolveUserProgramScope, isProgramMatch } = require('../utils/programScope');
 
-async function listSections() {
-  const rows = await query(
-    `SELECT s.id,
+async function listSections(user = null) {
+  const scope = await resolveUserProgramScope(user);
+
+  let sql = `SELECT s.id,
             s.course_code,
             s.year_level,
             s.section_label,
@@ -10,17 +12,29 @@ async function listSections() {
             COALESCE(t.name, '') AS adviser,
             s.students,
             sem.name AS semester_name,
-            ay.name AS academic_year_name
+            ay.name AS academic_year_name,
+            c.program_code
      FROM sections s
+     LEFT JOIN courses c ON c.code = s.course_code
      LEFT JOIN teachers t ON t.id = s.adviser_id
      LEFT JOIN semesters sem ON sem.id = s.semester_id
-     LEFT JOIN academic_years ay ON ay.id = s.academic_year_id
-     ORDER BY s.course_code ASC, s.section_label ASC`
-  );
+     LEFT JOIN academic_years ay ON ay.id = s.academic_year_id`;
 
-  return rows.map((s) => ({
+  const params = [];
+  if (scope.isProgramHead && scope.allowedProgramCodes.length > 0) {
+    const placeholders = scope.allowedProgramCodes.map(() => '?').join(',');
+    sql += ` WHERE (s.course_code IN (${placeholders}) OR c.program_code IN (${placeholders}))`;
+    params.push(...scope.allowedProgramCodes, ...scope.allowedProgramCodes);
+  }
+
+  sql += ' ORDER BY s.course_code ASC, s.section_label ASC';
+  const rows = await query(sql, params);
+
+  const mapped = rows.map((s) => ({
     id: String(s.id),
     course: s.course_code,
+    courseCode: s.course_code,
+    program: s.program_code || s.course_code,
     yearLevel: String(s.year_level),
     section: s.section_label,
     adviser: s.adviser,
@@ -29,6 +43,12 @@ async function listSections() {
     semester: s.semester_name || '',
     schoolYear: s.academic_year_name || '',
   }));
+
+  if (scope.isProgramHead) {
+    return mapped.filter((s) => scope.allowedProgramCodes.some((allowed) => isProgramMatch(s.course, allowed) || isProgramMatch(s.program, allowed)));
+  }
+
+  return mapped;
 }
 
 async function resolveCourseCode(rawCourse) {

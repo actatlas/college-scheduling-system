@@ -39,6 +39,7 @@ export interface SubjectItem {
   semester: string
   department: string
   program?: string
+  programCode?: string
   courseCode?: string
   isMajor?: boolean
   isGeneralEducation?: boolean
@@ -148,3 +149,30 @@ export interface CourseItem {
 
 // Backwards compatibility alias
 export type ScheduleItem = ClassScheduleItem
+
+export interface ScheduleAdjustmentRequest {
+  id: number
+  scheduleId: number
+  requestedByUserId: number
+  requesterName: string
+  requesterProgram: string
+  subjectCode: string
+  subjectName: string
+  sectionName?: string
+  facultyName?: string
+  roomNumber?: string
+  currentDay: string
+  currentStartTime: string
+  currentEndTime: string
+  suggestedDay?: string
+  suggestedStartTime?: string
+  suggestedEndTime?: string
+  suggestedRoom?: string
+  reason: string
+  status: 'Pending' | 'Approved' | 'Rejected'
+  adminResponse?: string | null
+  reviewedByUserId?: number | null
+  reviewedAt?: string | null
+  createdAt: string
+  updatedAt: string
+}

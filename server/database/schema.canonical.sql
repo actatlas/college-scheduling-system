@@ -212,3 +212,61 @@ CREATE TABLE IF NOT EXISTS exam_schedules (
   CONSTRAINT fk_exam_schedules_room FOREIGN KEY (room_number) REFERENCES rooms(number) ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS schedule_adjustment_requests (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  schedule_id BIGINT UNSIGNED NOT NULL,
+  requested_by_user_id BIGINT UNSIGNED NOT NULL,
+  requester_name VARCHAR(160) NOT NULL,
+  requester_program VARCHAR(50) NOT NULL,
+  subject_code VARCHAR(30) NOT NULL,
+  subject_name VARCHAR(200) NOT NULL,
+  section_name VARCHAR(100) DEFAULT NULL,
+  faculty_name VARCHAR(160) DEFAULT NULL,
+  room_number VARCHAR(30) DEFAULT NULL,
+  current_day VARCHAR(20) NOT NULL,
+  current_start_time TIME NOT NULL,
+  current_end_time TIME NOT NULL,
+  suggested_day VARCHAR(20) DEFAULT NULL,
+  suggested_start_time TIME DEFAULT NULL,
+  suggested_end_time TIME DEFAULT NULL,
+  suggested_room VARCHAR(30) DEFAULT NULL,
+  reason TEXT NOT NULL,
+  status ENUM('Pending', 'Approved', 'Rejected') NOT NULL DEFAULT 'Pending',
+  admin_response TEXT DEFAULT NULL,
+  reviewed_by_user_id BIGINT UNSIGNED DEFAULT NULL,
+  reviewed_at TIMESTAMP NULL DEFAULT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_adj_req_schedule (schedule_id),
+  KEY idx_adj_req_status (status),
+  KEY idx_adj_req_user (requested_by_user_id),
+  KEY idx_adj_req_program (requester_program),
+  CONSTRAINT fk_adj_req_schedule FOREIGN KEY (schedule_id) REFERENCES schedules(id) ON UPDATE CASCADE ON DELETE CASCADE,
+  CONSTRAINT fk_adj_req_user FOREIGN KEY (requested_by_user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS system_logs (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id BIGINT UNSIGNED DEFAULT NULL,
+  user_name VARCHAR(160) DEFAULT NULL,
+  user_email VARCHAR(190) DEFAULT NULL,
+  role VARCHAR(50) NOT NULL,
+  module VARCHAR(100) NOT NULL,
+  action VARCHAR(100) NOT NULL,
+  description TEXT NOT NULL,
+  target_id VARCHAR(100) DEFAULT NULL,
+  target_type VARCHAR(100) DEFAULT NULL,
+  status ENUM('Success', 'Failed') NOT NULL DEFAULT 'Success',
+  ip_address VARCHAR(45) DEFAULT NULL,
+  details JSON DEFAULT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_syslogs_user (user_id),
+  KEY idx_syslogs_role (role),
+  KEY idx_syslogs_module (module),
+  KEY idx_syslogs_action (action),
+  KEY idx_syslogs_status (status),
+  KEY idx_syslogs_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+

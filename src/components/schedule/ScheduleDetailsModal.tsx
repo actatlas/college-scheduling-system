@@ -12,8 +12,11 @@ import {
   Info,
   CheckCircle2,
   Copy,
+  ArrowRightLeft,
+  Clock3,
+  AlertCircle,
 } from "lucide-react";
-import type { ClassScheduleItem } from "../../types";
+import type { ClassScheduleItem, ScheduleAdjustmentRequest } from "../../types";
 import { getProgramTheme } from "../../utils/programColors";
 
 interface ScheduleDetailsModalProps {
@@ -21,6 +24,10 @@ interface ScheduleDetailsModalProps {
   onClose: () => void;
   schedule: ClassScheduleItem | null;
   onDuplicate?: (schedule: ClassScheduleItem) => void;
+  onRequestAdjustment?: (schedule: ClassScheduleItem) => void;
+  onReviewAdjustment?: (request: ScheduleAdjustmentRequest) => void;
+  adjustmentRequest?: ScheduleAdjustmentRequest | null;
+  userRole?: string;
 }
 
 export const ScheduleDetailsModal: React.FC<ScheduleDetailsModalProps> = ({
@@ -28,8 +35,16 @@ export const ScheduleDetailsModal: React.FC<ScheduleDetailsModalProps> = ({
   onClose,
   schedule,
   onDuplicate,
+  onRequestAdjustment,
+  onReviewAdjustment,
+  adjustmentRequest,
+  userRole,
 }) => {
   if (!schedule) return null;
+
+  const currentRole = String(userRole || localStorage.getItem("userRole") || "admin").toLowerCase();
+  const isProgramHead = currentRole === "program_head";
+  const isAdmin = currentRole === "admin" || currentRole === "dsa";
 
   const progTheme = getProgramTheme(schedule);
   const startTime =
@@ -50,6 +65,13 @@ export const ScheduleDetailsModal: React.FC<ScheduleDetailsModalProps> = ({
   const semester = schedule.semester || "1st Semester";
   const academicYear = schedule.academicYear || "2026-2027";
 
+  const hasPendingRequest =
+    adjustmentRequest?.status === "Pending" ||
+    String(adjustmentRequest?.status || "").toLowerCase() === "pending";
+  const hasRejectedRequest =
+    adjustmentRequest?.status === "Rejected" ||
+    String(adjustmentRequest?.status || "").toLowerCase() === "rejected";
+
   return (
     <Modal
       isOpen={isOpen}
@@ -61,6 +83,66 @@ export const ScheduleDetailsModal: React.FC<ScheduleDetailsModalProps> = ({
       description="Official Academic Schedule Assignment • Read-Only View"
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {/* Adjustment Request Banner (if any) */}
+        {hasPendingRequest && (
+          <div
+            style={{
+              padding: "10px 14px",
+              background: "rgba(245, 158, 11, 0.1)",
+              border: "1px solid rgba(245, 158, 11, 0.3)",
+              borderLeft: "4px solid #f59e0b",
+              borderRadius: 6,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.82rem", color: "#b45309" }}>
+              <Clock3 size={16} style={{ flexShrink: 0 }} />
+              <span>
+                <strong>Adjustment Request Pending:</strong> Program Head requested to move this block. Waiting for Admin review.
+              </span>
+            </div>
+            {isAdmin && onReviewAdjustment && adjustmentRequest && (
+              <button
+                type="button"
+                className="action-button"
+                onClick={() => {
+                  onClose();
+                  onReviewAdjustment(adjustmentRequest);
+                }}
+                style={{ padding: "4px 10px", fontSize: "0.78rem" }}
+              >
+                Review Request
+              </button>
+            )}
+          </div>
+        )}
+
+        {hasRejectedRequest && adjustmentRequest && (
+          <div
+            style={{
+              padding: "10px 14px",
+              background: "rgba(239, 68, 68, 0.08)",
+              border: "1px solid rgba(239, 68, 68, 0.25)",
+              borderLeft: "4px solid #ef4444",
+              borderRadius: 6,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              fontSize: "0.82rem",
+              color: "#b91c1c",
+            }}
+          >
+            <AlertCircle size={16} style={{ flexShrink: 0 }} />
+            <span>
+              <strong>Previous Adjustment Request Declined by Admin:</strong> {adjustmentRequest.adminResponse || "Request not approved."}
+            </span>
+          </div>
+        )}
+
         {/* Compact Integrated Subject Header Banner */}
         <div
           style={{
@@ -254,27 +336,56 @@ export const ScheduleDetailsModal: React.FC<ScheduleDetailsModalProps> = ({
         </div>
 
         {/* Action Footer */}
-        <div className="modal-actions">
-          {onDuplicate ? (
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={() => {
-                onClose();
-                onDuplicate(schedule);
-              }}
-              style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-            >
-              <Copy size={14} /> Duplicate Schedule
-            </button>
-          ) : (
-            <div />
-          )}
+        <div className="modal-actions" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8 }}>
+            {onDuplicate && (
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  onClose();
+                  onDuplicate(schedule);
+                }}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+              >
+                <Copy size={14} /> Duplicate Schedule
+              </button>
+            )}
+
+            {/* Program Head "Request Permission to Move" action button */}
+            {isProgramHead && onRequestAdjustment && (
+              <button
+                type="button"
+                className="action-button"
+                onClick={() => {
+                  onClose();
+                  onRequestAdjustment(schedule);
+                }}
+                disabled={hasPendingRequest}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  background: hasPendingRequest ? "var(--srcb-surface-alt)" : undefined,
+                  color: hasPendingRequest ? "var(--srcb-text-muted)" : undefined,
+                }}
+                title={
+                  hasPendingRequest
+                    ? "An adjustment request is currently pending review by Admin"
+                    : "Request permission from Admin to move this schedule block"
+                }
+              >
+                <ArrowRightLeft size={14} />
+                <span>{hasPendingRequest ? "Adjustment Pending" : "Request Permission to Move"}</span>
+              </button>
+            )}
+          </div>
+
           <button
             type="button"
-            className="action-button"
+            className="secondary-button"
             onClick={onClose}
-            style={{ minWidth: 100 }}
+            style={{ minWidth: 90 }}
           >
             Close
           </button>

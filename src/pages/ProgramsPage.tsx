@@ -31,7 +31,7 @@ export function ProgramsPage() {
       .then((res: any) => {
         const data = res.data?.data;
         if (Array.isArray(data)) {
-          const invalidCodes = new Set(["BSIT", "BSBA", "BSED", "BEED", "BSCRIM", "BSHM"]);
+          const invalidCodes = new Set(["BSIT", "BSBA", "BSA", "BSED", "BEED", "BSCRIM", "BSHM"]);
           const sanitized = data.filter((p: any) => !invalidCodes.has(String(p.code || p.name).trim().toUpperCase()));
           setPrograms(sanitized);
           if (sanitized.length > 0) {

@@ -5,7 +5,7 @@ async function listProgramMajors(req, res, next) {
     if (!['admin', 'super_admin', 'program_head'].includes(req.user?.role)) {
       return res.status(403).json({ error: 'Forbidden', code: 'UNAUTHORIZED_ROLE' });
     }
-    const rows = await programMajorsService.listProgramMajors();
+    const rows = await programMajorsService.listProgramMajors(req.user);
     return res.json({ data: rows });
   } catch (err) {
     return next(err);
@@ -17,7 +17,7 @@ async function getProgramMajorById(req, res, next) {
     if (!['admin', 'super_admin', 'program_head'].includes(req.user?.role)) {
       return res.status(403).json({ error: 'Forbidden', code: 'UNAUTHORIZED_ROLE' });
     }
-    const row = await programMajorsService.getProgramMajorById(req.params.id);
+    const row = await programMajorsService.getProgramMajorById(req.params.id, req.user);
     return res.json({ data: row });
   } catch (err) {
     if (err?.statusCode) return res.status(err.statusCode).json({ error: err.message });

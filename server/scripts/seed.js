@@ -76,7 +76,7 @@ async function run() {
     // 10. Courses
     const coursesList = [
       ['BSCS', 'Bachelor of Science in Computer Science', 'ITP', 4],
-      ['BSBA', 'Bachelor of Science in Business Administration', 'BSA', 4],
+      ['BSBA', 'Bachelor of Science in Business Administration', 'BAP', 4],
       ['BSCrim', 'Bachelor of Science in Criminology', 'CJEP', 4]
     ];
     for (const [code, name, program_code, duration] of coursesList) {

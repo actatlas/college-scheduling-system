@@ -1,8 +1,9 @@
 const { query } = require('../utils/db');
+const { resolveUserProgramScope, isProgramMatch } = require('../utils/programScope');
 
 const ALLOWED_YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'];
 
-async function listProgramMajors() {
+async function listProgramMajors(user = null) {
   const rows = await query(
     `SELECT pm.id, pm.code, pm.name, pm.program_code, pm.program_head_id, p.name AS program_name, u.name AS program_head_name
      FROM program_majors pm
@@ -11,7 +12,7 @@ async function listProgramMajors() {
      ORDER BY pm.name ASC`
   );
 
-  return rows.map((row) => ({
+  let mapped = rows.map((row) => ({
     id: Number(row.id),
     code: row.code,
     name: row.name,
@@ -20,9 +21,19 @@ async function listProgramMajors() {
     programName: row.program_name || '',
     programHeadName: row.program_head_name || '',
   }));
+
+  if (user?.role === 'program_head') {
+    const scope = resolveUserProgramScope(user);
+    mapped = mapped.filter((item) => {
+      if (item.programHeadId && Number(item.programHeadId) === Number(user.id)) return true;
+      return scope.allowedProgramCodes.some((code) => isProgramMatch(item.programCode, code) || isProgramMatch(item.code, code));
+    });
+  }
+
+  return mapped;
 }
 
-async function getProgramMajorById(id) {
+async function getProgramMajorById(id, user = null) {
   const [row] = await query(
     `SELECT pm.id, pm.code, pm.name, pm.program_code, pm.program_head_id, p.name AS program_name, u.name AS program_head_name
      FROM program_majors pm
@@ -38,7 +49,7 @@ async function getProgramMajorById(id) {
     throw err;
   }
 
-  return {
+  const result = {
     id: Number(row.id),
     code: row.code,
     name: row.name,
@@ -47,6 +58,19 @@ async function getProgramMajorById(id) {
     programName: row.program_name || '',
     programHeadName: row.program_head_name || '',
   };
+
+  if (user?.role === 'program_head') {
+    const scope = resolveUserProgramScope(user);
+    const isOwner = result.programHeadId && Number(result.programHeadId) === Number(user.id);
+    const isAllowed = scope.allowedProgramCodes.some((code) => isProgramMatch(result.programCode, code) || isProgramMatch(result.code, code));
+    if (!isOwner && !isAllowed) {
+      const err = new Error('Forbidden. You cannot access program majors outside your assigned program.');
+      err.statusCode = 403;
+      throw err;
+    }
+  }
+
+  return result;
 }
 
 async function createProgramMajor({ code, name, programCode, programHeadId }) {

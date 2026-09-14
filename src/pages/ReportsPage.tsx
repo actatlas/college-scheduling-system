@@ -14,6 +14,7 @@ import {
 import { api } from "../data/apiClient";
 import { useState, useEffect, useMemo } from "react";
 import { useToast } from "../components/common/Toast";
+import { useProgramContext } from "../contexts/ProgramContext";
 import { CardGridSkeleton, TableSkeleton } from "../components/common/Skeleton";
 import Logo from "../assets/images/Logo.png";
 
@@ -51,6 +52,10 @@ interface ReportSummary {
 
 export function ReportsPage() {
   const toast = useToast();
+  const { selectedProgram, programOptions } = useProgramContext();
+  const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
+  const isProgramHead = role === "program_head";
+
   const [activeTab, setActiveTab] = useState<"workload" | "rooms" | "cfl" | "master-loading">("workload");
   const [summary, setSummary] = useState<ReportSummary | null>(null);
   const [facultyWorkload, setFacultyWorkload] = useState<FacultyWorkloadRow[]>([]);
@@ -59,8 +64,14 @@ export function ReportsPage() {
   const [subjectsList, setSubjectsList] = useState<any[]>([]);
   const [isFetching, setIsFetching] = useState(true);
   const [query, setQuery] = useState("");
-  const [masterProgramFilter, setMasterProgramFilter] = useState<string>("All");
+  const [masterProgramFilter, setMasterProgramFilter] = useState<string>(isProgramHead ? selectedProgram.key : "All");
   const [masterStatusFilter, setMasterStatusFilter] = useState<string>("All");
+
+  useEffect(() => {
+    if (isProgramHead && selectedProgram.key && selectedProgram.key !== "ALL") {
+      setMasterProgramFilter(selectedProgram.key);
+    }
+  }, [isProgramHead, selectedProgram.key]);
 
   // Selected faculty for Certificate of Faculty Loading (CFL)
   const [selectedCflFacultyId, setSelectedCflFacultyId] = useState<string>("");
@@ -346,13 +357,25 @@ export function ReportsPage() {
                 value={masterProgramFilter}
                 onChange={(e) => setMasterProgramFilter(e.target.value)}
                 style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", fontSize: "0.84rem", fontWeight: 600 }}
+                disabled={isProgramHead && programOptions.length <= 1}
               >
-                <option value="All">All Academic Programs</option>
-                <option value="TEP">Teacher Education Program (TEP)</option>
-                <option value="BSHM">Hospitality Management (BSHM)</option>
-                <option value="CJEP">Criminal Justice (CJEP)</option>
-                <option value="BSBA">Business Administration (BSBA)</option>
-                <option value="BSIT">Information Technology (BSIT)</option>
+                {!isProgramHead && <option value="All">All Academic Programs</option>}
+                {programOptions
+                  .filter((p) => p.key !== "ALL")
+                  .map((p) => (
+                    <option key={p.key} value={p.key}>
+                      {p.label} ({p.shortLabel})
+                    </option>
+                  ))}
+                {!isProgramHead && programOptions.filter((p) => p.key !== "ALL").length === 0 && (
+                  <>
+                    <option value="TEP">Teacher Education Program (TEP)</option>
+                    <option value="BSHM">Hospitality Management (BSHM)</option>
+                    <option value="CJEP">Criminal Justice (CJEP)</option>
+                    <option value="BSBA">Business Administration (BSBA)</option>
+                    <option value="BSIT">Information Technology (BSIT)</option>
+                  </>
+                )}
               </select>
 
               <select
