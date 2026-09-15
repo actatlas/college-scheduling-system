@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, cleanup, within } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
 import { SchedulesPage } from "../SchedulesPage";
 import { ProgramProvider } from "../../contexts/ProgramContext";
@@ -110,7 +110,7 @@ describe("SchedulesPage Stacked Display in Same Time Slot", () => {
     });
   });
 
-  it("displays multiple schedules in the same slot stacked on top of each other", async () => {
+  it("displays multiple schedules with exact same day and time in one compact stack card", async () => {
     render(
       <BrowserRouter>
         <ToastProvider>
@@ -123,25 +123,17 @@ describe("SchedulesPage Stacked Display in Same Time Slot", () => {
       </BrowserRouter>
     );
 
-    // Wait for the schedules to be loaded and timetable grid to render
-    await waitFor(() => {
-      expect(screen.getByText(/Stacked \(2\)/i)).toBeInTheDocument();
-    });
+    const stackCard = await screen.findByTestId("same-time-stack-card");
+    expect(stackCard).toBeInTheDocument();
 
-    // Both cards should be rendered and visible in the stacked slot
-    expect(screen.getByText("CC101")).toBeInTheDocument();
-    expect(screen.getByText("Introduction to Computing")).toBeInTheDocument();
-    expect(screen.getByText("IT201")).toBeInTheDocument();
-    expect(screen.getByText("Data Structures and Algorithms")).toBeInTheDocument();
-
-    // Clicking CC101 brings it to the front
-    const cc101Element = screen.getByText("CC101").closest(".stacked-card-wrapper");
-    expect(cc101Element).toBeInTheDocument();
-    fireEvent.click(cc101Element!);
-    expect(cc101Element).toHaveClass("is-front");
+    expect(within(stackCard).getByText("2 CLASSES")).toBeInTheDocument();
+    expect(within(stackCard).getByText("08:00 AM - 09:30 AM")).toBeInTheDocument();
+    expect(within(stackCard).getByText("CC101")).toBeInTheDocument();
+    expect(within(stackCard).getByText("IT201")).toBeInTheDocument();
+    expect(within(stackCard).getByText(/View 2 Classes/i)).toBeInTheDocument();
   });
 
-  it("allows toggling between stacked on top mode and expanded mode", async () => {
+  it("opens the Stacked Schedules Modal when clicking the stack card, showing all classes", async () => {
     render(
       <BrowserRouter>
         <ToastProvider>
@@ -154,22 +146,23 @@ describe("SchedulesPage Stacked Display in Same Time Slot", () => {
       </BrowserRouter>
     );
 
+    const stackCard = await screen.findByTestId("same-time-stack-card");
+    expect(stackCard).toBeInTheDocument();
+    fireEvent.click(stackCard);
+
+    // Verify modal appears with all schedules and readable metadata
     await waitFor(() => {
-      expect(screen.getByText(/Stacked \(2\)/i)).toBeInTheDocument();
+      expect(screen.getByText(/2 Concurrent Classes Scheduled/i)).toBeInTheDocument();
     });
 
-    // Check stack mode container
-    const stackContainer = screen.getByText(/Stacked \(2\)/i).closest(".stacked-schedule-container");
-    const stackElement = stackContainer?.querySelector(".stacked-cards-stack");
-    expect(stackElement).toHaveClass("mode-stacked");
+    const modalContent = document.querySelector(".stacked-group-modal-content") as HTMLElement;
+    expect(modalContent).toBeInTheDocument();
 
-    // Click toggle button to Expand
-    const toggleBtn = screen.getByLabelText("Toggle stack view mode");
-    fireEvent.click(toggleBtn);
-    expect(stackElement).toHaveClass("mode-expanded");
-
-    // Click toggle button again to Stack back
-    fireEvent.click(toggleBtn);
-    expect(stackElement).toHaveClass("mode-stacked");
+    expect(within(modalContent).getByText("Introduction to Computing")).toBeInTheDocument();
+    expect(within(modalContent).getByText("Data Structures and Algorithms")).toBeInTheDocument();
+    expect(within(modalContent).getByText(/Prof. Ada Lovelace/i)).toBeInTheDocument();
+    expect(within(modalContent).getByText(/Dr. Alan Turing/i)).toBeInTheDocument();
+    expect(within(modalContent).getByText(/COL-101/i)).toBeInTheDocument();
+    expect(within(modalContent).getByText(/COL-102/i)).toBeInTheDocument();
   });
 });

@@ -45,7 +45,7 @@ function isGeneralEducationSubject(code, programCode, name) {
   const cleanProg = String(programCode || '').trim().toUpperCase();
   const cleanName = String(name || '').trim().toUpperCase();
   if (['ALL', 'GEN', 'GENED', 'GENERAL EDUCATION', 'UNIVERSAL'].includes(cleanProg)) return true;
-  if (/^(GE|GEC|NSTP|PE|PATHFIT|RIZAL|MATH|ENG|FIL|SOC|HUM|HIST|RS|THEOLOGY|CWTS|ROTC)\b/i.test(cleanCode)) return true;
+  if (/^(GE|GEC|NSTP|PE|PATHFIT|RIZAL|RS|THEOLOGY|CWTS|ROTC)\b/i.test(cleanCode)) return true;
   if (/^GE[\s-]*\d+/i.test(cleanCode) || /^PE[\s-]*\d+/i.test(cleanCode) || /^NSTP[\s-]*\d+/i.test(cleanCode) || /^RS[\s-]*\d+/i.test(cleanCode) || /^PATHFIT[\s-]*\d+/i.test(cleanCode)) return true;
   if (cleanName.includes('GENERAL EDUCATION') || cleanName.includes('UNDERSTANDING THE SELF') || cleanName.includes('READINGS IN PHILIPPINE') || cleanName.includes('PURPOSIVE COMMUNICATION')) return true;
   return false;

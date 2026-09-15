@@ -36,7 +36,6 @@ import {
   Monitor,
   ShieldCheck,
   Layers,
-  LayoutList,
   Copy,
   Loader2,
   Printer,
@@ -293,29 +292,25 @@ interface DayTimelineBlock {
 function buildDayTimelineBlocks(daySchedules: ClassScheduleItem[]): DayTimelineBlock[] {
   if (!daySchedules || daySchedules.length === 0) return [];
 
-  // 1. Group items that start in the exact same slot index (same start time)
-  // so concurrent subjects in the same time slot become a unified card deck
-  const slotMap = new Map<number, { startIdx: number; span: number; endIdx: number; slot: string; items: ClassScheduleItem[] }>();
+  // 1. Group items that have the exact same start time AND exact same duration span
+  // so exact same-time schedules become a unified compact stack
+  const exactTimeMap = new Map<string, { startIdx: number; span: number; endIdx: number; slot: string; items: ClassScheduleItem[] }>();
 
   for (const item of daySchedules) {
     const startIdx = Math.max(0, getScheduleStartSlotIdx(item.time));
     const span = Math.max(1, getScheduleRowSpan(item.time));
     const endIdx = Math.min(TIME_SLOTS.length, startIdx + span);
-    const slotStr = TIME_SLOTS[startIdx] || "07:00 AM - 07:30 AM";
+    const slotStr = item.time || (TIME_SLOTS[startIdx] ? `${TIME_SLOTS[startIdx].split("-")[0].trim()} - ${TIME_SLOTS[endIdx - 1]?.split("-")[1]?.trim() || ''}` : "07:00 AM - 07:30 AM");
+    const exactKey = `${startIdx}_${span}`;
 
-    if (!slotMap.has(startIdx)) {
-      slotMap.set(startIdx, { startIdx, span, endIdx, slot: slotStr, items: [item] });
+    if (!exactTimeMap.has(exactKey)) {
+      exactTimeMap.set(exactKey, { startIdx, span, endIdx, slot: slotStr, items: [item] });
     } else {
-      const existing = slotMap.get(startIdx)!;
-      existing.items.push(item);
-      if (span > existing.span) {
-        existing.span = span;
-        existing.endIdx = Math.min(TIME_SLOTS.length, startIdx + span);
-      }
+      exactTimeMap.get(exactKey)!.items.push(item);
     }
   }
 
-  const rawBlocks = Array.from(slotMap.values());
+  const rawBlocks = Array.from(exactTimeMap.values());
 
   // 2. Sort by startIdx ascending, then span descending
   rawBlocks.sort((a, b) => a.startIdx - b.startIdx || b.span - a.span);
@@ -401,6 +396,7 @@ interface StackedScheduleCellProps {
   onDelete: (item: ClassScheduleItem) => void;
   onView: (item: ClassScheduleItem) => void;
   onAddAtSlot: (day: string, slotTime: string) => void;
+  onOpenStackGroup?: (group: { day: string; slot: string; schedules: ClassScheduleItem[] }) => void;
 }
 
 function StackedScheduleCell({
@@ -414,25 +410,9 @@ function StackedScheduleCell({
   onDelete,
   onView,
   onAddAtSlot,
+  onOpenStackGroup,
 }: StackedScheduleCellProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [frontCardId, setFrontCardId] = useState<string | null>(null);
-
   const isStacked = schedules.length > 1;
-
-  // Active index for carousel flipper controls
-  const activeIdx = useMemo(() => {
-    if (!frontCardId) return schedules.length - 1;
-    const found = schedules.findIndex((s) => s.id === frontCardId);
-    return found >= 0 ? found : schedules.length - 1;
-  }, [schedules, frontCardId]);
-
-
-  const distinctRooms = useMemo(() => {
-    return Array.from(new Set(schedules.map((s) => s.room).filter(Boolean)));
-  }, [schedules]);
-
-  const hasRoomClash = distinctRooms.length < schedules.length;
 
   const renderCard = (item: ClassScheduleItem, isCompact = false) => {
     if (!item) return null;
@@ -450,23 +430,16 @@ function StackedScheduleCell({
             JSON.stringify({ type: "move_schedule", item })
           );
         }}
-        onClick={(e) => {
-          e.stopPropagation();
-          setFrontCardId(item.id);
-          onView(item);
-        }}
-        title="Click to view official schedule details and actions"
+        onClick={() => onView(item)}
+        role="button"
+        tabIndex={0}
+        aria-label={`View class ${item.subjectCode} ${item.subject} scheduled ${item.day} ${item.time}`}
         style={{
-          borderLeft: `5px solid ${cardBorderColor}`,
-          borderRadius: 6,
-          padding: isCompact ? "5px 7px" : "6px 8px",
-          marginBottom: 0,
+          borderLeftColor: cardBorderColor,
           height: "100%",
-          boxSizing: "border-box",
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
-          textAlign: "left",
           cursor: canCreate ? "grab" : "pointer",
           overflow: "hidden",
         }}
@@ -626,7 +599,7 @@ function StackedScheduleCell({
 
   if (!isStacked) {
     return (
-      <div className="stacked-schedule-container" style={{ height: "100%", display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
+      <div className="single-schedule-container" style={{ height: "100%", display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
         <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
           {renderCard(schedules[0])}
         </div>
@@ -634,94 +607,76 @@ function StackedScheduleCell({
     );
   }
 
-  return (
-    <div className="stacked-schedule-container" style={{ height: "100%", display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
-      <div className="stacked-schedule-header">
-        <span className="stacked-pill-badge" title={`${schedules.length} classes scheduled in this time slot`}>
-          <Layers size={11} /> Stacked ({schedules.length})
-        </span>
+  // 2+ Schedules with exact same Day, Start Time, and End Time
+  const timeStr = schedules[0]?.time || slot;
+  const distinctRooms = Array.from(new Set(schedules.map((s) => s.room).filter(Boolean)));
+  const hasRoomClash = distinctRooms.length < schedules.length;
 
-        {distinctRooms.length > 1 && (
-          <span
-            style={{
-              fontSize: "0.66rem",
-              fontWeight: 700,
-              color: hasRoomClash ? "#dc2626" : "#15803d",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 2,
-            }}
-            title={hasRoomClash ? "Warning: Same room scheduled multiple times" : `${distinctRooms.length} distinct rooms scheduled`}
-          >
-            {hasRoomClash ? <AlertTriangle size={10} /> : <CheckCircle2 size={10} />}
-            {hasRoomClash ? "Room Conflict" : `${distinctRooms.length} Rooms`}
+  return (
+    <div
+      data-testid="same-time-stack-card"
+      className={`same-time-stack-card ${hasRoomClash ? "has-room-clash" : ""}`}
+      onClick={() => onOpenStackGroup?.({ day, slot: timeStr, schedules })}
+      role="button"
+      tabIndex={0}
+      aria-label={`${schedules.length} classes scheduled on ${day} ${timeStr}. Click to view all.`}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpenStackGroup?.({ day, slot: timeStr, schedules });
+        }
+      }}
+    >
+      <div className="same-time-stack-header">
+        <div className="same-time-stack-title-row">
+          <span className="same-time-stack-badge">
+            <Layers size={11} />
+            <span>{schedules.length} CLASSES</span>
+          </span>
+          <span className="same-time-stack-time">
+            <Clock size={10} />
+            {timeStr}
+          </span>
+        </div>
+
+        {hasRoomClash ? (
+          <span className="same-time-conflict-pill" title="Multiple classes share the same room at this time">
+            <AlertTriangle size={10} /> Room Conflict
+          </span>
+        ) : distinctRooms.length > 1 ? (
+          <span className="same-time-rooms-pill" title={`${distinctRooms.length} rooms in use: ${distinctRooms.join(", ")}`}>
+            <Building2 size={10} /> {distinctRooms.length} Rooms
+          </span>
+        ) : (
+          <span className="same-time-rooms-pill" title={`Room ${distinctRooms[0]}`}>
+            <DoorOpen size={10} /> {distinctRooms[0] || "TBA"}
           </span>
         )}
+      </div>
 
-        <div className="stacked-header-actions">
-          <button
-            type="button"
-            className="stacked-view-toggle-btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsExpanded((prev) => !prev);
-            }}
-            title={isExpanded ? "Collapse to stacked view" : "Expand all cards"}
-            aria-label="Toggle stack view mode"
-          >
-            {isExpanded ? <Layers size={10} /> : <LayoutList size={10} />}
-            <span>{isExpanded ? "Stack" : "Expand"}</span>
-          </button>
+      {/* Subject codes summary */}
+      <div className="same-time-stack-subjects" title={schedules.map((s) => `${s.subjectCode} (${s.section || s.room})`).join(", ")}>
+        <div className="same-time-stack-subject-pills">
+          {schedules.slice(0, 4).map((item, idx) => {
+            const sTheme = getProgramTheme(item);
+            return (
+              <span key={item.id || idx} className="same-time-subject-chip" style={{ borderLeftColor: sTheme.primary }}>
+                <span className="subject-chip-code">{item.subjectCode}</span>
+                {item.section && <span className="subject-chip-sec">({item.section})</span>}
+              </span>
+            );
+          })}
+          {schedules.length > 4 && (
+            <span className="same-time-more-chip">+{schedules.length - 4} more</span>
+          )}
         </div>
       </div>
 
-      {/* Room Tabs Strip */}
-      <div className="stacked-room-tabs" style={{ flexShrink: 0 }} aria-label="Room tabs for concurrent classes">
-        {schedules.map((item, idx) => {
-          const isFront = frontCardId ? frontCardId === item.id : idx === schedules.length - 1;
-          const sTheme = getProgramTheme(item);
-          return (
-            <button
-              key={item.id}
-              type="button"
-              className={`stacked-room-pill ${isFront ? "is-active" : ""}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                setFrontCardId(item.id);
-              }}
-              title={`Switch to Room ${item.room} (${sTheme.code} · ${item.subjectCode})`}
-            >
-              <span className="stacked-room-dot" style={{ backgroundColor: sTheme.primary }} />
-              <span>{item.room || `R${idx + 1}`}</span>
-              <span style={{ fontSize: "0.58rem", opacity: 0.9 }}>({sTheme.code})</span>
-            </button>
-          );
-        })}
-      </div>
-
-      <div
-        className={`stacked-cards-stack ${isExpanded ? "mode-expanded" : "mode-stacked"}`}
-        style={{ flex: 1, minHeight: 0, position: "relative" }}
-      >
-        {schedules.map((item, idx) => {
-          const isFront = frontCardId ? frontCardId === item.id : idx === schedules.length - 1;
-          const currentActiveIdx = activeIdx >= 0 ? activeIdx : schedules.length - 1;
-          const stackDepth = isFront ? 0 : ((idx - currentActiveIdx + schedules.length) % schedules.length);
-
-          return (
-            <div
-              key={item.id}
-              className={`stacked-card-wrapper ${isFront ? "is-front" : "is-behind"}`}
-              style={{
-                zIndex: isFront ? 20 : 15 - Math.min(stackDepth, 10),
-                ["--stack-depth" as any]: stackDepth,
-              }}
-              onClick={() => setFrontCardId(item.id)}
-            >
-              {renderCard(item, true)}
-            </div>
-          );
-        })}
+      {/* Footer link */}
+      <div className="same-time-stack-footer">
+        <span className="same-time-view-cta">
+          View {schedules.length} Classes <ArrowRight size={11} />
+        </span>
       </div>
     </div>
   );
@@ -779,6 +734,7 @@ export function SchedulesPage() {
   const [requestToReview, setRequestToReview] = useState<ScheduleAdjustmentRequest | null>(null);
   const [adjustmentRequests, setAdjustmentRequests] = useState<ScheduleAdjustmentRequest[]>([]);
   const [scheduleToDelete, setScheduleToDelete] = useState<ClassScheduleItem | null>(null);
+  const [activeStackGroup, setActiveStackGroup] = useState<{ day: string; slot: string; schedules: ClassScheduleItem[] } | null>(null);
   const [isDraggingGrid, setIsDraggingGrid] = useState(false);
   const [dragStart, setDragStart] = useState<{ day: string; slotIdx: number } | null>(null);
   const [dragCurrent, setDragCurrent] = useState<{ day: string; slotIdx: number } | null>(null);
@@ -2702,6 +2658,7 @@ export function SchedulesPage() {
                                       onDelete={(item) => setScheduleToDelete(item)}
                                       onView={(item) => setViewingSchedule(item)}
                                       onAddAtSlot={handleOpenAddAtSlot}
+                                      onOpenStackGroup={(group) => setActiveStackGroup(group)}
                                     />
                                   </div>
                                 ))}
@@ -3904,6 +3861,162 @@ export function SchedulesPage() {
                   <span>{loading ? "Saving…" : (editingSchedule ? "Save Schedule Changes" : "Confirm & Schedule Block")}</span>
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Stacked Same-Time Schedules Group Modal */}
+      <Modal
+        isOpen={Boolean(activeStackGroup)}
+        onClose={() => setActiveStackGroup(null)}
+        title={`${activeStackGroup?.day || ""} • ${activeStackGroup?.slot || ""} (${activeStackGroup?.schedules.length || 0} Scheduled Classes)`}
+        size="lg"
+      >
+        {activeStackGroup && (
+          <div className="stacked-group-modal-content">
+            <div className="stacked-group-modal-banner">
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ padding: "8px", borderRadius: 8, background: "rgba(37, 99, 235, 0.1)", color: "var(--srcb-royal, #2563eb)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Layers size={20} />
+                </div>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: "0.95rem", fontWeight: 700, color: "var(--srcb-navy, #0f2c59)" }}>
+                    {activeStackGroup.schedules.length} Concurrent Classes Scheduled
+                  </h4>
+                  <p style={{ margin: "2px 0 0", fontSize: "0.8rem", color: "var(--srcb-text-muted, #64748b)" }}>
+                    All classes below are scheduled simultaneously on {activeStackGroup.day} from {activeStackGroup.slot}.
+                  </p>
+                </div>
+              </div>
+
+              {Array.from(new Set(activeStackGroup.schedules.map((s) => s.room).filter(Boolean))).length < activeStackGroup.schedules.length && (
+                <div className="stacked-group-conflict-alert">
+                  <AlertTriangle size={16} style={{ flexShrink: 0 }} />
+                  <span><strong>Room Conflict Detected:</strong> Multiple classes are assigned to the same room at this time slot.</span>
+                </div>
+              )}
+            </div>
+
+            <div className="stacked-group-modal-list">
+              {activeStackGroup.schedules.map((item, index) => {
+                const sTheme = getProgramTheme(item);
+                return (
+                  <div
+                    key={item.id || index}
+                    className="stacked-group-modal-card"
+                    style={{ borderLeftColor: sTheme.primary }}
+                    onClick={() => {
+                      setViewingSchedule(item);
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`View class ${item.subjectCode} - ${item.subject}`}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setViewingSchedule(item);
+                      }
+                    }}
+                  >
+                    <div className="stacked-group-modal-card-header">
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span className="stacked-card-code" style={{ color: sTheme.primary }}>
+                          {item.subjectCode}
+                        </span>
+                        <span
+                          className="program-card-badge"
+                          style={{
+                            backgroundColor: sTheme.badgeBg,
+                            color: sTheme.badgeText,
+                          }}
+                        >
+                          {sTheme.code}
+                        </span>
+                        <span className={`pill ${item.isMajor ? "pill--royal" : "pill--slate"}`} style={{ fontSize: "0.68rem" }}>
+                          {item.classMode === "Laboratory" || String(item.roomType || "").toLowerCase().includes("lab") ? "Major Lab (3h)" : item.isMajor ? "Major Lec (2h)" : "Minor (1.5h)"}
+                        </span>
+                        {item.modality === "Online" && (
+                          <span className="pill pill--emerald" style={{ fontSize: "0.68rem" }}>Online</span>
+                        )}
+                      </div>
+
+                      <div className="stacked-card-actions" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          style={{ padding: "4px 10px", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: 4 }}
+                          onClick={() => setViewingSchedule(item)}
+                          title="View Full Details"
+                        >
+                          <Eye size={12} />
+                          <span>Details</span>
+                        </button>
+
+                        {canCreate && (
+                          <>
+                            <button
+                              type="button"
+                              className="icon-button icon-button--sm"
+                              onClick={() => {
+                                setActiveStackGroup(null);
+                                handleEdit(item);
+                              }}
+                              title="Edit Schedule Block"
+                              style={{ width: 26, height: 26 }}
+                            >
+                              <Edit2 size={12} />
+                            </button>
+                            <button
+                              type="button"
+                              className="icon-button icon-button--sm icon-button--danger"
+                              onClick={() => {
+                                setActiveStackGroup(null);
+                                setScheduleToDelete(item);
+                              }}
+                              title="Delete Schedule Block"
+                              style={{ width: 26, height: 26 }}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Subject Title */}
+                    <div className="stacked-group-modal-subject-title">
+                      {item.subject}
+                    </div>
+
+                    {/* Metadata Grid */}
+                    <div className="stacked-group-modal-meta-grid">
+                      <div className="stacked-meta-item">
+                        <GraduationCap size={13} className="meta-icon" />
+                        <span><strong>Section:</strong> {item.section || "N/A"}</span>
+                        {item.isCombinedCohort && (
+                          <span className="pill pill--cyan" style={{ fontSize: "0.62rem", padding: "0 4px" }}>Combined</span>
+                        )}
+                      </div>
+
+                      <div className="stacked-meta-item">
+                        <UserCheck size={13} className="meta-icon" />
+                        <span><strong>Instructor:</strong> {item.faculty || "Unassigned"}</span>
+                      </div>
+
+                      <div className="stacked-meta-item">
+                        <DoorOpen size={13} className="meta-icon" />
+                        <span><strong>Room:</strong> {item.room || "TBA"} ({item.building || "College Building"})</span>
+                      </div>
+
+                      <div className="stacked-meta-item">
+                        <Clock size={13} className="meta-icon" />
+                        <span><strong>Time:</strong> {item.time}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

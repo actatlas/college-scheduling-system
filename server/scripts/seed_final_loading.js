@@ -53,7 +53,20 @@ async function seedFinalLoading() {
       `, [code, name, pCode]);
     }
 
-    // 4. Courses
+    // 4. Year Levels for all Program Majors
+    const [allMajors] = await conn.query('SELECT id, code FROM program_majors');
+    const yearLevelNames = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
+    for (const major of allMajors) {
+      for (const yl of yearLevelNames) {
+        await conn.query(`
+          INSERT INTO year_levels (program_major_id, year_level)
+          VALUES (?, ?)
+          ON DUPLICATE KEY UPDATE year_level = VALUES(year_level)
+        `, [major.id, yl]);
+      }
+    }
+
+    // 5. Courses
     const courses = [
       ['BSCRIM', 'Bachelor of Science in Criminology', 'CJEP', 4],
       ['BSED', 'Bachelor of Secondary Education', 'TEP', 4],
@@ -66,17 +79,24 @@ async function seedFinalLoading() {
       await conn.query(`
         INSERT INTO courses (code, name, program_code, year_duration)
         VALUES (?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE name = VALUES(name), program_code = VALUES(program_code)
+        ON DUPLICATE KEY UPDATE name = VALUES(name), program_code = VALUES(program_code), year_duration = VALUES(year_duration)
       `, [code, name, pCode, dur]);
     }
 
-    // 5. Teachers from Final Loading Document
+    // 6. Teachers from Final Loading Document & Existing Faculty
+    const [majorsRows] = await conn.query('SELECT id, code, program_code FROM program_majors');
+    const majorMap = {};
+    for (const m of majorsRows) {
+      if (!majorMap[m.program_code]) majorMap[m.program_code] = m.id;
+      majorMap[m.code] = m.id;
+    }
+
     const facultyList = [
-      ['T-ABEJ-G', 'ABEJARON, Godilla K.', 'Full-Time', 'TEP'],
-      ['T-ABEJ-R', 'ABEJARON, Rene K.', 'Full-Time', 'TEP'],
+      ['T-ABEJ-G', 'ABEJARON, Godilla K.', 'Full-Time', 'ALL'],
+      ['T-ABEJ-R', 'ABEJARON, Rene K.', 'Full-Time', 'ALL'],
       ['T-BACO', 'BACOMO, Paul Francis', 'Full-Time', 'ALL'],
       ['T-CAGA', 'CAGAS, Rina Lorraine D.', 'Full-Time', 'TEP'],
-      ['T-LACA', 'LACAY, Maricor', 'Full-Time', 'TEP'],
+      ['T-LACA', 'LACAY, Maricor', 'Full-Time', 'ALL'],
       ['T-LLOR', 'LLOREN, Baltazar', 'Full-Time', 'ALL'],
       ['T-LUMA', 'LUMACAD, Gernel', 'Full-Time', 'ALL'],
       ['T-OCLA', 'OCLARIT, Manuel', 'Full-Time', 'ALL'],
@@ -86,15 +106,15 @@ async function seedFinalLoading() {
       ['T-VALM', 'VALMORIA, Dominic A.', 'Full-Time', 'HMP'],
       ['T-LABO', 'LABOR, Frau Anjenet G.', 'Part-Time', 'HMP'],
       ['T-ACOB', 'ACOBO, Aliyah', 'Part-Time', 'TEP'],
-      ['T-AWIT', 'AWITIN, Marilou', 'Part-Time', 'BAP'],
+      ['T-AWIT', 'AWITIN, Marilou', 'Part-Time', 'ALL'],
       ['T-CALO', 'CALOTES, Francis', 'Part-Time', 'TEP'],
-      ['T-DAGU', 'DAGUIMOL, Mark Don V.', 'Part-Time', 'ITP'],
-      ['T-DAPA', 'DAPAT, Henebe', 'Part-Time', 'TEP'],
+      ['T-DAGU', 'DAGUIMOL, Mark Don V.', 'Part-Time', 'ALL'],
+      ['T-DAPA', 'DAPAT, Henebe', 'Part-Time', 'ALL'],
       ['T-GODI', 'GODINEZ, Charles Darwin O.', 'Full-Time', 'TEP'],
       ['T-MAGA', 'MAGALLON, Daniel A.', 'Part-Time', 'TEP'],
       ['T-NAEL', 'NAELGA, Ronald', 'Part-Time', 'TEP'],
       ['T-LONO', 'LONOY, Ryan', 'Part-Time', 'TEP'],
-      ['T-SANT', 'SANTUA, Ly', 'Part-Time', 'ALL'],
+      ['T-SANT', 'SANTUA, LY', 'Part-Time', 'ALL'],
       ['T-SOBR', 'SOBRADO, Nino', 'Part-Time', 'HMP'],
       ['T-JO', 'JO, Loraine', 'Part-Time', 'TEP'],
       ['T-RANO', 'RANOCO, Ian', 'Part-Time', 'ALL'],
@@ -102,14 +122,15 @@ async function seedFinalLoading() {
     ];
 
     for (const [id, name, status, pCode] of facultyList) {
+      const progMajorId = pCode && pCode !== 'ALL' && majorMap[pCode] ? majorMap[pCode] : null;
       await conn.query(`
-        INSERT INTO teachers (id, name, status)
-        VALUES (?, ?, ?)
-        ON DUPLICATE KEY UPDATE name = VALUES(name), status = VALUES(status)
-      `, [id, name, status]);
+        INSERT INTO teachers (id, name, status, program_major_id)
+        VALUES (?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE name = VALUES(name), status = VALUES(status), program_major_id = VALUES(program_major_id)
+      `, [id, name, status, progMajorId]);
     }
 
-    // 6. Rooms from Final Loading Document
+    // 7. Rooms from Final Loading Document
     const roomsList = [
       ['101', 45, 'Main Building', 'Lecture', 'active'],
       ['301', 45, 'Main Building', 'Lecture', 'active'],
@@ -143,7 +164,7 @@ async function seedFinalLoading() {
       `, [number, cap, bld, type, st]);
     }
 
-    // 7. Sections
+    // 8. Sections
     const sectionRows = [
       // CJEP
       ['BSCRIM', 1, '1-A', 'T-DAGA', 35],
@@ -155,6 +176,10 @@ async function seedFinalLoading() {
       ['BSED', 2, '2-A', 'T-SALV', 30],
       ['BSED', 3, '3-A', 'T-CAGA', 28],
       ['BSED', 4, '4-A', 'T-CAGA', 25],
+      ['BEED', 1, '1-A', 'T-SALV', 25],
+      ['BEED', 2, '2-A', 'T-SALV', 25],
+      ['BEED', 3, '3-A', 'T-CAGA', 20],
+      ['BEED', 4, '4-A', 'T-CAGA', 20],
       // IT
       ['BSIT', 1, '1-A', 'T-DAGU', 30],
       ['BSIT', 2, '2-A', 'T-DAGU', 25],
@@ -190,17 +215,20 @@ async function seedFinalLoading() {
       }
     }
 
-    // 8. Subjects from Document
+    // 9. Subjects from Document
     const subjectsData = [
       // CJEP Subjects
       ['GE 2', 'Readings in Philippine History', 3, 3, 0, 'ALL', 'T-LACA'],
       ['CRIM 1', 'Introduction to Criminology', 3, 3, 0, 'CJEP', 'T-MARC'],
       ['GE 4', 'Mathematics in the Modern World', 3, 3, 0, 'ALL', 'T-OCLA'],
       ['RS 1', 'Essentials of Catholic Faith and Life', 3, 3, 0, 'ALL', 'T-LLOR'],
+      ['RS 1A', 'Essentials of Catholic Faith and Life (HM/CJEP)', 3, 3, 0, 'ALL', 'T-LLOR'],
       ['GE 1', 'Understanding the Self', 3, 3, 0, 'ALL', 'T-SANT'],
       ['AS 1', 'Arnis and Disarming Techniques', 3, 2, 1, 'CJEP', 'T-MARC'],
       ['CLJ 1', 'Introduction to Philippine Criminal Justice System', 3, 3, 0, 'CJEP', 'T-MARC'],
       ['RS 2', 'Religions, Religious Experience, and Spirituality', 3, 3, 0, 'ALL', 'T-BACO'],
+      ['RS 2A', 'Religions, Religious Experience, and Spirituality (BA/HM)', 3, 3, 0, 'ALL', 'T-BACO'],
+      ['RS 2B', 'Religions, Religious Experience, and Spirituality (BA/CJEP)', 3, 3, 0, 'ALL', 'T-BACO'],
       ['LEA 1', 'Law Enforcement Organization and Administration', 3, 3, 0, 'CJEP', 'T-MARC'],
       ['Forensic 1', 'Forensic Photography', 4, 3, 1, 'CJEP', 'T-MARC'],
       ['CD 1', 'Fundamentals of Criminal Investigation', 3, 3, 0, 'CJEP', 'T-MARC'],
@@ -223,50 +251,61 @@ async function seedFinalLoading() {
       ['PIC', 'Philippine Indigenous Communities', 3, 3, 0, 'CJEP', 'T-DAPA'],
       ['CJE-E1', 'Criminology Professional Practicum (Mock Board)', 3, 0, 3, 'CJEP', 'T-MARC'],
 
-      // TEP Subjects
+      // TEP Professional Education & Major Subjects
       ['Fil 109', 'Paghahanda at Ebalwasyon ng Kagamitang Panturo', 3, 3, 0, 'TEP', 'T-ABEJ-G'],
       ['Fil 108', 'Mga Natatanging Diskurso sa Wika at Panitikan', 3, 3, 0, 'TEP', 'T-ABEJ-G'],
       ['ELT 3', 'Language Learning Materials Development', 3, 3, 0, 'TEP', 'T-ABEJ-G'],
       ['Educ 1', 'The Teaching Profession', 3, 3, 0, 'TEP', 'T-ABEJ-G'],
       ['Educ 3', 'Facilitating Learner-Centered Teaching', 3, 3, 0, 'TEP', 'T-ABEJ-G'],
-      ['EDUC 2', 'The Child and Adolescent Learners', 3, 3, 0, 'TEP', 'T-ACOB'],
+      ['EDUC 2', 'The Child and Adolescent Learners and Learning Principles', 3, 3, 0, 'TEP', 'T-ACOB'],
       ['S101', 'Earth Science', 3, 3, 0, 'TEP', 'T-ABEJ-R'],
       ['C101', 'Inorganic Chemistry', 5, 3, 2, 'TEP', 'T-ABEJ-R'],
       ['S105', 'The Teaching of Science', 3, 3, 0, 'TEP', 'T-ABEJ-R'],
       ['S104', 'Meteorology', 3, 3, 0, 'TEP', 'T-ABEJ-R'],
       ['B102', 'Microbiology and Parasitology', 4, 3, 1, 'TEP', 'T-ABEJ-R'],
       ['C107', 'Biochemistry', 3, 3, 0, 'TEP', 'T-ABEJ-R'],
-      ['ELEC 1', 'Malikhaing Pagsulat / Creative Writing', 3, 3, 0, 'TEP', 'T-LACA'],
-      ['Educ 6', 'Building and Enhancing New Literacies', 3, 3, 0, 'TEP', 'T-LACA'],
-      ['Fil 110', 'Pagtuturo at Pagtataya ng Makrong Kasanayan', 3, 3, 0, 'TEP', 'T-LACA'],
+      ['ELEC 1', 'Malikhaing Pagsulat', 3, 3, 0, 'TEP', 'T-LACA'],
+      ['ELECT 1', 'Creative Writing', 3, 3, 0, 'TEP', 'T-LACA'],
+      ['Educ 6', 'Building and Enhancing Skills Across Curriculum', 3, 3, 0, 'TEP', 'T-LACA'],
+      ['Fil 110', 'Pagtuturo at Pagtataya ng Makrong Kasanayang Pangwika', 3, 3, 0, 'TEP', 'T-LACA'],
+      ['ELT 4', 'Teaching and Assessment of Macro Skills', 3, 3, 0, 'TEP', 'T-LACA'],
+      ['Lit 1', 'Children and Adolescent Literature', 3, 3, 0, 'TEP', 'T-LACA'],
       ['EDUC 5', 'The Teacher and the School Curriculum', 3, 3, 0, 'TEP', 'T-SALV'],
       ['EDUC 7', 'Foundation of Special and Inclusive Education', 3, 3, 0, 'TEP', 'T-SALV'],
-      ['ELT 1', 'Principles and Theories of Language Acquisition', 3, 3, 0, 'TEP', 'T-SALV'],
-      ['EDUC 4', 'Technology for Teaching and Learning 1', 3, 3, 0, 'TEP', 'T-SALV'],
-      ['EDUC 9', 'The Teacher and the Community', 3, 3, 0, 'TEP', 'T-SALV'],
+      ['ELT 1', 'Principles and Theories of Language Acquisition and Learning', 3, 3, 0, 'TEP', 'T-SALV'],
+      ['EDUC 4', 'Technology for Teaching Learning', 3, 3, 0, 'TEP', 'T-SALV'],
+      ['EDUC 9', 'The Teacher and the Community, School Culture and Organizational Leadership', 3, 3, 0, 'TEP', 'T-SALV'],
       ['ELT 5', 'Teaching and Assessment of Grammar', 3, 3, 0, 'TEP', 'T-SALV'],
       ['EDUC 8', 'Assessment in Learning 1', 3, 3, 0, 'TEP', 'T-GODI'],
-      ['Educ 11', 'Field Study 1 (Observations of Teaching)', 3, 1, 2, 'TEP', 'T-CAGA'],
-      ['Educ 12', 'Field Study 2 (Participation and Teaching Assist)', 3, 1, 2, 'TEP', 'T-CAGA'],
+      ['Educ 11', 'Field Study 1', 3, 1, 2, 'TEP', 'T-CAGA'],
+      ['Educ 12', 'Field Study 2', 3, 1, 2, 'TEP', 'T-CAGA'],
+      ['M100', 'History of Mathematics', 3, 3, 0, 'TEP', 'T-OCLA'],
+      ['MATH+', 'Contemporary Math', 3, 3, 0, 'TEP', 'T-OCLA'],
       ['M102', 'Trigonometry', 3, 3, 0, 'TEP', 'T-LUMA'],
       ['M103', 'Plane and Solid Geometry', 3, 3, 0, 'TEP', 'T-LUMA'],
       ['M104', 'Logic and Set Theory', 3, 3, 0, 'TEP', 'T-LUMA'],
       ['M112', 'Calculus 2', 3, 3, 0, 'TEP', 'T-DAGU'],
       ['M113', 'Advanced Statistics', 3, 3, 0, 'TEP', 'T-LUMA'],
-      ['M114', 'Problem Solving, Investigation and Modeling', 3, 3, 0, 'TEP', 'T-LUMA'],
+      ['M114', 'Problem Solving, Mathematical Investigation and Modeling', 3, 3, 0, 'TEP', 'T-LUMA'],
+      ['M115', 'Principles and Strategies in Teaching Mathematics', 3, 3, 0, 'TEP', 'T-DAGU'],
       ['C108', 'Modern Physics', 3, 3, 0, 'TEP', 'T-LUMA'],
       ['B103', 'Anatomy and Physiology', 3, 2, 1, 'TEP', 'T-MAGA'],
-      ['PathFit 1', 'Movement Competency Training (MCT)', 2, 2, 0, 'TEP', 'T-NAEL'],
-      ['PathFit 3', 'Dancing / Fitness Dance', 2, 2, 0, 'TEP', 'T-NAEL'],
+      ['PathFit 1', 'Movement Competency Training or MCT', 2, 2, 0, 'ALL', 'T-NAEL'],
+      ['PathFit 3', 'Dancing', 2, 2, 0, 'ALL', 'T-NAEL'],
       ['LING 1', 'Introduction to Linguistics', 3, 3, 0, 'TEP', 'T-ACOB'],
       ['LING 3', 'Structure of English', 3, 3, 0, 'TEP', 'T-ACOB'],
       ['ELT 6', 'Speech and Stage Arts', 3, 2, 1, 'TEP', 'T-ACOB'],
       ['ELT 7', 'Technical Writing', 3, 3, 0, 'TEP', 'T-CALO'],
+      ['ELT', 'Literary Criticism', 3, 3, 0, 'TEP', 'T-JO'],
       ['LIT 105', 'Sanaysay at Talumpati', 3, 3, 0, 'TEP', 'T-LONO'],
+      ['LIT 106', 'Panunuring Pampanitikan', 3, 3, 0, 'TEP', 'T-LONO'],
       ['FIL 103', 'Ugnayan ng Wika, Kultura at Lipunan', 3, 3, 0, 'TEP', 'T-LONO'],
+      ['LIT 101', 'Panitikan ng Rehiyon', 3, 3, 0, 'TEP', 'T-LONO'],
       ['FIL 104', 'Ang Filipino sa Kurikulum ng Batayang Edukasyon', 3, 3, 0, 'TEP', 'T-DAPA'],
-      ['FL', 'Foreign Language 1', 3, 3, 0, 'TEP', 'T-AWIT'],
+      ['FL', 'Foreign Language', 3, 3, 0, 'TEP', 'T-AWIT'],
       ['GE 3', 'The Contemporary World', 3, 3, 0, 'ALL', 'T-RANO'],
+      ['GE 10', 'Living in the IT Era', 3, 3, 0, 'ALL', 'T-OCLA'],
+      ['NSTP', 'MS1/CWTS1/LTS1', 3, 3, 0, 'ALL', 'T-OCLA'],
 
       // IT Subjects
       ['GE 9', "Rizal's Life, Works, and Writing", 3, 3, 0, 'ALL', 'T-ABEJ-G'],
@@ -282,7 +321,6 @@ async function seedFinalLoading() {
       ['HPE 1', 'Culinary Fundamentals', 5, 2, 3, 'HMP', 'T-SILV'],
       ['THC 3', 'Micro Perspective of Tourism and Hospitality', 3, 3, 0, 'HMP', 'T-VALM'],
       ['THC 4', 'Philippine Tourism, Geography and Culture', 3, 3, 0, 'HMP', 'T-SILV'],
-      ['RS 2A', 'Religions and Spirituality (Hospitality)', 3, 3, 0, 'ALL', 'T-BACO'],
       ['HPC 6A', 'Research in Hospitality', 3, 3, 0, 'HMP', 'T-LUMA'],
       ['GE 8', 'Ethics', 3, 3, 0, 'ALL', 'T-LLOR'],
       ['THC 5', 'Tourism and Hospitality Marketing', 3, 3, 0, 'HMP', 'T-VALM'],
@@ -297,7 +335,6 @@ async function seedFinalLoading() {
 
       // BA Subjects
       ['GEEL 14', 'Gender and Society', 3, 3, 0, 'ALL', 'T-ABEJ-G'],
-      ['RS 2B', 'Religions and Spirituality (Business)', 3, 3, 0, 'ALL', 'T-BACO'],
       ['BACC 7', 'Business Research / Thesis', 3, 3, 0, 'BAP', 'T-LUMA'],
       ['GE 7', 'Science, Technology and Society', 3, 3, 0, 'ALL', 'T-DAGA']
     ];
@@ -306,14 +343,14 @@ async function seedFinalLoading() {
       await conn.query(`
         INSERT INTO subjects (code, name, units, lecture_hours, lab_hours, semester_id, program_code, instructor_id)
         VALUES (?, ?, ?, ?, ?, 1, ?, ?)
-        ON DUPLICATE KEY UPDATE name = VALUES(name), units = VALUES(units), program_code = VALUES(program_code), instructor_id = VALUES(instructor_id)
+        ON DUPLICATE KEY UPDATE name = VALUES(name), units = VALUES(units), lecture_hours = VALUES(lecture_hours), lab_hours = VALUES(lab_hours), program_code = VALUES(program_code), instructor_id = VALUES(instructor_id)
       `, [code, name, units, lec, lab, prog, inst]);
     }
 
-    // 9. Clear old placeholder schedules
+    // 10. Clear old placeholder schedules
     await conn.query('DELETE FROM schedules WHERE semester_id = 1 AND academic_year_id = 1');
 
-    // 10. Insert Class Schedules from Final Loading Document
+    // 11. Insert Class Schedules from Final Loading Document
     const schedulesList = [
       // ==========================================
       // CJEP 1ST YEAR (Page 18)
@@ -381,7 +418,7 @@ async function seedFinalLoading() {
       ['Saturday', '07:00:00', '10:00:00', 'CJE-E1', sectionMap['BSCRIM-4-4-A'], 'T-MARC', 'Crim Lab', '#172554'],
 
       // ==========================================
-      // TEP (Teacher Education Program)
+      // TEP (Teacher Education Program - Pages 1-17)
       // ==========================================
       ['Monday', '07:30:00', '09:00:00', 'Fil 109', sectionMap['BSED-2-2-A'], 'T-ABEJ-G', '303', '#2563eb'],
       ['Thursday', '07:30:00', '09:00:00', 'Fil 109', sectionMap['BSED-2-2-A'], 'T-ABEJ-G', '303', '#2563eb'],
@@ -399,18 +436,90 @@ async function seedFinalLoading() {
       ['Friday', '10:30:00', '12:00:00', 'C101', sectionMap['BSED-2-2-A'], 'T-ABEJ-R', 'SCI LAB', '#2563eb'],
       ['Tuesday', '14:30:00', '16:00:00', 'S105', sectionMap['BSED-3-3-A'], 'T-ABEJ-R', 'SCI LAB', '#2563eb'],
       ['Friday', '14:30:00', '16:00:00', 'S105', sectionMap['BSED-3-3-A'], 'T-ABEJ-R', 'SCI LAB', '#2563eb'],
+      ['Tuesday', '16:00:00', '17:30:00', 'S104', sectionMap['BSED-2-2-A'], 'T-ABEJ-R', 'SCI LAB', '#2563eb'],
+      ['Friday', '16:00:00', '17:30:00', 'S104', sectionMap['BSED-2-2-A'], 'T-ABEJ-R', 'SCI LAB', '#2563eb'],
+      ['Monday', '17:30:00', '19:00:00', 'B102', sectionMap['BSED-3-3-A'], 'T-ABEJ-R', 'SCI LAB', '#2563eb'],
+      ['Thursday', '17:30:00', '19:00:00', 'B102', sectionMap['BSED-3-3-A'], 'T-ABEJ-R', 'SCI LAB', '#2563eb'],
+      ['Monday', '07:30:00', '09:00:00', 'C107', sectionMap['BSED-3-3-A'], 'T-ABEJ-R', 'SCI LAB', '#2563eb'],
+      ['Thursday', '07:30:00', '09:00:00', 'C107', sectionMap['BSED-3-3-A'], 'T-ABEJ-R', 'SCI LAB', '#2563eb'],
+      ['Saturday', '08:00:00', '11:00:00', 'Educ 11', sectionMap['BSED-4-4-A'], 'T-CAGA', 'SHS', '#2563eb'],
+      ['Saturday', '11:00:00', '12:00:00', 'Educ 12', sectionMap['BSED-4-4-A'], 'T-CAGA', 'SHS', '#2563eb'],
       ['Monday', '09:00:00', '10:30:00', 'ELEC 1', sectionMap['BSED-1-1-A'], 'T-LACA', '303', '#2563eb'],
       ['Thursday', '09:00:00', '10:30:00', 'ELEC 1', sectionMap['BSED-1-1-A'], 'T-LACA', '303', '#2563eb'],
+      ['Monday', '09:00:00', '10:30:00', 'ELECT 1', sectionMap['BSED-1-1-A'], 'T-LACA', '303', '#2563eb'],
+      ['Thursday', '09:00:00', '10:30:00', 'ELECT 1', sectionMap['BSED-1-1-A'], 'T-LACA', '303', '#2563eb'],
+      ['Monday', '17:30:00', '19:00:00', 'Fil 110', sectionMap['BSED-3-3-A'], 'T-LACA', 'SHS', '#2563eb'],
+      ['Thursday', '17:30:00', '19:00:00', 'Fil 110', sectionMap['BSED-3-3-A'], 'T-LACA', 'SHS', '#2563eb'],
+      ['Monday', '17:30:00', '19:00:00', 'ELT 4', sectionMap['BSED-3-3-A'], 'T-LACA', 'SHS', '#2563eb'],
+      ['Thursday', '17:30:00', '19:00:00', 'ELT 4', sectionMap['BSED-3-3-A'], 'T-LACA', 'SHS', '#2563eb'],
       ['Wednesday', '17:00:00', '20:00:00', 'Educ 6', sectionMap['BSED-3-3-A'], 'T-LACA', '301', '#2563eb'],
+      ['Tuesday', '17:30:00', '19:00:00', 'Lit 1', sectionMap['BSED-2-2-A'], 'T-LACA', '302', '#2563eb'],
+      ['Friday', '17:30:00', '19:00:00', 'Lit 1', sectionMap['BSED-2-2-A'], 'T-LACA', '302', '#2563eb'],
+      ['Tuesday', '07:30:00', '09:00:00', 'M102', sectionMap['BSED-2-2-A'], 'T-LUMA', '302', '#2563eb'],
+      ['Friday', '07:30:00', '09:00:00', 'M102', sectionMap['BSED-2-2-A'], 'T-LUMA', '302', '#2563eb'],
+      ['Tuesday', '07:30:00', '09:00:00', 'M104', sectionMap['BSED-2-2-A'], 'T-LUMA', '302', '#2563eb'],
+      ['Friday', '07:30:00', '09:00:00', 'M104', sectionMap['BSED-2-2-A'], 'T-LUMA', '302', '#2563eb'],
+      ['Saturday', '08:00:00', '11:00:00', 'M103', sectionMap['BSED-3-3-A'], 'T-LUMA', 'SHS 402', '#2563eb'],
+      ['Monday', '16:00:00', '17:30:00', 'M113', sectionMap['BSED-3-3-A'], 'T-LUMA', '403', '#2563eb'],
+      ['Thursday', '16:00:00', '17:30:00', 'M113', sectionMap['BSED-3-3-A'], 'T-LUMA', '403', '#2563eb'],
+      ['Monday', '16:00:00', '17:30:00', 'M114', sectionMap['BSED-3-3-A'], 'T-LUMA', '403', '#2563eb'],
+      ['Thursday', '16:00:00', '17:30:00', 'M114', sectionMap['BSED-3-3-A'], 'T-LUMA', '403', '#2563eb'],
+      ['Monday', '14:30:00', '16:00:00', 'C108', sectionMap['BSED-3-3-A'], 'T-LUMA', 'SCI LAB', '#2563eb'],
+      ['Thursday', '14:30:00', '16:00:00', 'C108', sectionMap['BSED-3-3-A'], 'T-LUMA', 'SCI LAB', '#2563eb'],
+      ['Tuesday', '09:00:00', '10:30:00', 'M100', sectionMap['BSED-1-1-A'], 'T-OCLA', '401', '#2563eb'],
+      ['Friday', '09:00:00', '10:30:00', 'M100', sectionMap['BSED-1-1-A'], 'T-OCLA', '401', '#2563eb'],
+      ['Tuesday', '09:00:00', '10:30:00', 'MATH+', sectionMap['BSED-1-1-A'], 'T-OCLA', '401', '#2563eb'],
+      ['Friday', '09:00:00', '10:30:00', 'MATH+', sectionMap['BSED-1-1-A'], 'T-OCLA', '401', '#2563eb'],
       ['Tuesday', '07:30:00', '09:00:00', 'ELT 1', sectionMap['BSED-2-2-A'], 'T-SALV', '303', '#2563eb'],
       ['Friday', '07:30:00', '09:00:00', 'ELT 1', sectionMap['BSED-2-2-A'], 'T-SALV', '303', '#2563eb'],
       ['Monday', '09:00:00', '10:30:00', 'EDUC 5', sectionMap['BSED-2-2-A'], 'T-SALV', '302', '#2563eb'],
       ['Thursday', '09:00:00', '10:30:00', 'EDUC 5', sectionMap['BSED-2-2-A'], 'T-SALV', '302', '#2563eb'],
+      ['Tuesday', '14:30:00', '16:00:00', 'EDUC 4', sectionMap['BSED-2-2-A'], 'T-SALV', '303', '#2563eb'],
+      ['Friday', '14:30:00', '16:00:00', 'EDUC 4', sectionMap['BSED-2-2-A'], 'T-SALV', '303', '#2563eb'],
+      ['Tuesday', '09:00:00', '10:30:00', 'EDUC 9', sectionMap['BSED-3-3-A'], 'T-SALV', '302', '#2563eb'],
+      ['Friday', '09:00:00', '10:30:00', 'EDUC 9', sectionMap['BSED-3-3-A'], 'T-SALV', '302', '#2563eb'],
+      ['Tuesday', '10:30:00', '12:00:00', 'ELT 5', sectionMap['BSED-3-3-A'], 'T-SALV', '402', '#2563eb'],
+      ['Friday', '10:30:00', '12:00:00', 'ELT 5', sectionMap['BSED-3-3-A'], 'T-SALV', '402', '#2563eb'],
+      ['Monday', '10:30:00', '12:00:00', 'EDUC 7', sectionMap['BSED-3-3-A'], 'T-SALV', 'AVR', '#2563eb'],
+      ['Thursday', '10:30:00', '12:00:00', 'EDUC 7', sectionMap['BSED-3-3-A'], 'T-SALV', 'AVR', '#2563eb'],
+      ['Tuesday', '14:30:00', '16:00:00', 'ELT 6', sectionMap['BSED-3-3-A'], 'T-ACOB', '303', '#2563eb'],
+      ['Friday', '14:30:00', '16:00:00', 'ELT 6', sectionMap['BSED-3-3-A'], 'T-ACOB', '303', '#2563eb'],
+      ['Wednesday', '17:30:00', '20:00:00', 'LING 1', sectionMap['BSED-1-1-A'], 'T-ACOB', 'SHS 402', '#2563eb'],
+      ['Saturday', '10:00:00', '13:00:00', 'LING 3', sectionMap['BSED-2-2-A'], 'T-ACOB', 'SHS 302', '#2563eb'],
+      ['Monday', '16:00:00', '17:30:00', 'EDUC 2', sectionMap['BSED-2-2-A'], 'T-ACOB', '403', '#2563eb'],
+      ['Thursday', '16:00:00', '17:30:00', 'EDUC 2', sectionMap['BSED-2-2-A'], 'T-ACOB', '403', '#2563eb'],
+      ['Tuesday', '17:30:00', '19:00:00', 'FL', sectionMap['BEED-3-3-A'], 'T-AWIT', '401', '#2563eb'],
+      ['Friday', '17:30:00', '19:00:00', 'FL', sectionMap['BEED-3-3-A'], 'T-AWIT', '401', '#2563eb'],
+      ['Saturday', '14:00:00', '17:00:00', 'ELT 7', sectionMap['BSED-3-3-A'], 'T-CALO', 'SHS 402', '#2563eb'],
+      ['Saturday', '08:00:00', '11:00:00', 'M112', sectionMap['BSED-3-3-A'], 'T-DAGU', '302', '#2563eb'],
+      ['Saturday', '08:00:00', '11:00:00', 'M115', sectionMap['BSED-3-3-A'], 'T-DAGU', '302', '#2563eb'],
+      ['Tuesday', '17:30:00', '19:00:00', 'FIL 104', sectionMap['BSED-2-2-A'], 'T-DAPA', 'SHS 404', '#2563eb'],
+      ['Friday', '17:30:00', '19:00:00', 'FIL 104', sectionMap['BSED-2-2-A'], 'T-DAPA', 'SHS 404', '#2563eb'],
       ['Tuesday', '13:00:00', '14:30:00', 'EDUC 8', sectionMap['BSED-3-3-A'], 'T-GODI', 'AVR', '#2563eb'],
       ['Friday', '13:00:00', '14:30:00', 'EDUC 8', sectionMap['BSED-3-3-A'], 'T-GODI', 'AVR', '#2563eb'],
-      ['Saturday', '08:00:00', '11:00:00', 'Educ 11', sectionMap['BSED-4-4-A'], 'T-CAGA', 'SHS', '#2563eb'],
-      ['Saturday', '11:00:00', '12:00:00', 'Educ 12', sectionMap['BSED-4-4-A'], 'T-CAGA', 'SHS', '#2563eb'],
+      ['Saturday', '08:00:00', '11:00:00', 'B103', sectionMap['BSED-3-3-A'], 'T-MAGA', 'SCI LAB', '#2563eb'],
       ['Saturday', '09:00:00', '12:00:00', 'PathFit 1', sectionMap['BSED-1-1-A'], 'T-NAEL', 'SRCB Ground', '#2563eb'],
+      ['Saturday', '13:00:00', '15:00:00', 'PathFit 3', sectionMap['BSED-2-2-A'], 'T-NAEL', 'SRCB Ground', '#2563eb'],
+      ['Saturday', '17:00:00', '20:00:00', 'LIT 105', sectionMap['BSED-3-3-A'], 'T-LONO', 'SHS 408', '#2563eb'],
+      ['Saturday', '17:00:00', '20:00:00', 'LIT 106', sectionMap['BSED-3-3-A'], 'T-LONO', 'SHS 408', '#2563eb'],
+      ['Tuesday', '16:00:00', '17:30:00', 'FIL 103', sectionMap['BSED-2-2-A'], 'T-LONO', '301', '#2563eb'],
+      ['Friday', '16:00:00', '17:30:00', 'FIL 103', sectionMap['BSED-2-2-A'], 'T-LONO', '301', '#2563eb'],
+      ['Tuesday', '16:00:00', '17:30:00', 'LIT 101', sectionMap['BSED-2-2-A'], 'T-LONO', '301', '#2563eb'],
+      ['Friday', '16:00:00', '17:30:00', 'LIT 101', sectionMap['BSED-2-2-A'], 'T-LONO', '301', '#2563eb'],
+      ['Tuesday', '17:30:00', '19:00:00', 'ELT', sectionMap['BSED-3-3-A'], 'T-JO', 'SHS 402', '#2563eb'],
+      ['Friday', '17:30:00', '19:00:00', 'ELT', sectionMap['BSED-3-3-A'], 'T-JO', 'SHS 402', '#2563eb'],
+      ['Tuesday', '17:30:00', '19:00:00', 'GE 1', sectionMap['BSED-1-1-A'], 'T-SANT', '303', '#2563eb'],
+      ['Friday', '17:30:00', '19:00:00', 'GE 1', sectionMap['BSED-1-1-A'], 'T-SANT', '303', '#2563eb'],
+      ['Monday', '13:00:00', '14:30:00', 'GE 2', sectionMap['BSED-1-1-A'], 'T-LACA', '303', '#2563eb'],
+      ['Thursday', '13:00:00', '14:30:00', 'GE 2', sectionMap['BSED-1-1-A'], 'T-LACA', '303', '#2563eb'],
+      ['Saturday', '08:00:00', '11:00:00', 'GE 3', sectionMap['BSED-1-1-A'], 'T-RANO', '402', '#2563eb'],
+      ['Monday', '16:00:00', '17:30:00', 'GE 4', sectionMap['BSED-1-1-A'], 'T-OCLA', '401', '#2563eb'],
+      ['Thursday', '16:00:00', '17:30:00', 'GE 4', sectionMap['BSED-1-1-A'], 'T-OCLA', '401', '#2563eb'],
+      ['Wednesday', '17:00:00', '20:00:00', 'GE 10', sectionMap['BSED-1-1-A'], 'T-OCLA', '401', '#2563eb'],
+      ['Monday', '07:30:00', '09:00:00', 'RS 1', sectionMap['BSED-1-1-A'], 'T-LLOR', '301', '#2563eb'],
+      ['Thursday', '07:30:00', '09:00:00', 'RS 1', sectionMap['BSED-1-1-A'], 'T-LLOR', '301', '#2563eb'],
+      ['Tuesday', '13:00:00', '14:30:00', 'RS 2', sectionMap['BSED-2-2-A'], 'T-LLOR', '303', '#2563eb'],
+      ['Friday', '13:00:00', '14:30:00', 'RS 2', sectionMap['BSED-2-2-A'], 'T-LLOR', '303', '#2563eb'],
 
       // ==========================================
       // ITP (Information Technology Program)

@@ -31,7 +31,7 @@ function isGeneralEducationSubject(code, programCode) {
   const cleanProg = String(programCode || '').toUpperCase().trim();
   if (cleanProg === 'ALL' || cleanProg === 'GEN' || cleanProg === 'UNIVERSAL' || cleanProg === 'GENERAL EDUCATION') return true;
   const cleanCode = String(code || '').toUpperCase().trim();
-  return /^(GE|GEC|NSTP|PE|PATHFIT|RIZAL|MATH|ENG|FIL|SOC|HUM|HIST)\b/i.test(cleanCode);
+  return /^(GE|GEC|NSTP|PE|PATHFIT|RIZAL|RS|THEOLOGY|CWTS|ROTC)\b/i.test(cleanCode);
 }
 
 function getExpectedSubjectDuration(subjectRow, classMode = 'Lecture') {

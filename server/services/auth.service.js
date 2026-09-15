@@ -70,25 +70,8 @@ async function ensureDefaultUsers() {
   const defaultUsers = [
     { email: process.env.SEED_SUPERADMIN_EMAIL || 'superadmin@srcb.edu.ph', password: process.env.SEED_SUPERADMIN_PASSWORD || '@superadmin123', name: 'ICT Super Administrator', role: 'super_admin' },
     { email: process.env.SEED_ADMIN_EMAIL || DEFAULT_ADMIN_EMAIL, password: process.env.SEED_ADMIN_PASSWORD || DEFAULT_ADMIN_PASSWORD, name: DEFAULT_ADMIN_NAME, role: 'admin' },
-    // 5 Program Heads (Exactly 1 per program)
-    { email: 'ithead@srcb.edu.ph', password: '@program123', name: 'Dr. Alan Turing', role: 'program_head', program: 'ITP', majorCode: 'BSIT' },
-    { email: 'businesshead@srcb.edu.ph', password: '@program123', name: 'Dr. Peter Drucker', role: 'program_head', program: 'BSA', majorCode: 'BSBA' },
-    { email: 'crimhead@srcb.edu.ph', password: '@program123', name: 'Dr. August Vollmer', role: 'program_head', program: 'CJEP', majorCode: 'BSCRIM' },
-    { email: 'hmhead@srcb.edu.ph', password: '@program123', name: 'Prof. Georges Escoffier', role: 'program_head', program: 'HMP', majorCode: 'BSHM' },
+    // TEP Program Head (Legitimate active program)
     { email: 'educhead@srcb.edu.ph', password: '@program123', name: 'Dr. Maria Montessori', role: 'program_head', program: 'TEP', majorCode: 'BSED' },
-    // Major Subject Teachers
-    { email: 'adalovelace-it@srcb.edu.ph', password: '@teacher123', name: 'Prof. Ada Lovelace', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T-IT-001', majorCode: 'BSIT', program: 'ITP' },
-    { email: 'gracehopper-it@srcb.edu.ph', password: '@teacher123', name: 'Prof. Grace Hopper', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T-IT-002', majorCode: 'BSIT', program: 'ITP' },
-    { email: 'warrenbuffett-ba@srcb.edu.ph', password: '@teacher123', name: 'Prof. Warren Buffett', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T-BA-001', majorCode: 'BSBA', program: 'BSA' },
-    { email: 'philipkotler-ba@srcb.edu.ph', password: '@teacher123', name: 'Prof. Philip Kotler', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T-BA-002', majorCode: 'BSBA', program: 'BSA' },
-    { email: 'cesarebeccaria-crim@srcb.edu.ph', password: '@teacher123', name: 'Atty. Cesare Beccaria', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T-CRIM-001', majorCode: 'BSCRIM', program: 'CJEP' },
-    { email: 'hansgross-crim@srcb.edu.ph', password: '@teacher123', name: 'Capt. Hans Gross', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T-CRIM-002', majorCode: 'BSCRIM', program: 'CJEP' },
-    { email: 'gordonramsay-hm@srcb.edu.ph', password: '@teacher123', name: 'Chef Gordon Ramsay', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T-HM-001', majorCode: 'BSHM', program: 'HMP' },
-    { email: 'juliachild-hm@srcb.edu.ph', password: '@teacher123', name: 'Chef Julia Child', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T-HM-002', majorCode: 'BSHM', program: 'HMP' },
-    { email: 'johndewey-educ@srcb.edu.ph', password: '@teacher123', name: 'Prof. John Dewey', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T-ED-001', majorCode: 'BSED', program: 'TEP' },
-    { email: 'levvygotsky-educ@srcb.edu.ph', password: '@teacher123', name: 'Prof. Lev Vygotsky', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T-ED-002', majorCode: 'BSED', program: 'TEP' },
-    { email: 'socrates-gen@srcb.edu.ph', password: '@teacher123', name: 'Prof. Socrates Santos', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T-GEN-001', majorCode: null, program: 'ALL' },
-    { email: 'rizal-gen@srcb.edu.ph', password: '@teacher123', name: 'Prof. Jose Rizal', role: 'teacher', teacherStatus: 'Full-Time', teacherId: 'T-GEN-002', majorCode: null, program: 'ALL' },
   ];
 
   // Purge legacy part-time faculty accounts so only official faculty accounts exist
