@@ -4,7 +4,6 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const db = require('../utils/db');
 const { programsService } = require('../services/programs.service');
-const { coursesService } = require('../services/courses.service');
 const { sectionsService } = require('../services/sections.service');
 const { subjectsService } = require('../services/subjects.service');
 const { facultyService } = require('../services/faculty.service');
@@ -237,24 +236,24 @@ describe('System-Wide Cross-Program Data Isolation & Role-Scope Audit', () => {
   });
 
   // =========================================================================
-  // 2. COURSES SERVICE ISOLATION
+  // 2. PROGRAM MAJORS SERVICE ISOLATION
   // =========================================================================
-  describe('Courses Service Isolation', () => {
-    it('Admin sees all courses across all programs', async () => {
-      const courses = await coursesService.listCourses(adminUser);
-      expect(courses.length).toBe(5);
+  describe('Program Majors Service Isolation', () => {
+    it('Admin sees all majors across all programs', async () => {
+      const majors = await programMajorsService.listProgramMajors(adminUser);
+      expect(majors.length).toBeGreaterThan(0);
     });
 
-    it('IT Program Head sees only IT courses', async () => {
-      const courses = await coursesService.listCourses(itProgramHead);
-      expect(courses.every((c) => c.programCode === 'ITP' || c.code === 'BSIT')).toBe(true);
-      expect(courses.some((c) => c.code === 'BSA' || c.code === 'BSHM' || c.code === 'BSCRIM' || c.code === 'BSED')).toBe(false);
+    it('IT Program Head sees only IT program majors', async () => {
+      const majors = await programMajorsService.listProgramMajors(itProgramHead);
+      expect(majors.every((m) => m.programCode === 'ITP' || m.code === 'BSIT')).toBe(true);
+      expect(majors.some((m) => m.code === 'BSA' || m.code === 'BSHM' || m.code === 'BSCRIM' || m.code === 'BSED')).toBe(false);
     });
 
-    it('BSA Program Head sees only BSA courses', async () => {
-      const courses = await coursesService.listCourses(bsaProgramHead);
-      expect(courses.every((c) => c.programCode === 'BAP' || c.code === 'BSA')).toBe(true);
-      expect(courses.some((c) => c.code === 'BSIT' || c.code === 'BSHM' || c.code === 'BSCRIM' || c.code === 'BSED')).toBe(false);
+    it('BSA Program Head sees only BSA program majors', async () => {
+      const majors = await programMajorsService.listProgramMajors(bsaProgramHead);
+      expect(majors.every((m) => m.programCode === 'BAP' || m.code === 'BSA')).toBe(true);
+      expect(majors.some((m) => m.code === 'BSIT' || m.code === 'BSHM' || m.code === 'BSCRIM' || m.code === 'BSED')).toBe(false);
     });
   });
 

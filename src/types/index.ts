@@ -9,22 +9,40 @@ export interface UserAccount {
   status: 'Active' | 'Suspended'
   createdAt: string
   teacherId?: string
+  facultyId?: string
 }
-
-export type BuildingType = 'College Building' | 'SHS Building' | 'JHS Building'
 
 export type ClassModality = 'Face-to-Face' | 'Online'
 
 export type ExamTerm = 'Prelim' | 'Midterm' | 'Semi-Final' | 'Final'
 
+export interface DayItem {
+  id: number
+  name: string
+}
+
+export interface MajorItem {
+  id: string | number
+  code: string
+  name: string
+  programCode: string
+  programHeadId?: string | number
+}
+
 export interface FacultyMember {
   id: string
   name: string
+  firstName?: string
+  lastName?: string
+  employeeNumber?: string
+  position?: string
   department: string
+  departmentCode?: string
   email: string
   phone: string
   status: 'Full-Time' | 'Part-Time'
-  availability: string // e.g. "Monday: 08:00-12:00 | Tuesday: 13:00-17:00"
+  facultyType: 'Full-Time' | 'Part-Time'
+  availability?: string
   maxLoadHours?: number
   subjects: string[]
   programs?: string[]
@@ -33,13 +51,16 @@ export interface FacultyMember {
 export interface SubjectItem {
   code: string
   name: string
+  subjectTitle?: string
   units: number
   lectureHours: number
   labHours: number
+  subjectType?: 'Major Lecture' | 'Major Laboratory' | 'Minor' | 'General Education' | string
   semester: string
   department: string
   program?: string
   programCode?: string
+  majorId?: string | number
   courseCode?: string
   isMajor?: boolean
   isGeneralEducation?: boolean
@@ -49,20 +70,33 @@ export interface SubjectItem {
   instructorId?: string
 }
 
+export type BuildingType = string
+
 export interface RoomItem {
   number: string
+  code?: string
+  name?: string
+  roomName?: string
   capacity: number
-  building: BuildingType | string
-  type: 'Lecture' | 'Laboratory' | 'Computer Laboratory' | 'Science Laboratory' | 'AVR' | string
-  status: 'Available' | 'Reserved' | 'Maintenance'
+  building?: string
+  type: 'Lecture' | 'Laboratory' | 'Computer Laboratory' | 'Science Laboratory' | 'Audio-Visual' | 'Athletic' | 'Online' | string
+  status: 'Available' | 'Reserved' | 'Maintenance' | 'active' | string
 }
 
 export interface SectionItem {
   id?: string
-  course: string
   program?: string
+  programCode?: string
+  programName?: string
+  majorId?: string | number
+  majorCode?: string
+  majorName?: string
+  course?: string
+  courseCode?: string
   yearLevel: string
   section: string
+  sectionLabel?: string
+  sectionName?: string
   adviser?: string
   adviserId?: string
   students: number
@@ -74,6 +108,7 @@ export interface SectionItem {
 export interface ClassScheduleItem {
   id: string
   day: string
+  dayId?: number
   time: string // e.g. "08:00-09:30"
   startTime?: string
   endTime?: string
@@ -85,16 +120,16 @@ export interface ClassScheduleItem {
   facultyId?: string
   room: string
   roomType?: string
-  building: BuildingType | string
-  classMode?: string // e.g. "Lecture" | "Laboratory"
+  building?: string
+  classMode?: string // e.g. "Lecture" | "Laboratory" | "Online" | "Face-to-Face"
   yearLevel?: string
   course?: string
+  program?: string
   semester?: string
   academicYear?: string
   modality: ClassModality
   onlineLink?: string
   isMajor?: boolean
-  program?: string
   color: string
   status?: 'Confirmed' | 'Draft'
   isCombinedCohort?: boolean
@@ -103,16 +138,20 @@ export interface ClassScheduleItem {
 export interface ExamScheduleItem {
   id: string
   term: ExamTerm
+  examPeriod?: ExamTerm | string
   examDate: string // e.g. "2026-10-15"
   time: string // e.g. "08:00-10:00"
+  startTime?: string
+  endTime?: string
   subjectCode: string
   subject: string
   synchronizedSections: string[] // List of section names taking exam simultaneously
   room: string
-  building: BuildingType | string
+  building?: string
   proctor: string
   proctorId?: string
   program?: string
+  classMode?: string
   color?: string
 }
 
@@ -136,6 +175,7 @@ export interface MetricCard {
 export interface ProgramItem {
   code: string
   name: string
+  description?: string
   focus?: string
 }
 

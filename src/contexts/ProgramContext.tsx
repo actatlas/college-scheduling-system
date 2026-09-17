@@ -69,7 +69,11 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
 
       const applyPrograms = (rows: any[]) => {
         const sanitized = (Array.isArray(rows) ? rows : []).filter(
-          (p: any) => p && p.code && !invalidCodes.has(String(p.code).trim().toUpperCase())
+          (p: any) =>
+            p &&
+            p.code &&
+            !invalidCodes.has(String(p.code).trim().toUpperCase()) &&
+            String(p.code).trim().toUpperCase() !== "ALL"
         );
         const specificPrograms: ProgramOption[] = sanitized.map((row: any) => ({
           key: String(row.code || row.id || ""),
@@ -96,7 +100,14 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const values: ProgramOption[] = [allProgramsOption, ...specificPrograms];
+        const rawValues: ProgramOption[] = [allProgramsOption, ...specificPrograms];
+        const uniqueMap = new Map<string, ProgramOption>();
+        rawValues.forEach((opt) => {
+          if (!uniqueMap.has(opt.key)) {
+            uniqueMap.set(opt.key, opt);
+          }
+        });
+        const values = Array.from(uniqueMap.values());
 
         setProgramOptions((prev) => {
           if (

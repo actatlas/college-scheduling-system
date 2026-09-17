@@ -1,80 +1,32 @@
 const { query } = require('../utils/db');
-
-const ALL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-
-function formatTo24HourTime(timeStr) {
-  if (!timeStr) return null;
-  const clean = String(timeStr).trim();
-  const isPM = /pm/i.test(clean);
-  const isAM = /am/i.test(clean);
-  const raw = clean.replace(/am|pm/i, '').trim();
-  const parts = raw.split(':');
-  let h = Number(parts[0]) || 0;
-  const m = String(parts[1] || '00').padStart(2, '0').slice(0, 2);
-  if (isPM && h < 12) h += 12;
-  if (isAM && h === 12) h = 0;
-  if (!isPM && !isAM && h >= 1 && h <= 7) h += 12;
-  return `${String(h).padStart(2, '0')}:${m}:00`;
-}
-
-function expandDayPart(dayPart) {
-  const d = String(dayPart || '').trim();
-  const lower = d.toLowerCase();
-
-  // Range syntax: "Monday-Friday", "Mon-Fri", "Monday to Friday"
-  if (lower.includes('-') || lower.includes(' to ')) {
-    const parts = lower.split(/-|\bto\b/).map((p) => p.trim());
-    if (parts.length === 2) {
-      const startIdx = ALL_DAYS.findIndex((day) => day.toLowerCase().startsWith(parts[0].slice(0, 3)));
-      const endIdx = ALL_DAYS.findIndex((day) => day.toLowerCase().startsWith(parts[1].slice(0, 3)));
-      if (startIdx !== -1 && endIdx !== -1 && startIdx <= endIdx) {
-        return ALL_DAYS.slice(startIdx, endIdx + 1);
-      }
-    }
-  }
-
-  // Single day match
-  const found = ALL_DAYS.find((day) => day.toLowerCase() === lower || day.toLowerCase().startsWith(lower.slice(0, 3)));
-  return found ? [found] : [d];
-}
-
-function normalizeAvailability(input) {
-  if (!input) return [];
-  const segments = String(input).split('|').map((segment) => segment.trim()).filter(Boolean);
-  const entries = [];
-  for (const segment of segments) {
-    const [dayPart, ...rest] = segment.split(':');
-    if (!dayPart || rest.length === 0) continue;
-    const days = expandDayPart(dayPart);
-    const slots = rest.join(':').split(',').map((slot) => slot.trim()).filter(Boolean);
-    for (const slot of slots) {
-      const [startRaw, endRaw] = slot.split('-').map((value) => value.trim()).filter(Boolean);
-      if (startRaw && endRaw) {
-        const start = formatTo24HourTime(startRaw);
-        const end = formatTo24HourTime(endRaw);
-        if (start && end) {
-          for (const day of days) {
-            entries.push({ day_of_week: day, start_time: start, end_time: end });
-          }
-        }
-      }
-    }
-  }
-  return entries;
-}
-
 const { resolveUserProgramScope, isProgramMatch } = require('../utils/programScope');
+const bcrypt = require('bcrypt');
 
 async function listFaculty(user = null) {
   const scope = await resolveUserProgramScope(user);
 
-  const teacherRows = await query(
-    `SELECT t.id, t.name, t.email, t.phone, t.status, t.program_major_id, pm.code AS program_major_code, pm.name AS program_major_name,
-            pm.program_code AS program_code
-     FROM teachers t
-     LEFT JOIN program_majors pm ON pm.id = t.program_major_id
-     ORDER BY t.name ASC`
-  );
+  let teacherRows = [];
+  try {
+    teacherRows = await query(
+      `SELECT t.id, t.name, t.first_name, t.last_name, t.employee_number, t.position, t.email, t.phone,
+              COALESCE(t.faculty_type, t.status, 'Full-Time') AS status,
+              COALESCE(t.faculty_type, t.status, 'Full-Time') AS faculty_type,
+              t.program_major_id, pm.code AS program_major_code, pm.name AS program_major_name,
+              pm.program_code AS program_code
+       FROM teachers t
+       LEFT JOIN program_majors pm ON pm.id = t.program_major_id
+       ORDER BY t.name ASC`
+    );
+  } catch (e) {
+    teacherRows = await query(
+      `SELECT t.id, t.name, t.email, t.phone, t.status,
+              t.program_major_id, pm.code AS program_major_code, pm.name AS program_major_name,
+              pm.program_code AS program_code
+       FROM teachers t
+       LEFT JOIN program_majors pm ON pm.id = t.program_major_id
+       ORDER BY t.name ASC`
+    );
+  }
 
   if (teacherRows.length === 0) return [];
 
@@ -86,35 +38,7 @@ async function listFaculty(user = null) {
      FROM subjects s
      WHERE s.instructor_id IN (${inClause})`,
     ids
-  );
-
-  const availabilityRows = await query(
-    `SELECT teacher_id, day_of_week, start_time, end_time
-     FROM teacher_availability
-     WHERE teacher_id IN (${inClause})`,
-    ids,
-  );
-
-  const teacherAvailGroup = new Map();
-  for (const row of availabilityRows) {
-    const tId = String(row.teacher_id);
-    if (!teacherAvailGroup.has(tId)) teacherAvailGroup.set(tId, new Map());
-    const dayMap = teacherAvailGroup.get(tId);
-    const day = row.day_of_week;
-    if (!dayMap.has(day)) dayMap.set(day, []);
-    const sStr = String(row.start_time).slice(0, 5);
-    const eStr = String(row.end_time).slice(0, 5);
-    dayMap.get(day).push(`${sStr}-${eStr}`);
-  }
-
-  const availabilityMap = new Map();
-  for (const [tId, dayMap] of teacherAvailGroup.entries()) {
-    const parts = [];
-    for (const [day, slots] of dayMap.entries()) {
-      parts.push(`${day}: ${slots.join(', ')}`);
-    }
-    availabilityMap.set(tId, parts.join(' | '));
-  }
+  ).catch(() => []);
 
   const subjectMap = new Map();
   const subjectProgramMap = new Map();
@@ -140,13 +64,17 @@ async function listFaculty(user = null) {
     return {
       id: String(teacher.id),
       name: teacher.name,
+      firstName: teacher.first_name || '',
+      lastName: teacher.last_name || '',
+      employeeNumber: teacher.employee_number || `EMP-${String(teacher.id).replace(/^T-?/, '')}`,
+      position: teacher.position || 'Faculty Instructor',
       department: teacher.program_major_name || teacher.program_major_code || '',
       departmentCode: teacher.program_major_code || '',
       programs: tProgCodes,
       email: teacher.email || '',
       phone: teacher.phone || '',
-      status: teacher.status,
-      availability: availabilityMap.get(String(teacher.id)) || '',
+      status: teacher.status || 'Full-Time',
+      facultyType: teacher.faculty_type || teacher.status || 'Full-Time',
       subjects: subjectMap.get(String(teacher.id)) || [],
     };
   });
@@ -180,24 +108,32 @@ async function listFaculty(user = null) {
   return mapped;
 }
 
-const bcrypt = require('bcrypt');
-
 async function createFaculty(payload) {
-  const { id, name, department, email, phone, status, availability } = payload;
+  const { id, name, department, email, phone, status, facultyType, position, employeeNumber, firstName, lastName } = payload;
+  const fType = facultyType || status || 'Full-Time';
+  const empNum = employeeNumber || `EMP-${String(id).replace(/^T-?/, '')}`;
+  const fPos = position || 'Faculty Instructor';
+
+  let fName = firstName || '';
+  let lName = lastName || '';
+  if (!fName && !lName && name) {
+    const parts = name.split(',').map((s) => s.trim());
+    lName = parts[0] || name;
+    fName = parts[1] || '';
+  }
+
   const [major] = await query('SELECT id FROM program_majors WHERE code = ? LIMIT 1', [department || 'BSIT']);
-  await query(
-    `INSERT INTO teachers (id, name, email, phone, status, program_major_id) VALUES (?, ?, ?, ?, ?, ?)`,
-    [id, name, email || null, phone || null, status || 'Full-Time', major?.id || null]
-  );
-  if (availability) {
-    const normalized = normalizeAvailability(availability);
-    if (normalized.length > 0) {
-      const inserts = normalized.map((entry) => query(
-        'INSERT INTO teacher_availability (teacher_id, day_of_week, start_time, end_time) VALUES (?, ?, ?, ?)',
-        [id, entry.day_of_week, entry.start_time, entry.end_time]
-      ));
-      await Promise.all(inserts);
-    }
+  try {
+    await query(
+      `INSERT INTO teachers (id, name, first_name, last_name, employee_number, position, email, phone, status, faculty_type, program_major_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, name, fName, lName, empNum, fPos, email || null, phone || null, fType, fType, major?.id || null]
+    );
+  } catch (e) {
+    await query(
+      `INSERT INTO teachers (id, name, email, phone, status, program_major_id) VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, name, email || null, phone || null, fType, major?.id || null]
+    );
   }
 
   if (email && email.trim()) {
@@ -205,19 +141,18 @@ async function createFaculty(payload) {
     if (!existingUser) {
       const passwordHash = await bcrypt.hash('@teacher123', 10);
       await query(
-        'INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)',
-        [name, email.trim(), passwordHash, 'teacher']
+        'INSERT INTO users (name, email, password_hash, role, faculty_id) VALUES (?, ?, ?, ?, ?)',
+        [name, email.trim(), passwordHash, 'teacher', id]
       );
     }
   }
 
-  return { id, name, department, email, phone, status, availability };
+  return { id, name, department, email, phone, status: fType, facultyType: fType, position: fPos, employeeNumber: empNum };
 }
-
 
 async function updateFaculty(id, payload) {
   let [oldTeacher] = await query('SELECT id, name, email, phone, status, program_major_id FROM teachers WHERE id = ? LIMIT 1', [id]);
-  
+
   if (!oldTeacher && payload.email) {
     const [byEmail] = await query('SELECT id, name, email, phone, status, program_major_id FROM teachers WHERE LOWER(email) = LOWER(?) LIMIT 1', [payload.email]);
     if (byEmail) {
@@ -228,11 +163,12 @@ async function updateFaculty(id, payload) {
 
   if (!oldTeacher) {
     const [major] = await query('SELECT id FROM program_majors WHERE code = ? LIMIT 1', [payload.department || 'BSIT']);
+    const fType = payload.facultyType || payload.status || 'Full-Time';
     await query(
       `INSERT INTO teachers (id, name, email, phone, status, program_major_id) VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, payload.name || 'Faculty Member', payload.email || null, payload.phone || null, payload.status || 'Part-Time', major?.id || null]
+      [id, payload.name || 'Faculty Member', payload.email || null, payload.phone || null, fType, major?.id || null]
     );
-    oldTeacher = { id, name: payload.name || 'Faculty Member', email: payload.email || null, status: payload.status || 'Part-Time' };
+    oldTeacher = { id, name: payload.name || 'Faculty Member', email: payload.email || null, status: fType };
   }
 
   const updates = [];
@@ -246,6 +182,20 @@ async function updateFaculty(id, payload) {
     }
   }
 
+  if (payload.facultyType !== undefined) {
+    try {
+      updates.push('faculty_type = ?');
+      params.push(payload.facultyType);
+    } catch {}
+  }
+
+  if (payload.position !== undefined) {
+    try {
+      updates.push('position = ?');
+      params.push(payload.position);
+    } catch {}
+  }
+
   if (payload.programMajorId !== undefined) {
     updates.push('program_major_id = ?');
     params.push(payload.programMajorId);
@@ -254,18 +204,6 @@ async function updateFaculty(id, payload) {
   if (updates.length > 0) {
     params.push(id);
     await query(`UPDATE teachers SET ${updates.join(', ')} WHERE id = ?`, params);
-  }
-
-  if (payload.availability !== undefined) {
-    await query('DELETE FROM teacher_availability WHERE teacher_id = ?', [id]);
-    const normalized = normalizeAvailability(payload.availability);
-    if (normalized.length > 0) {
-      const inserts = normalized.map((entry) => query(
-        'INSERT INTO teacher_availability (teacher_id, day_of_week, start_time, end_time) VALUES (?, ?, ?, ?)',
-        [id, entry.day_of_week, entry.start_time, entry.end_time]
-      ));
-      await Promise.all(inserts);
-    }
   }
 
   if (oldTeacher && oldTeacher.email) {
@@ -292,8 +230,8 @@ async function updateFaculty(id, payload) {
     department: '',
     email: row?.email || payload.email || oldTeacher?.email || '',
     phone: row?.phone || payload.phone || '',
-    status: row?.status || payload.status || oldTeacher?.status || 'Part-Time',
-    availability: payload.availability || '',
+    status: row?.status || payload.status || oldTeacher?.status || 'Full-Time',
+    facultyType: row?.status || payload.facultyType || 'Full-Time',
     subjects: [],
   };
 }
@@ -310,10 +248,8 @@ async function deleteFaculty(id) {
     await query('DELETE FROM users WHERE email = ?', [teacher.email]);
   }
 
-  await query('DELETE FROM teacher_availability WHERE teacher_id = ?', [id]);
   await query('DELETE FROM teachers WHERE id = ?', [id]);
 }
 
 const facultyService = { listFaculty, createFaculty, updateFaculty, deleteFaculty };
 module.exports = { facultyService };
-

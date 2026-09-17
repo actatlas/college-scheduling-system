@@ -68,8 +68,7 @@ export function Sidebar({ isMobileOpen = false, onClose }: SidebarProps) {
     {
       groupTitle: "Academic Catalog",
       items: [
-        { to: "/programs", label: "Programs", icon: Building2 },
-        { to: "/courses", label: "Courses", icon: GraduationCap },
+        { to: "/programs", label: "Programs & Majors", icon: Building2 },
         { to: "/subjects", label: "Subjects Catalog", icon: BookOpen },
         { to: "/sections", label: "Class Sections", icon: GraduationCap },
       ],

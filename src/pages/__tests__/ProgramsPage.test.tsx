@@ -19,8 +19,12 @@ describe("ProgramsPage", () => {
     mockGet.mockReset();
   });
 
-  it("shows an empty state instead of demo program cards when no programs are returned", async () => {
-    mockGet.mockResolvedValue({ data: { data: [] } });
+  it("shows an empty state when no programs are returned", async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url === "/programs") return Promise.resolve({ data: { data: [] } });
+      if (url === "/program-majors") return Promise.resolve({ data: { data: [] } });
+      return Promise.resolve({ data: { data: [] } });
+    });
 
     render(
       <ToastProvider>
@@ -30,15 +34,47 @@ describe("ProgramsPage", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/no programs have been recorded yet/i),
+        screen.getByText(/no academic programs registered/i),
       ).toBeInTheDocument();
     });
+  });
 
-    expect(
-      screen.queryByText(/Bachelor of Science in Information Technology/i),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText(/Bachelor of Science in Business Administration/i),
-    ).not.toBeInTheDocument();
+  it("renders programs and their associated majors", async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url === "/programs") {
+        return Promise.resolve({
+          data: {
+            data: [
+              { code: "BAP", name: "Business Administration Program", description: "Dept of Business" },
+              { code: "TEP", name: "Teacher Education Program", description: "Dept of Education" },
+            ],
+          },
+        });
+      }
+      if (url === "/program-majors") {
+        return Promise.resolve({
+          data: {
+            data: [
+              { id: 1, code: "FM", name: "Financial Management", programCode: "BAP" },
+              { id: 2, code: "MM", name: "Marketing Management", programCode: "BAP" },
+            ],
+          },
+        });
+      }
+      return Promise.resolve({ data: { data: [] } });
+    });
+
+    render(
+      <ToastProvider>
+        <ProgramsPage />
+      </ToastProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Business Administration Program/i)).toBeInTheDocument();
+      expect(screen.getByText(/Teacher Education Program/i)).toBeInTheDocument();
+      expect(screen.getByText(/Financial Management/i)).toBeInTheDocument();
+      expect(screen.getByText(/Marketing Management/i)).toBeInTheDocument();
+    });
   });
 });

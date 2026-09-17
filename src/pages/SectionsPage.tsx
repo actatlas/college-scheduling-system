@@ -24,12 +24,12 @@ import { useSearchParams } from "react-router-dom";
 import { useProgramContext } from "../contexts/ProgramContext";
 import { useAcademicPeriod } from "../contexts/AcademicPeriodContext";
 import { getProgramLogo } from "../utils/programLogos";
-import type { SectionItem, ProgramItem, CourseItem } from "../types";
+import type { SectionItem, ProgramItem, MajorItem } from "../types";
 
 export function SectionsPage() {
   const [sections, setSections] = useState<SectionItem[]>([]);
-  const [coursesList, setCoursesList] = useState<CourseItem[]>([]);
   const [programsList, setProgramsList] = useState<ProgramItem[]>([]);
+  const [majorsList, setMajorsList] = useState<MajorItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [sectionToDelete, setSectionToDelete] = useState<SectionItem | null>(null);
@@ -65,10 +65,10 @@ export function SectionsPage() {
   const canEdit = isAdmin;
 
   const [form, setForm] = useState({
-    course: selectedProgram.key !== "ALL" ? selectedProgram.key : "BSIT",
-    program: selectedProgram.key !== "ALL" ? selectedProgram.key : "BSIT",
+    program: selectedProgram.key !== "ALL" ? selectedProgram.key : "TEP",
+    majorId: "",
     yearLevel: "1",
-    section: `${selectedProgram.key !== "ALL" ? selectedProgram.key : "BSIT"} 1-A`,
+    sectionLabel: "A",
     students: "35",
     semester: activeSemester || "1st Semester",
     schoolYear: activeSchoolYear || "2026-2027",
@@ -90,12 +90,12 @@ export function SectionsPage() {
 
   const fetchDependencies = async () => {
     try {
-      const [cRes, pRes] = await Promise.all([
-        api.get("/courses").catch(() => ({ data: { data: [] } })),
+      const [pRes, mRes] = await Promise.all([
         api.get("/programs").catch(() => ({ data: { data: [] } })),
+        api.get("/program-majors").catch(() => ({ data: { data: [] } })),
       ]);
-      setCoursesList(cRes.data?.data || []);
       setProgramsList(pRes.data?.data || []);
+      setMajorsList(mRes.data?.data || []);
     } catch {
       // ignore
     }
@@ -110,13 +110,13 @@ export function SectionsPage() {
     if (!canEdit) return;
     setEditingSection(section);
     setForm({
-      course: section.course,
-      program: section.program || section.course || selectedProgram.key || "BSIT",
-      yearLevel: section.yearLevel,
-      section: section.section,
-      students: String(section.students),
-      semester: section.semester,
-      schoolYear: section.schoolYear,
+      program: section.program || section.course || selectedProgram.key || "TEP",
+      majorId: (section as any).majorId || "",
+      yearLevel: section.yearLevel || "1",
+      sectionLabel: (section as any).sectionLabel || section.section || "A",
+      students: String(section.students || 35),
+      semester: section.semester || activeSemester || "1st Semester",
+      schoolYear: section.schoolYear || activeSchoolYear || "2026-2027",
     });
     setIsOpen(true);
   };
@@ -137,19 +137,24 @@ export function SectionsPage() {
   };
 
   const handleSave = async () => {
-    if (!form.section || !form.course) {
+    if (!form.program || !form.sectionLabel.trim()) {
       toast.push("Program and Section name are required", "error");
       return;
     }
     setLoading(true);
     try {
+      const selectedMajor = majorsList.find((m) => String(m.id) === String(form.majorId));
+      const majorPrefix = selectedMajor?.code || form.program;
+      const sectionName = `${majorPrefix} ${form.yearLevel}-${form.sectionLabel.trim().toUpperCase()}`;
+
       const payload = {
-        course: form.course,
-        courseCode: form.course,
         program: form.program,
-        yearLevel: form.yearLevel,
-        section: form.section,
-        sectionLabel: form.section,
+        programCode: form.program,
+        majorId: form.majorId ? Number(form.majorId) : null,
+        yearLevel: Number(form.yearLevel) || 1,
+        section: form.sectionLabel.trim().toUpperCase(),
+        sectionLabel: form.sectionLabel.trim().toUpperCase(),
+        sectionName,
         students: Number(form.students) || 30,
         semester: form.semester,
         schoolYear: form.schoolYear,
@@ -174,10 +179,12 @@ export function SectionsPage() {
 
   const filteredSections = sections.filter((section) => {
     const matchesQuery = [
-      section.course,
-      section.yearLevel,
-      section.section,
+      section.sectionName || section.section || "",
+      section.course || "",
+      section.yearLevel || "",
       section.program || "",
+      (section as any).majorName || "",
+      (section as any).majorCode || "",
     ]
       .join(" ")
       .toLowerCase()
@@ -196,7 +203,7 @@ export function SectionsPage() {
     >
       <PageHeader
         title="Class Sections & Cohorts"
-        description="Organize collegiate student cohorts by academic program, year level, and student enrollment count."
+        description="Organize collegiate student cohorts by academic program, major, year level, and student enrollment count."
         breadcrumbs={
           <>
             <span>Home</span> <span>/</span> <strong>Sections</strong>
@@ -210,12 +217,12 @@ export function SectionsPage() {
               type="button"
               onClick={() => {
                 setEditingSection(null);
-                const progKey = selectedProgram.key !== "ALL" ? selectedProgram.key : (programsList[0]?.code || "BSIT");
+                const progKey = selectedProgram.key !== "ALL" ? selectedProgram.key : (programsList[0]?.code || "TEP");
                 setForm({
-                  course: progKey,
                   program: progKey,
+                  majorId: "",
                   yearLevel: "1",
-                  section: `${progKey} 1-A`,
+                  sectionLabel: "A",
                   students: "35",
                   semester: activeSemester,
                   schoolYear: activeSchoolYear,
@@ -242,7 +249,7 @@ export function SectionsPage() {
               <input
                 value={query}
                 onChange={(event) => handleQueryChange(event.target.value)}
-                placeholder="Search by section, program, course..."
+                placeholder="Search by section, program, major..."
               />
             </label>
             {query && (
@@ -277,7 +284,8 @@ export function SectionsPage() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Program / Course</th>
+                  <th>Academic Program</th>
+                  <th>Major</th>
                   <th>Year Level</th>
                   <th>Section Cohort</th>
                   <th>Enrolled Students</th>
@@ -288,11 +296,11 @@ export function SectionsPage() {
               <tbody>
                 {filteredSections.length === 0 ? (
                   <tr>
-                    <td colSpan={canEdit ? 6 : 5}>
+                    <td colSpan={canEdit ? 7 : 6}>
                       <div className="empty-state" style={{ padding: "36px 16px", textAlign: "center" }}>
                         <p style={{ margin: 0, fontWeight: 600, fontSize: "0.95rem" }}>No sections matched your search criteria.</p>
                         <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "var(--srcb-text-muted)" }}>
-                          Try searching with different cohort names or academic course codes.
+                          Try searching with different cohort names or academic programs.
                         </p>
                         {query && (
                           <button
@@ -309,7 +317,7 @@ export function SectionsPage() {
                   </tr>
                 ) : (
                   filteredSections.map((section) => (
-                    <tr key={section.id || `${section.course}-${section.section}`}>
+                    <tr key={section.id || `${section.program}-${section.section}`}>
                       <td>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <img
@@ -330,9 +338,18 @@ export function SectionsPage() {
                           <span className="pill pill--royal">{section.program || section.course}</span>
                         </div>
                       </td>
+                      <td>
+                        {(section as any).majorCode ? (
+                          <span className="pill pill--slate" style={{ fontSize: "0.78rem" }}>
+                            {(section as any).majorCode}
+                          </span>
+                        ) : (
+                          <span className="muted" style={{ fontSize: "0.78rem" }}>General</span>
+                        )}
+                      </td>
                       <td>Year {section.yearLevel}</td>
                       <td>
-                        <strong>{section.section}</strong>
+                        <strong>{section.sectionName || section.section}</strong>
                       </td>
                       <td>
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -377,14 +394,13 @@ export function SectionsPage() {
       </section>
 
       {/* Add / Edit Section Modal */}
-      {/* Add / Edit Section Modal */}
       <Modal
         isOpen={isOpen && canEdit}
         size="md"
         icon={<Users size={20} />}
         title={editingSection ? "Edit Section Details" : "Register Class Section"}
         eyebrow="Class Cohorts"
-        description="Configure student cohort, academic program, year level, and enrollment details."
+        description="Configure student cohort, academic program, major, year level, and enrollment details."
         onClose={() => {
           setIsOpen(false);
           setEditingSection(null);
@@ -393,26 +409,45 @@ export function SectionsPage() {
         <div className="form-grid">
           <div className="field-group">
             <label htmlFor="sectionProgram">
-              <GraduationCap size={13} /> Degree Course / Program <span className="required-asterisk">*</span>
+              <GraduationCap size={13} /> Academic Program <span className="required-asterisk">*</span>
             </label>
             <select
               id="sectionProgram"
-              value={form.course}
+              value={form.program}
               onChange={(e) => {
                 const code = e.target.value;
                 setForm({
                   ...form,
                   program: code,
-                  course: code,
-                  section: !editingSection ? `${code} ${form.yearLevel}-A` : form.section,
+                  majorId: "",
                 });
               }}
             >
-              {(coursesList.length > 0 ? coursesList : programsList).map((p) => (
+              {programsList.map((p) => (
                 <option key={p.code} value={p.code}>
                   {p.code} - {p.name}
                 </option>
               ))}
+            </select>
+          </div>
+
+          <div className="field-group">
+            <label htmlFor="sectionMajor">
+              <Layers size={13} /> Major (Optional / Nullable)
+            </label>
+            <select
+              id="sectionMajor"
+              value={form.majorId}
+              onChange={(e) => setForm({ ...form, majorId: e.target.value })}
+            >
+              <option value="">None / General Program Section</option>
+              {majorsList
+                .filter((m) => !form.program || m.programCode === form.program || (m as any).program_code === form.program)
+                .map((m) => (
+                  <option key={m.id} value={String(m.id)}>
+                    {m.code} - {m.name}
+                  </option>
+                ))}
             </select>
           </div>
 
@@ -434,13 +469,13 @@ export function SectionsPage() {
 
           <div className="field-group">
             <label htmlFor="sectionLabel">
-              <Layers size={13} /> Section Name / Label <span className="required-asterisk">*</span>
+              <Layers size={13} /> Section Label / Cohort ID <span className="required-asterisk">*</span>
             </label>
             <input
               id="sectionLabel"
-              value={form.section}
-              onChange={(e) => setForm({ ...form, section: e.target.value.toUpperCase() })}
-              placeholder="e.g. BSIT 1-A, BSBA 2-B"
+              value={form.sectionLabel}
+              onChange={(e) => setForm({ ...form, sectionLabel: e.target.value.toUpperCase() })}
+              placeholder="e.g. A, B, 301, 302"
               required
               aria-required="true"
             />
@@ -456,7 +491,7 @@ export function SectionsPage() {
               min={1}
               max={150}
               value={form.students}
-              onChange={(e) => setForm({ ...form, students: e.target.value })}
+              onChange={(event) => setForm({ ...form, students: event.target.value })}
               placeholder="e.g. 40"
             />
           </div>
@@ -476,7 +511,7 @@ export function SectionsPage() {
             </select>
           </div>
 
-          <div className="field-group">
+          <div className="field-group" style={{ gridColumn: "1 / -1" }}>
             <label htmlFor="sectionSY">
               <Clock size={13} /> School Year
             </label>
@@ -506,7 +541,7 @@ export function SectionsPage() {
           <button
             type="button"
             className="action-button"
-            disabled={loading || !form.section.trim() || !form.course.trim()}
+            disabled={loading || !form.sectionLabel.trim() || !form.program.trim()}
             onClick={handleSave}
           >
             {loading && <Loader2 size={16} className="animate-spin" />}
@@ -526,7 +561,7 @@ export function SectionsPage() {
         onConfirm={executeDelete}
         message={
           <span>
-            Are you sure you want to delete section <strong>{sectionToDelete?.section}</strong> ({sectionToDelete?.course} - Year {sectionToDelete?.yearLevel})?
+            Are you sure you want to delete section <strong>{sectionToDelete?.sectionName || sectionToDelete?.section}</strong> ({sectionToDelete?.program} - Year {sectionToDelete?.yearLevel})?
             <br />
             <br />
             <span style={{ fontSize: "0.82rem", color: "#dc2626", display: "inline-flex", alignItems: "center", gap: 6 }}>

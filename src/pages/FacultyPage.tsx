@@ -606,15 +606,15 @@ export function FacultyPage() {
                     )}
                   </div>
 
-                  {/* Filter by Status */}
+                  {/* Filter by Faculty Type */}
                   <div className="filter-group">
-                    <label htmlFor="facultyStatusFilter">Employment Status</label>
+                    <label htmlFor="facultyStatusFilter">Faculty Type</label>
                     <select
                       id="facultyStatusFilter"
                       value={statusFilter}
                       onChange={(e) => setStatusFilter(e.target.value)}
                     >
-                      <option value="all">All Statuses</option>
+                      <option value="all">All Faculty Types</option>
                       <option value="Full-Time">Full-Time Only</option>
                       <option value="Part-Time">Part-Time Only</option>
                     </select>
@@ -742,7 +742,7 @@ export function FacultyPage() {
                   </th>
                   <th>FACULTY MEMBER</th>
                   <th>DEPARTMENT / PROGRAMS</th>
-                  <th>STATUS</th>
+                  <th>FACULTY TYPE</th>
                   <th>TEACHING LOAD (MAX HOURS)</th>
                   <th style={{ textAlign: "right" }}>ACTIONS</th>
                 </tr>
@@ -1141,7 +1141,7 @@ export function FacultyPage() {
 
           <div className="field-group">
             <label htmlFor="facultyStatus">
-              <CheckCircle2 size={13} /> Employment Status
+              <CheckCircle2 size={13} /> Faculty Type
             </label>
             <select
               id="facultyStatus"

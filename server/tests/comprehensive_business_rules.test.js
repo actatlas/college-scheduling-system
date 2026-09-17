@@ -7,7 +7,6 @@ const { schedulesService } = require('../services/schedules.service');
 const { examSchedulesService } = require('../services/examSchedules.service');
 const { facultyService } = require('../services/faculty.service');
 const { usersService } = require('../services/users.service');
-const coursesController = require('../controllers/courses.controller');
 const programsController = require('../controllers/programs.controller');
 const roomsController = require('../controllers/rooms.controller');
 const subjectsController = require('../controllers/subjects.controller');
@@ -278,8 +277,14 @@ const mockQueryExecutor = async (sql, params = []) => {
     return state.rooms.filter((r) => r.status === 'Available');
   }
 
-  if (s.includes('SELECT id, name, status FROM teachers ORDER BY id ASC')) {
-    return state.teachers;
+  if (s.includes('FROM programs')) {
+    return state.programs.map((p) => ({ code: p.code, name: p.name, focus: p.focus || '' }));
+  }
+
+  if (s.includes('INSERT INTO programs')) {
+    const newProg = { code: params[0], name: params[1], focus: params[2] };
+    state.programs.push(newProg);
+    return [{ insertId: 1 }];
   }
 
   return [];
@@ -559,16 +564,16 @@ describe('Comprehensive SRCB Business Logic & Authorization Verification', () =>
   });
 
   it('11. Admin & Super Admin permissions across CRUD controllers', async () => {
-    // Admin creates course -> succeeds
-    const resCourse = mockRes();
-    await coursesController.createCourse({ user: admin, body: { code: 'NEW_C', name: 'New Course' } }, resCourse, () => {});
-    expect(resCourse.statusCode).toBe(201);
+    // Admin creates program -> succeeds
+    const resProg = mockRes();
+    await programsController.createProgram({ user: admin, body: { code: 'NEW_P', name: 'New Program' } }, resProg, () => {});
+    expect(resProg.statusCode).toBe(201);
 
-    // Teacher cannot create course -> 403 UNAUTHORIZED_ROLE
-    const resTeacherCourse = mockRes();
-    await coursesController.createCourse({ user: teacherMaria, body: { code: 'BAD_C', name: 'Bad Course' } }, resTeacherCourse, () => {});
-    expect(resTeacherCourse.statusCode).toBe(403);
-    expect(resTeacherCourse.body.code).toBe('UNAUTHORIZED_ROLE');
+    // Teacher cannot create program -> 403 UNAUTHORIZED_ROLE
+    const resTeacherProg = mockRes();
+    await programsController.createProgram({ user: teacherMaria, body: { code: 'BAD_P', name: 'Bad Program' } }, resTeacherProg, () => {});
+    expect(resTeacherProg.statusCode).toBe(403);
+    expect(resTeacherProg.body.code).toBe('UNAUTHORIZED_ROLE');
 
     // Teacher cannot create room -> 403 UNAUTHORIZED_ROLE
     const resTeacherRoom = mockRes();

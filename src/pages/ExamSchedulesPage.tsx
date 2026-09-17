@@ -3463,11 +3463,11 @@ export function ExamSchedulesPage() {
 
                       const roomOptions: SearchableOption[] = availableRooms.map((r) => ({
                         value: r.number,
-                        label: `${r.number} - ${r.building}`,
+                        label: r.building || r.roomName || r.name ? `${r.number} - ${r.building || r.roomName || r.name}` : r.number,
                         sublabel: `${r.type} • Capacity: ${r.capacity} seats`,
                         badge: `Cap: ${r.capacity}`,
                         badgeTone: "slate",
-                        searchKeywords: [r.number, r.building, r.type],
+                        searchKeywords: [r.number, r.building || r.roomName || r.name || "", r.type || ""],
                       }));
 
                       const totalStudentsInAssignment = assignment.sections.reduce((sum, secName) => {

@@ -87,11 +87,13 @@ async function createProgramMajor({ code, name, programCode, programHeadId }) {
     throw err;
   }
 
-  const [headRow] = await query('SELECT id FROM users WHERE id = ? AND role = ? LIMIT 1', [programHeadId, 'program_head']);
-  if (!headRow) {
-    const err = new Error('Referenced program head does not exist');
-    err.statusCode = 404;
-    throw err;
+  if (programHeadId) {
+    const [headRow] = await query('SELECT id FROM users WHERE id = ? AND role = ? LIMIT 1', [programHeadId, 'program_head']);
+    if (!headRow) {
+      const err = new Error('Referenced program head does not exist');
+      err.statusCode = 404;
+      throw err;
+    }
   }
 
   const [existing] = await query('SELECT id FROM program_majors WHERE code = ? LIMIT 1', [code]);
@@ -103,7 +105,7 @@ async function createProgramMajor({ code, name, programCode, programHeadId }) {
 
   const [result] = await query(
     'INSERT INTO program_majors (code, name, program_code, program_head_id) VALUES (?, ?, ?, ?)',
-    [code, name, programCode, programHeadId]
+    [code, name, programCode, programHeadId || null]
   );
 
   return getProgramMajorById(result.insertId);

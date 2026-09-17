@@ -189,7 +189,7 @@ describe('Role and Faculty Availability Permissions', () => {
     setupMockDb();
   });
 
-  it('Part-Time teacher can successfully update availability', async () => {
+  it('Teachers cannot manage faculty profiles (returns 403 UNAUTHORIZED_ROLE)', async () => {
     const req = {
       user: {
         sub: 5,
@@ -199,32 +199,7 @@ describe('Role and Faculty Availability Permissions', () => {
       },
       params: { id: 'FAC-003' },
       body: {
-        availability: 'Monday: 08:00-12:00 | Wednesday: 01:00-05:00',
-      },
-    };
-    const res = mockRes();
-    await facultyController.updateFaculty(req, res, (err) => {
-      if (err) throw err;
-    });
-
-    expect(res.statusCode).toBe(200);
-    expect(res.body.data.availability).toBe('Monday: 08:00-12:00 | Wednesday: 01:00-05:00');
-    expect(testState.teacher_availability.length).toBeGreaterThan(0);
-    expect(testState.teacher_availability.some((a) => a.day_of_week === 'Monday')).toBe(true);
-    expect(testState.teacher_availability.some((a) => a.day_of_week === 'Wednesday')).toBe(true);
-  });
-
-  it('Full-Time teacher cannot configure availability (returns 403 FULL_TIME_FIXED_SCHEDULE)', async () => {
-    const req = {
-      user: {
-        sub: 4,
-        role: 'teacher',
-        email: 'teacher@srcb.edu.ph',
-        teacherId: 'T001',
-      },
-      params: { id: 'T001' },
-      body: {
-        availability: 'Monday: 08:00-17:00',
+        name: 'Changed Name',
       },
     };
     const res = mockRes();
@@ -233,7 +208,7 @@ describe('Role and Faculty Availability Permissions', () => {
     });
 
     expect(res.statusCode).toBe(403);
-    expect(res.body.code).toBe('FULL_TIME_FIXED_SCHEDULE');
+    expect(res.body.code).toBe('UNAUTHORIZED_ROLE');
   });
 
   it('Admin must NOT manage users (returns 403 Forbidden)', async () => {
@@ -365,20 +340,10 @@ describe('Role and Faculty Availability Permissions', () => {
     );
     expect(res.statusCode).toBe(403);
     expect(res.body.code).toBe('UNAUTHORIZED_ROLE');
-    expect(res.body.error).toContain('Administrators cannot edit teacher profiles');
+    expect(res.body.error).toContain('Only Super Administrators can edit teacher profiles');
   });
 
-  it('Admin CAN update faculty availability (returns 200)', async () => {
-    const adminUser = { sub: 2, role: 'admin', email: 'admin@srcb.edu.ph' };
-    const res = mockRes();
-    await facultyController.updateFaculty(
-      { user: adminUser, params: { id: 'FAC-003' }, body: { availability: 'Tuesday: 08:00-12:00' } },
-      res,
-      () => {}
-    );
-    expect(res.statusCode).toBe(200);
-    expect(res.body.data.availability).toBe('Tuesday: 08:00-12:00');
-  });
+
 
   it('Super Admin CAN edit teacher profiles (returns 200)', async () => {
     const superAdminUser = { sub: 1, role: 'super_admin', email: 'superadmin@srcb.edu.ph' };

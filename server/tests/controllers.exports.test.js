@@ -27,18 +27,21 @@ describe('controllers exports', () => {
     expect(typeof schedules.generateSchedules).toBe('function');
   });
 
-  it('courses and programs controllers export full CRUD functions', async () => {
-    const courses = await import('../controllers/courses.controller.js');
-    expect(typeof courses.listCourses).toBe('function');
-    expect(typeof courses.createCourse).toBe('function');
-    expect(typeof courses.updateCourse).toBe('function');
-    expect(typeof courses.deleteCourse).toBe('function');
+  it('program majors, programs, and days controllers export full CRUD functions', async () => {
+    const programMajors = await import('../controllers/programMajors.controller.js');
+    expect(typeof programMajors.listProgramMajors).toBe('function');
+    expect(typeof programMajors.createProgramMajor).toBe('function');
+    expect(typeof programMajors.updateProgramMajor).toBe('function');
+    expect(typeof programMajors.deleteProgramMajor).toBe('function');
 
     const programs = await import('../controllers/programs.controller.js');
     expect(typeof programs.listPrograms).toBe('function');
     expect(typeof programs.createProgram).toBe('function');
     expect(typeof programs.updateProgram).toBe('function');
     expect(typeof programs.deleteProgram).toBe('function');
+
+    const days = await import('../controllers/days.controller.js');
+    expect(typeof days.listDays).toBe('function');
   });
 
   it('examSchedules and faculty controllers export functions', async () => {

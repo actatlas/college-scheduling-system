@@ -27,12 +27,12 @@ import { useSearchParams } from "react-router-dom";
 import { useProgramContext } from "../contexts/ProgramContext";
 import { useAcademicPeriod } from "../contexts/AcademicPeriodContext";
 import { getProgramLogo } from "../utils/programLogos";
-import type { SubjectItem, CourseItem, ProgramItem, FacultyMember } from "../types";
+import type { SubjectItem, ProgramItem, MajorItem, FacultyMember } from "../types";
 
 export function SubjectsPage() {
   const [subjects, setSubjects] = useState<SubjectItem[]>([]);
-  const [coursesList, setCoursesList] = useState<CourseItem[]>([]);
   const [programsList, setProgramsList] = useState<ProgramItem[]>([]);
+  const [majorsList, setMajorsList] = useState<MajorItem[]>([]);
   const [facultyList, setFacultyList] = useState<FacultyMember[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
@@ -70,7 +70,7 @@ export function SubjectsPage() {
     semester: activeSemester || "1st Semester",
     department: "Information Technology",
     program: selectedProgram.key !== "ALL" ? selectedProgram.key : "ITP",
-    courseCode: selectedProgram.key !== "ALL" ? selectedProgram.key : "ITP",
+    majorId: "",
     isMajor: true,
     instructorId: "",
     instructor: "Unassigned",
@@ -92,13 +92,13 @@ export function SubjectsPage() {
 
   const fetchDependencies = async () => {
     try {
-      const [cRes, pRes, fRes] = await Promise.all([
-        api.get("/courses").catch(() => ({ data: { data: [] } })),
+      const [pRes, mRes, fRes] = await Promise.all([
         api.get("/programs").catch(() => ({ data: { data: [] } })),
+        api.get("/program-majors").catch(() => ({ data: { data: [] } })),
         api.get("/faculty").catch(() => ({ data: { data: [] } })),
       ]);
-      setCoursesList(cRes.data?.data || []);
       setProgramsList(pRes.data?.data || []);
+      setMajorsList(mRes.data?.data || []);
       setFacultyList(fRes.data?.data || []);
     } catch {
       // ignore
@@ -136,7 +136,7 @@ export function SubjectsPage() {
       semester: subject.semester || activeSemester || "1st Semester",
       department: subject.department || (subject.isMajor ? (subject.program || "ITP") : "General Education"),
       program: subject.program || (subject.isMajor ? (selectedProgram.key !== "ALL" ? selectedProgram.key : "ITP") : "ALL"),
-      courseCode: subject.courseCode || subject.program || "ITP",
+      majorId: (subject as any).majorId || "",
       isMajor: Boolean(subject.isMajor),
       instructorId: subject.instructorId || "",
       instructor: subject.instructor || "Unassigned",
@@ -174,7 +174,7 @@ export function SubjectsPage() {
     try {
       const selectedFac = editingSubject ? facultyList.find((f) => f.id === form.instructorId) : null;
       const isMaj = Boolean(form.isMajor);
-      const payload: SubjectItem = {
+      const payload = {
         code: cleanCode,
         name: cleanName,
         units: Number(form.units) || 3,
@@ -183,7 +183,8 @@ export function SubjectsPage() {
         semester: form.semester || activeSemester || "1st Semester",
         department: isMaj ? (form.program || "ITP") : "General Education",
         program: isMaj ? (form.program || "ITP") : "ALL",
-        courseCode: isMaj ? (form.courseCode || form.program || "ITP") : "ALL",
+        programCode: isMaj ? (form.program || "ITP") : "ALL",
+        majorId: isMaj && form.majorId ? form.majorId : null,
         isMajor: isMaj,
         instructorId: editingSubject ? (form.instructorId || undefined) : undefined,
         instructor: editingSubject ? (selectedFac ? selectedFac.name : form.instructor || "Unassigned") : "Unassigned",
@@ -218,6 +219,8 @@ export function SubjectsPage() {
       subject.instructor,
       subject.department,
       subject.program || "",
+      (subject as any).majorName || "",
+      (subject as any).majorCode || "",
     ]
       .join(" ")
       .toLowerCase()
@@ -235,7 +238,6 @@ export function SubjectsPage() {
           const subProg = String(
             subject.program ||
             subject.department ||
-            subject.courseCode ||
             ""
           ).toUpperCase().trim();
           const filterKey = programFilter.toUpperCase().trim();
@@ -295,7 +297,7 @@ export function SubjectsPage() {
         helpText={
           isProgramHead
             ? "Program Heads manage Major Subject instructor assignments for their assigned program. General Education and cross-program minor subjects are managed globally by College Administrators."
-            : "Course units determine student load limits and classroom hour calculations. Major subjects require departmental allocation."
+            : "Course units determine student load limits and classroom hour calculations. Major subjects belong directly to Academic Programs and optional Majors."
         }
         actions={
           isAdmin ? (
@@ -305,8 +307,6 @@ export function SubjectsPage() {
               onClick={() => {
                 setEditingSubject(null);
                 const defaultProg = selectedProgram.key !== "ALL" ? selectedProgram.key : (programsList[0]?.code || "ITP");
-                const matchingCourses = coursesList.filter((c) => c.programCode === defaultProg || c.code.includes(defaultProg));
-                const defaultCourse = matchingCourses[0]?.code || coursesList[0]?.code || defaultProg;
                 setForm({
                   code: "",
                   name: "",
@@ -316,7 +316,7 @@ export function SubjectsPage() {
                   semester: activeSemester || "1st Semester",
                   department: defaultProg,
                   program: defaultProg,
-                  courseCode: defaultCourse,
+                  majorId: "",
                   isMajor: true,
                   instructorId: "",
                   instructor: "Unassigned",
@@ -392,11 +392,11 @@ export function SubjectsPage() {
                   ))}
                   {programsList.length === 0 && (
                     <>
-                      <option value="ITP">Information Technology Program (ITP / BSIT)</option>
-                      <option value="BAP">Business Administration Program (BAP / BSBA / BSA)</option>
-                      <option value="CJEP">Criminal Justice Education Program (CJEP / BSCrim)</option>
-                      <option value="HMP">Hospitality Management Program (HMP / BSHM)</option>
-                      <option value="TEP">Teacher Education Program (TEP / BSED / BEED)</option>
+                      <option value="ITP">Information Technology Program (ITP)</option>
+                      <option value="BAP">Business Administration Program (BAP)</option>
+                      <option value="CJEP">Criminal Justice Education Program (CJEP)</option>
+                      <option value="HMP">Hospitality Management Program (HMP)</option>
+                      <option value="TEP">Teacher Education Program (TEP)</option>
                     </>
                   )}
                 </select>
@@ -471,7 +471,7 @@ export function SubjectsPage() {
                   <th>Units / Hours</th>
                   <th>Classification</th>
                   <th>Assigned Instructor</th>
-                  <th>Program / Dept</th>
+                  <th>Program & Major</th>
                   <th style={{ textAlign: "right" }}>Actions</th>
                 </tr>
               </thead>
@@ -504,6 +504,7 @@ export function SubjectsPage() {
                 ) : (
                   filteredSubjects.map((subject) => {
                     const allowedToEdit = canEditSubject(subject);
+                    const majCode = (subject as any).majorCode;
                     return (
                       <tr key={subject.code}>
                         <td>
@@ -511,6 +512,11 @@ export function SubjectsPage() {
                         </td>
                         <td>
                           <strong>{subject.name}</strong>
+                          {majCode && (
+                            <span style={{ display: "block", fontSize: "0.74rem", color: "var(--srcb-royal)" }}>
+                              Major: {majCode}
+                            </span>
+                          )}
                         </td>
                         <td>
                           <div><strong>{subject.units} units</strong></div>
@@ -620,7 +626,7 @@ export function SubjectsPage() {
               value={form.code}
               disabled={!!editingSubject}
               onChange={(event) => setForm({ ...form, code: event.target.value.toUpperCase() })}
-              placeholder="e.g. IT101, BA102, GE101"
+              placeholder="e.g. IT101, BA102, GE101, EDUC5"
               required
               aria-required="true"
             />
@@ -652,20 +658,18 @@ export function SubjectsPage() {
               onChange={(e) => {
                 const isMaj = e.target.value === "true";
                 const prog = isMaj ? (programsList[0]?.code || "ITP") : "ALL";
-                const matchingCourses = coursesList.filter((c) => c.programCode === prog || c.code.includes(prog));
-                const crs = isMaj ? (matchingCourses[0]?.code || coursesList[0]?.code || prog) : "ALL";
                 setForm({
                   ...form,
                   isMajor: isMaj,
                   lectureHours: isMaj ? "2" : "1.5",
                   labHours: "0",
                   program: prog,
-                  courseCode: crs,
+                  majorId: "",
                   department: isMaj ? prog : "General Education",
                 });
               }}
             >
-              <option value="true">Major Subject (Degree / Program Specific)</option>
+              <option value="true">Major Subject (Program Specific)</option>
               <option value="false">General Education / Minor Subject (Universal)</option>
             </select>
           </div>
@@ -788,7 +792,7 @@ export function SubjectsPage() {
             />
           </div>
 
-          {/* Program & Course (Only when Major) */}
+          {/* Program & Major (Only when Major) */}
           {form.isMajor && (
             <>
               <div className="field-group">
@@ -800,19 +804,10 @@ export function SubjectsPage() {
                   value={form.program}
                   onChange={(e) => {
                     const newProg = e.target.value;
-                    const p = newProg.toUpperCase().trim();
-                    const matching = coursesList.filter(
-                      (c) =>
-                        c.programCode?.toUpperCase().trim() === p ||
-                        c.code.toUpperCase().includes(p) ||
-                        p.includes(c.code.toUpperCase())
-                    );
-                    const nextCourse = matching[0]?.code || coursesList[0]?.code || newProg;
-
                     setForm({
                       ...form,
                       program: newProg,
-                      courseCode: nextCourse,
+                      majorId: "",
                       department: newProg,
                     });
                   }}
@@ -826,30 +821,22 @@ export function SubjectsPage() {
               </div>
 
               <div className="field-group">
-                <label htmlFor="subjectCourse">
-                  <GraduationCap size={13} /> Course / Degree <span className="required-asterisk">*</span>
+                <label htmlFor="subjectMajor">
+                  <Layers size={13} /> Major (Optional / Nullable)
                 </label>
                 <select
-                  id="subjectCourse"
-                  value={form.courseCode}
-                  onChange={(e) => setForm({ ...form, courseCode: e.target.value })}
+                  id="subjectMajor"
+                  value={form.majorId}
+                  onChange={(e) => setForm({ ...form, majorId: e.target.value })}
                 >
-                  {(() => {
-                    const p = (form.program || "").toUpperCase().trim();
-                    const filtered = coursesList.filter(
-                      (c) =>
-                        !p ||
-                        c.programCode?.toUpperCase().trim() === p ||
-                        c.code.toUpperCase().includes(p) ||
-                        p.includes(c.code.toUpperCase())
-                    );
-                    const displayList = filtered.length > 0 ? filtered : coursesList;
-                    return displayList.map((c) => (
-                      <option key={c.code} value={c.code}>
-                        {c.code} - {c.name}
+                  <option value="">None / Program-Wide Subject</option>
+                  {majorsList
+                    .filter((m) => !form.program || m.programCode === form.program || (m as any).program_code === form.program)
+                    .map((m) => (
+                      <option key={m.id} value={String(m.id)}>
+                        {m.code} - {m.name}
                       </option>
-                    ));
-                  })()}
+                    ))}
                 </select>
               </div>
             </>

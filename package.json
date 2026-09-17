@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "concurrently -k -p \"[{name}]\" -n \"backend,frontend\" -c \"cyan.bold,magenta.bold\" \"npm:server\" \"npm:dev:frontend\"",
     "dev:frontend": "vite",
-    "server": "node server/server.js",
-    "server:dev": "node server/server.js",
+    "server": "node --watch server/server.js",
+    "server:dev": "node --watch server/server.js",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",

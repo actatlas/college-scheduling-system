@@ -11,8 +11,6 @@ import {
   Search,
   Edit2,
   Trash2,
-  Building,
-  Building2,
   AlertTriangle,
   X,
   DoorOpen,
@@ -21,9 +19,10 @@ import {
   Layers,
   CheckCircle2,
   Loader2,
+  BookOpen,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
-import type { RoomItem, BuildingType } from "../types";
+import type { RoomItem } from "../types";
 
 export function RoomsPage() {
   const [rooms, setRooms] = useState<RoomItem[]>([]);
@@ -33,6 +32,7 @@ export function RoomsPage() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState(searchParams.get("q") || searchParams.get("search") || "");
+  const [typeFilter, setTypeFilter] = useState<string>("All");
 
   useEffect(() => {
     const q = searchParams.get("q") || searchParams.get("search") || "";
@@ -52,7 +52,6 @@ export function RoomsPage() {
       return next;
     }, { replace: true });
   };
-  const [buildingFilter, setBuildingFilter] = useState<string>("All");
 
   const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
   const canEdit = role === "super_admin" || role === "admin";
@@ -61,8 +60,8 @@ export function RoomsPage() {
   const [editingRoom, setEditingRoom] = useState<RoomItem | null>(null);
   const [form, setForm] = useState({
     number: "",
+    roomName: "",
     capacity: "45",
-    building: "College Building" as BuildingType,
     type: "Lecture",
     status: "Available" as "Available" | "Reserved" | "Maintenance",
   });
@@ -73,10 +72,10 @@ export function RoomsPage() {
     setEditingRoom(room);
     setForm({
       number: room.number,
+      roomName: room.roomName || room.name || "",
       capacity: String(room.capacity),
-      building: room.building as BuildingType,
-      type: room.type,
-      status: room.status,
+      type: room.type || "Lecture",
+      status: (room.status === "Reserved" || room.status === "Maintenance" ? room.status : "Available") as "Available" | "Reserved" | "Maintenance",
     });
     setIsOpen(true);
   };
@@ -110,16 +109,16 @@ export function RoomsPage() {
   }, []);
 
   const filteredRooms = rooms.filter((room) => {
-    const matchesSearch = [room.number, room.building, room.type, room.status]
+    const matchesSearch = [room.number, room.roomName || "", room.name || "", room.type, room.status]
       .join(" ")
       .toLowerCase()
       .includes(query.toLowerCase());
 
-    const matchesBuilding =
-      buildingFilter === "All" ||
-      room.building.toLowerCase().includes(buildingFilter.toLowerCase());
+    const matchesType =
+      typeFilter === "All" ||
+      room.type.toLowerCase().includes(typeFilter.toLowerCase());
 
-    return matchesSearch && matchesBuilding;
+    return matchesSearch && matchesType;
   });
 
   return (
@@ -130,13 +129,13 @@ export function RoomsPage() {
     >
       <PageHeader
         title="Campus Rooms & Facilities"
-        description="Oversee classrooms, laboratories, and lecture halls across College, Senior High School (SHS), and Junior High School (JHS) buildings."
+        description="Oversee classrooms, laboratories, and lecture venues across the institution."
         breadcrumbs={
           <>
             <span>Home</span> <span>/</span> <strong>Rooms</strong>
           </>
         }
-        helpText="Rooms across all 3 campus buildings can be allocated for regular classes and synchronized examination blocks."
+        helpText="Rooms contain their explicit identifier (e.g., 301-SHS, 301-COLLEGE, LAB-02) and can be allocated for regular classes and examination schedules."
         actions={
           canEdit ? (
             <button
@@ -146,8 +145,8 @@ export function RoomsPage() {
                 setEditingRoom(null);
                 setForm({
                   number: "",
+                  roomName: "",
                   capacity: "45",
-                  building: "College Building",
                   type: "Lecture",
                   status: "Available",
                 });
@@ -169,16 +168,17 @@ export function RoomsPage() {
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.85rem", fontWeight: 600 }}>
-              Building:
+              Room Type:
               <select
-                value={buildingFilter}
-                onChange={(e) => setBuildingFilter(e.target.value)}
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
                 style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #cbd5e1" }}
               >
-                <option value="All">All Buildings</option>
-                <option value="College">College Building</option>
-                <option value="SHS">SHS Building</option>
-                <option value="JHS">JHS Building</option>
+                <option value="All">All Room Types</option>
+                <option value="Lecture">Lecture Rooms</option>
+                <option value="Laboratory">Laboratories</option>
+                <option value="AVR">Audio-Visual Room (AVR)</option>
+                <option value="Auditorium">Auditorium</option>
               </select>
             </label>
 
@@ -188,7 +188,7 @@ export function RoomsPage() {
                 <input
                   value={query}
                   onChange={(event) => handleQueryChange(event.target.value)}
-                  placeholder="Search room name, type, building..."
+                  placeholder="Search room code, name, type..."
                 />
               </label>
               {query && (
@@ -223,17 +223,17 @@ export function RoomsPage() {
           <div className="grid-3" style={{ marginTop: 12 }}>
             {filteredRooms.length === 0 ? (
               <div className="empty-state" style={{ gridColumn: "1 / -1", padding: "36px 16px", textAlign: "center" }}>
-                <p style={{ margin: 0, fontWeight: 600, fontSize: "0.95rem" }}>No rooms found matching your search or building filter.</p>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: "0.95rem" }}>No rooms found matching your search or type filter.</p>
                 <p style={{ margin: "4px 0 0", fontSize: "0.8rem", color: "var(--srcb-text-muted)" }}>
-                  Try adjusting your search query or selecting "All Campus Buildings".
+                  Try adjusting your search query or selecting "All Room Types".
                 </p>
-                {(query || buildingFilter !== "All") && (
+                {(query || typeFilter !== "All") && (
                   <button
                     type="button"
                     className="secondary-button"
                     onClick={() => {
                       handleQueryChange("");
-                      setBuildingFilter("All");
+                      setTypeFilter("All");
                     }}
                     style={{ marginTop: 12, fontSize: "0.8rem" }}
                   >
@@ -249,11 +249,13 @@ export function RoomsPage() {
                   style={{
                     position: "relative",
                     borderLeft: `4px solid ${
-                      room.building.includes("College")
+                      room.number.includes("COLLEGE") || room.number.includes("COL")
                         ? "#0284c7"
-                        : room.building.includes("SHS")
+                        : room.number.includes("SHS")
                           ? "#8b5cf6"
-                          : "#10b981"
+                          : room.number.includes("JHS")
+                            ? "#10b981"
+                            : "#0d5499"
                     }`,
                   }}
                 >
@@ -281,8 +283,8 @@ export function RoomsPage() {
                   )}
 
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <Building size={16} color="#0d5499" />
-                    <p className="eyebrow" style={{ margin: 0 }}>{room.building}</p>
+                    <DoorOpen size={16} color="#0d5499" />
+                    <p className="eyebrow" style={{ margin: 0 }}>{room.roomName || room.name || room.number}</p>
                   </div>
 
                   <h3 style={{ marginTop: 8 }}>{room.number}</h3>
@@ -317,8 +319,8 @@ export function RoomsPage() {
         size="md"
         icon={<DoorOpen size={20} />}
         eyebrow="Campus Facilities"
-        title={editingRoom ? "Edit Classroom / Facility" : "Register New Room"}
-        description="Allocate rooms across College, SHS, and JHS buildings with capacity limits."
+        title={editingRoom ? "Edit Room / Facility" : "Register New Room"}
+        description="Set room identifier code (e.g. 301-SHS, 301-COLLEGE, LAB-02), facility type, and student capacity."
         onClose={() => {
           setIsOpen(false);
           setEditingRoom(null);
@@ -327,32 +329,29 @@ export function RoomsPage() {
         <div className="form-grid">
           <div className="field-group">
             <label htmlFor="roomNumber">
-              <Hash size={13} /> Room Code / Number <span className="required-asterisk">*</span>
+              <Hash size={13} /> Room Code / Identifier <span className="required-asterisk">*</span>
             </label>
             <input
               id="roomNumber"
               value={form.number}
               disabled={!!editingRoom}
               onChange={(event) => setForm({ ...form, number: event.target.value.toUpperCase() })}
-              placeholder="e.g. COL-101, COMLAB-1, SHS-102"
+              placeholder="e.g. 301-SHS, 301-COLLEGE, LAB-02-SCIENCE"
               required
               aria-required="true"
             />
           </div>
 
           <div className="field-group">
-            <label htmlFor="roomBuilding">
-              <Building2 size={13} /> Campus Building
+            <label htmlFor="roomName">
+              <BookOpen size={13} /> Descriptive Room Name
             </label>
-            <select
-              id="roomBuilding"
-              value={form.building}
-              onChange={(event) => setForm({ ...form, building: event.target.value as BuildingType })}
-            >
-              <option value="College Building">College Building</option>
-              <option value="SHS Building">Senior High School (SHS) Building</option>
-              <option value="JHS Building">Junior High School (JHS) Building</option>
-            </select>
+            <input
+              id="roomName"
+              value={form.roomName}
+              onChange={(event) => setForm({ ...form, roomName: event.target.value })}
+              placeholder="e.g. College Lecture Room 301, Science Lab 2"
+            />
           </div>
 
           <div className="field-group">
@@ -382,6 +381,7 @@ export function RoomsPage() {
               <option value="Lecture">Lecture Room</option>
               <option value="Computer Laboratory">Computer Laboratory</option>
               <option value="Science Laboratory">Science Laboratory</option>
+              <option value="Laboratory">Laboratory</option>
               <option value="AVR">Audio-Visual Room (AVR)</option>
               <option value="Auditorium">Auditorium</option>
             </select>
@@ -420,13 +420,17 @@ export function RoomsPage() {
             disabled={loading || !form.number.trim()}
             onClick={async () => {
               if (!form.number.trim()) {
-                toast.push("Room number is required", "error");
+                toast.push("Room code / identifier is required", "error");
                 return;
               }
               setLoading(true);
               try {
                 const payload = {
-                  ...form,
+                  number: form.number.trim().toUpperCase(),
+                  name: form.roomName.trim() || form.number.trim().toUpperCase(),
+                  roomName: form.roomName.trim() || form.number.trim().toUpperCase(),
+                  type: form.type,
+                  status: form.status,
                   capacity: Number(form.capacity) || 40,
                 };
                 if (editingRoom) {
@@ -463,7 +467,7 @@ export function RoomsPage() {
         onConfirm={executeDelete}
         message={
           <span>
-            Are you sure you want to remove room <strong>{roomToDelete?.number}</strong> ({roomToDelete?.building}) from active campus inventory?
+            Are you sure you want to remove room <strong>{roomToDelete?.number}</strong> from active campus inventory?
             <br />
             <br />
             <span style={{ fontSize: "0.82rem", color: "#dc2626", display: "inline-flex", alignItems: "center", gap: 6 }}>
