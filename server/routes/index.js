@@ -33,6 +33,7 @@ router.use('/rooms', roomRoutes);
 router.use('/days', daysRoutes);
 router.use('/schedules', scheduleRoutes);
 router.use('/schedule-adjustment-requests', scheduleAdjustmentRequestsRoutes);
+router.use('/permission-requests', scheduleAdjustmentRequestsRoutes);
 router.use('/exam-schedules', examSchedulesRoutes);
 router.use('/exams', examSchedulesRoutes);
 router.use('/conflicts', conflictsRoutes);

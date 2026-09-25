@@ -259,12 +259,12 @@ describe('Role and Faculty Availability Permissions', () => {
     // createUser
     const resCreate = mockRes();
     await usersController.createUser(
-      { user: superAdminUser, body: { name: 'New Faculty', email: 'newfaculty@srcb.edu.ph', role: 'teacher' } },
+      { user: superAdminUser, body: { name: 'New Officer', email: 'newofficer@srcb.edu.ph', role: 'admin' } },
       resCreate,
       () => {}
     );
     expect(resCreate.statusCode).toBe(201);
-    expect(resCreate.body.data.email).toBe('newfaculty@srcb.edu.ph');
+    expect(resCreate.body.data.email).toBe('newofficer@srcb.edu.ph');
   });
 
   it('Schedule validation allows flexible scheduling without availability window constraints', async () => {

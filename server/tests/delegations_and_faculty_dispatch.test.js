@@ -86,7 +86,7 @@ describe('Backend Delegations & Faculty Gmail Dispatch Suite', () => {
     expect(payload.cubicleAdvisoryNote).toContain('departmental faculty cubicle');
 
     // Verify system log
-    const logsRes = await listSystemLogs({ limit: 10 });
+    const logsRes = await listSystemLogs({ module: 'Faculty Schedule Dispatch', limit: 50 });
     const logs = logsRes.data || [];
     const mailLog = logs.find((l) => l.module === 'Faculty Schedule Dispatch');
     expect(mailLog).toBeDefined();

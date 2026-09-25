@@ -18,7 +18,7 @@ async function authRegister(req, res, next) {
       user: result.user,
       module: 'Authentication',
       action: 'User Registered',
-      description: `Registered user account for ${name} (${email}) with role ${role || 'student'}.`,
+      description: `Registered user account for ${name} (${email}) with role ${role || 'admin'}.`,
       targetId: result.user?.id,
       targetType: 'User',
       status: 'Success',

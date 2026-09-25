@@ -9,12 +9,12 @@ async function createRequest(req, res, next) {
       req,
       user: req.user,
       module: 'Class Scheduling',
-      action: 'Submitted Schedule Adjustment Request',
-      description: `Program Head ${req.user.name || ''} submitted schedule adjustment request for ${data.subject_code} (${data.current_day} -> ${data.suggested_day || data.current_day}).`,
+      action: 'Submitted Permission Request',
+      description: `Program Head ${req.user?.name || ''} submitted ${data.requestedAction || 'permission'} request for ${data.subjectCode || data.subject_code} (${data.requesterProgram || data.requester_program}).`,
       targetId: data.id,
       targetType: 'ScheduleAdjustmentRequest',
       status: 'Success',
-      details: { scheduleId: data.schedule_id, reason: data.reason },
+      details: { scheduleId: data.scheduleId || data.schedule_id, action: data.requestedAction, reason: data.reason },
     });
 
     res.status(201).json({ data });
@@ -32,6 +32,8 @@ async function listRequests(req, res, next) {
       user: req.user,
       status: req.query.status,
       scheduleId: req.query.scheduleId || req.query.schedule_id,
+      action: req.query.action || req.query.requestedAction || req.query.requested_action,
+      program: req.query.program || req.query.programCode || req.query.program_code,
     });
     res.json({ data });
   } catch (err) {
@@ -62,12 +64,12 @@ async function approveRequest(req, res, next) {
       req,
       user: req.user,
       module: 'Class Scheduling',
-      action: 'Approved Schedule Adjustment Request',
-      description: `Administrator ${req.user.name || ''} approved schedule adjustment request #${req.params.id}.`,
+      action: 'Approved Permission Request',
+      description: `Administrator ${req.user?.name || ''} approved permission request #${req.params.id} for ${result.request?.subjectCode || result.request?.subject_code} (${result.request?.requesterProgram || result.request?.requester_program}).`,
       targetId: req.params.id,
       targetType: 'ScheduleAdjustmentRequest',
       status: 'Success',
-      details: { adminResponse: req.body?.admin_response },
+      details: { adminRemarks: req.body?.adminRemarks || req.body?.admin_response, request: result.request },
     });
 
     res.json(result);
@@ -87,12 +89,12 @@ async function rejectRequest(req, res, next) {
       req,
       user: req.user,
       module: 'Class Scheduling',
-      action: 'Rejected Schedule Adjustment Request',
-      description: `Administrator ${req.user.name || ''} rejected schedule adjustment request #${req.params.id}.`,
+      action: 'Rejected Permission Request',
+      description: `Administrator ${req.user?.name || ''} rejected permission request #${req.params.id} for ${result.request?.subjectCode || result.request?.subject_code}.`,
       targetId: req.params.id,
       targetType: 'ScheduleAdjustmentRequest',
       status: 'Success',
-      details: { adminResponse: req.body?.admin_response },
+      details: { adminRemarks: req.body?.adminRemarks || req.body?.admin_response, request: result.request },
     });
 
     res.json(result);

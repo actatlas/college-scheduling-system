@@ -161,7 +161,7 @@ export function UserManagementPage() {
   const [form, setForm] = useState({
     email: "",
     password: "",
-    role: "teacher" as UserRole,
+    role: "admin" as UserRole,
     status: "Active" as "Active" | "Suspended",
     program: "BAP",
     teacherId: "",
@@ -592,8 +592,6 @@ export function UserManagementPage() {
         return "Dean of Student Affairs (Admin)";
       case "program_head":
         return "Program Head";
-      case "student":
-        return "Student / Read-Only";
       default:
         return role;
     }
@@ -607,8 +605,6 @@ export function UserManagementPage() {
         return <span className="pill pill--navy">Dean of Student Affairs</span>;
       case "program_head":
         return <span className="pill pill--emerald">Program Head</span>;
-      case "student":
-        return <span className="pill pill--slate">Student / Read-Only</span>;
       default:
         return <span className="pill">{role}</span>;
     }
@@ -701,7 +697,7 @@ export function UserManagementPage() {
     setForm({
       email: "",
       password: "@srcb123",
-      role: "teacher",
+      role: "admin",
       program: "BAP",
       teacherId: "",
       status: "Active",
@@ -1054,7 +1050,6 @@ export function UserManagementPage() {
                       <option value="super_admin">Super Admin (ICT)</option>
                       <option value="admin">Dean of Student Affairs (Admin)</option>
                       <option value="program_head">Program Head</option>
-                      <option value="student">Student / Read-Only</option>
                     </select>
                   </div>
 
@@ -1997,7 +1992,6 @@ export function UserManagementPage() {
               <option value="super_admin">Super Admin (ICT Office)</option>
               <option value="admin">Dean of Student Affairs (Admin)</option>
               <option value="program_head">Program Head</option>
-              <option value="student">Student / Read-Only</option>
             </select>
           </div>
 

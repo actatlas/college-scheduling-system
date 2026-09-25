@@ -8,7 +8,7 @@ const DEFAULT_ADMIN_NAME = 'System Administrator';
 
 async function ensureCatalogSeed() {
   try {
-    await query("ALTER TABLE users MODIFY COLUMN role ENUM('super_admin', 'admin', 'teacher', 'program_head') NOT NULL DEFAULT 'admin'");
+    await query("ALTER TABLE users MODIFY COLUMN role ENUM('super_admin', 'admin', 'program_head') NOT NULL DEFAULT 'admin'");
   } catch (err) {
     // ignore if already aligned or unsupported in mock
   }
@@ -136,7 +136,14 @@ async function ensureDefaultUsers() {
 async function register({ name, email, password, role }) {
   await ensureCatalogSeed();
 
-  const safeRole = role === 'program_head' || role === 'teacher' ? role : 'admin';
+  if (role === 'teacher' || role === 'student') {
+    const err = new Error(`${role === 'student' ? 'Student' : 'Teacher'} is not a valid system user role. Only Super Admin, Admin, and Program Head roles are supported.`);
+    err.statusCode = 400;
+    err.code = `${role.toUpperCase()}_ROLE_NOT_SUPPORTED`;
+    throw err;
+  }
+
+  const safeRole = role === 'program_head' || role === 'super_admin' ? role : 'admin';
   const passwordHash = await bcrypt.hash(password, 10);
 
   const [existing] = await query('SELECT id FROM users WHERE email = ? LIMIT 1', [email]);
@@ -152,14 +159,7 @@ async function register({ name, email, password, role }) {
   );
   const userId = (Array.isArray(result) ? result[0] : result)?.insertId || result.insertId;
 
-  if (safeRole === 'teacher') {
-    const facultyId = `T${Date.now().toString().slice(-6)}`;
-    const [major] = await query('SELECT id FROM program_majors WHERE code = ? LIMIT 1', ['BSIT']);
-    await query(
-      'INSERT INTO teachers (id, name, email, phone, status, program_major_id) VALUES (?, ?, ?, ?, ?, ?)',
-      [facultyId, name, email, null, 'Full-Time', major?.id || null],
-    );
-  } else if (safeRole === 'program_head') {
+  if (safeRole === 'program_head') {
     const [major] = await query('SELECT id FROM program_majors WHERE code = ? LIMIT 1', ['BSIT']);
     if (major) {
       await query('UPDATE program_majors SET program_head_id = ? WHERE id = ?', [userId, major.id]);
@@ -207,6 +207,20 @@ async function login({ email, password }) {
       throw err;
     }
 
+    // Check if role is obsolete teacher or student role
+    if (String(user.role || '').toLowerCase() === 'teacher') {
+      const err = new Error('Faculty accounts do not have direct system login. Finalized and updated schedules are communicated directly through your official school email.');
+      err.statusCode = 403;
+      err.code = 'TEACHER_LOGIN_DISABLED';
+      throw err;
+    }
+    if (String(user.role || '').toLowerCase() === 'student') {
+      const err = new Error('Student is not an authorized system role. The SCSMS is strictly for authorized academic personnel (Super Admin, Admin, Program Head).');
+      err.statusCode = 403;
+      err.code = 'STUDENT_LOGIN_DISABLED';
+      throw err;
+    }
+
     const ok = await bcrypt.compare(normalizedPassword, user.password_hash);
     if (!ok) {
       const err = new Error('Invalid email or password');
@@ -220,6 +234,19 @@ async function login({ email, password }) {
     const err = new Error('Your account has been suspended. Please contact the ICT Office or system administrator.');
     err.statusCode = 403;
     err.code = 'ACCOUNT_SUSPENDED';
+    throw err;
+  }
+
+  if (String(user.role || '').toLowerCase() === 'teacher') {
+    const err = new Error('Faculty accounts do not have direct system login. Finalized and updated schedules are communicated directly through your official school email.');
+    err.statusCode = 403;
+    err.code = 'TEACHER_LOGIN_DISABLED';
+    throw err;
+  }
+  if (String(user.role || '').toLowerCase() === 'student') {
+    const err = new Error('Student is not an authorized system role. The SCSMS is strictly for authorized academic personnel (Super Admin, Admin, Program Head).');
+    err.statusCode = 403;
+    err.code = 'STUDENT_LOGIN_DISABLED';
     throw err;
   }
 

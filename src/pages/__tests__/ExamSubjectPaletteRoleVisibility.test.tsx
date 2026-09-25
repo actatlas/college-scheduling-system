@@ -300,39 +300,4 @@ describe("Exam Subject Palette Role-Based Visibility & Filtering", () => {
     expect(screen.queryByText("CRIM 101")).not.toBeInTheDocument();
     expect(screen.queryByText("GE 1")).not.toBeInTheDocument();
   });
-
-  it("7. STUDENT / READ-ONLY: Exam Subject Palette is COMPLETELY ABSENT (no palette, no toggle strip, no quick-schedule controls)", async () => {
-    localStorage.setItem("userRole", "student");
-    localStorage.setItem("userName", "Collegiate Student Body");
-
-    render(
-      <BrowserRouter>
-        <AcademicPeriodProvider>
-          <ProgramProvider>
-            <ToastProvider>
-              <ExamSchedulesPage />
-            </ToastProvider>
-          </ProgramProvider>
-        </AcademicPeriodProvider>
-      </BrowserRouter>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("Institutional Examination Timetable")).toBeInTheDocument();
-    });
-
-    // Exam Subject Palette and collapsed strip should NOT exist in the DOM
-    expect(screen.queryByText("Exam Subject Palette")).not.toBeInTheDocument();
-    expect(screen.queryByText("Subject Palette")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Expand Subject Palette")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Search curriculum subjects")).not.toBeInTheDocument();
-
-    // Subject cards should NOT exist in the DOM
-    expect(screen.queryByText("IT 101")).not.toBeInTheDocument();
-    expect(screen.queryByText("GE 1")).not.toBeInTheDocument();
-
-    // Scheduling actions should NOT be available for student
-    expect(screen.queryByText("Use Previous Schedule")).not.toBeInTheDocument();
-    expect(screen.queryByText("+ Schedule")).not.toBeInTheDocument();
-  });
 });

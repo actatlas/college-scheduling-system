@@ -25,12 +25,11 @@ export function ProfilePage() {
   const toast = useToast();
   const { addNotification } = useNotifications();
 
-  const role = (localStorage.getItem("userRole") || "teacher").toLowerCase();
+  const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
   const [userName, setUserName] = useState(localStorage.getItem("userName") || "User");
   const [userEmail, setUserEmail] = useState("");
   const [userId, setUserId] = useState<string>("1");
   const [userProgram, setUserProgram] = useState<string>("");
-  const [teacherStatus, setTeacherStatus] = useState<string>(localStorage.getItem("teacherStatus") || "Full-Time");
   const [phone, setPhone] = useState("");
   const [phoneError, setPhoneError] = useState("");
   const [nameError, setNameError] = useState("");
@@ -61,10 +60,6 @@ export function ProfilePage() {
           if (u.id) setUserId(String(u.id));
           if (u.program || u.programCode) setUserProgram(u.program || u.programCode);
           if (u.teacher?.phone) setPhone(u.teacher.phone);
-          if (u.teacher?.status) {
-            setTeacherStatus(u.teacher.status);
-            localStorage.setItem("teacherStatus", u.teacher.status);
-          }
         }
       } catch {
         // Fallback to local storage
@@ -179,8 +174,6 @@ export function ProfilePage() {
         return "Dean of Student Affairs (Admin)";
       case "program_head":
         return `Program Head ${userProgram ? `(${userProgram})` : ""}`;
-      case "teacher":
-        return `Faculty Member (${teacherStatus})`;
       default:
         return "Institutional User";
     }
@@ -194,8 +187,6 @@ export function ProfilePage() {
         return "pill--royal";
       case "program_head":
         return "pill--success";
-      case "teacher":
-        return "pill--warning";
       default:
         return "pill--royal";
     }

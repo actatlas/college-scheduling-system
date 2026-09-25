@@ -99,10 +99,10 @@ describe('Account Suspension & Reactivation Business Logic', () => {
       users: [
         { id: 1, name: 'ICT Super Admin', email: 'superadmin@srcb.edu.ph', role: 'super_admin', status: 'Active', password_hash: superAdminHash },
         { id: 2, name: 'System Admin', email: 'admin@srcb.edu.ph', role: 'admin', status: 'Active', password_hash: passwordHash },
-        { id: 4, name: 'Maria Santos', email: 'teacher@srcb.edu.ph', role: 'teacher', status: 'Active', password_hash: passwordHash, teacherId: 'T001' },
+        { id: 4, name: 'Dr. Alan Turing', email: 'ithead@srcb.edu.ph', role: 'program_head', program: 'ITP', status: 'Active', password_hash: passwordHash, teacherId: 'T001' },
       ],
       teachers: [
-        { id: 'T001', name: 'Maria Santos', email: 'teacher@srcb.edu.ph', phone: '123-456', status: 'Full-Time' },
+        { id: 'T001', name: 'Dr. Alan Turing', email: 'ithead@srcb.edu.ph', phone: '123-456', status: 'Full-Time' },
       ],
       schedules: [
         { id: 101, faculty_id: 'T001', subject_code: 'IT101', section_id: 1, day: 'Monday', start_time: '08:00', end_time: '09:30' },
@@ -120,12 +120,12 @@ describe('Account Suspension & Reactivation Business Logic', () => {
 
   it('1. Active user can log in normally and receive token with status Active', async () => {
     const res = await authService.login({
-      email: 'teacher@srcb.edu.ph',
+      email: 'ithead@srcb.edu.ph',
       password: '@teacher123',
     });
 
     expect(res.token).toBeDefined();
-    expect(res.user.email).toBe('teacher@srcb.edu.ph');
+    expect(res.user.email).toBe('ithead@srcb.edu.ph');
     expect(res.user.status).toBe('Active');
   });
 
@@ -149,7 +149,7 @@ describe('Account Suspension & Reactivation Business Logic', () => {
 
     await expect(
       authService.login({
-        email: 'teacher@srcb.edu.ph',
+        email: 'ithead@srcb.edu.ph',
         password: '@teacher123',
       })
     ).rejects.toMatchObject({
@@ -163,7 +163,7 @@ describe('Account Suspension & Reactivation Business Logic', () => {
     // Generate valid JWT token while user was still active
     const jwtSecret = process.env.JWT_SECRET || 'dev-jwt-secret-change-me';
     const token = jwt.sign(
-      { sub: 4, role: 'teacher', email: 'teacher@srcb.edu.ph' },
+      { sub: 4, role: 'program_head', email: 'ithead@srcb.edu.ph' },
       jwtSecret,
       { expiresIn: '7d' }
     );
@@ -205,16 +205,17 @@ describe('Account Suspension & Reactivation Business Logic', () => {
     testState.users.find((u) => u.id === 4).status = 'Suspended';
 
     await usersService.updateUser(4, {
-      name: 'Maria Santos',
-      email: 'teacher@srcb.edu.ph',
-      role: 'teacher',
+      name: 'Dr. Alan Turing',
+      email: 'ithead@srcb.edu.ph',
+      role: 'program_head',
+      program: 'ITP',
       status: 'Active',
     });
 
     expect(testState.users.find((u) => u.id === 4).status).toBe('Active');
 
     const res = await authService.login({
-      email: 'teacher@srcb.edu.ph',
+      email: 'ithead@srcb.edu.ph',
       password: '@teacher123',
     });
 
@@ -228,9 +229,10 @@ describe('Account Suspension & Reactivation Business Logic', () => {
     const initialSectionCount = testState.sections.length;
 
     await usersService.updateUser(4, {
-      name: 'Maria Santos',
-      email: 'teacher@srcb.edu.ph',
-      role: 'teacher',
+      name: 'Dr. Alan Turing',
+      email: 'ithead@srcb.edu.ph',
+      role: 'program_head',
+      program: 'ITP',
       status: 'Suspended',
     });
 
@@ -284,7 +286,7 @@ describe('Account Suspension & Reactivation Business Logic', () => {
 
     // User can now log in immediately
     const loginResult = await authService.login({
-      email: 'teacher@srcb.edu.ph',
+      email: 'ithead@srcb.edu.ph',
       password: '@teacher123',
     });
 
@@ -296,9 +298,10 @@ describe('Account Suspension & Reactivation Business Logic', () => {
     // Add additional suspended user
     testState.users.push({
       id: 5,
-      name: 'Engr. Roberto Santos',
-      email: 'parttime@srcb.edu.ph',
-      role: 'teacher',
+      name: 'Dr. Luca Pacioli',
+      email: 'pacioli@srcb.edu.ph',
+      role: 'program_head',
+      program: 'BAP',
       status: 'Suspended',
       password_hash: await bcrypt.hash('@teacher123', 10),
     });
@@ -317,9 +320,10 @@ describe('Account Suspension & Reactivation Business Logic', () => {
   it('10. Bulk unsuspend logic strictly targets suspended accounts only', async () => {
     testState.users.push({
       id: 6,
-      name: 'Dr. Alan Turing',
-      email: 'head.it@srcb.edu.ph',
+      name: 'Dr. Ada Lovelace',
+      email: 'lovelace@srcb.edu.ph',
       role: 'program_head',
+      program: 'TEP',
       status: 'Active',
       password_hash: await bcrypt.hash('@teacher123', 10),
     });
@@ -345,7 +349,7 @@ describe('Account Suspension & Reactivation Business Logic', () => {
     const selectedUsers = [
       testState.users.find((u) => u.id === 1), // Self super admin
       testState.users.find((u) => u.id === 2), // Active Admin
-      testState.users.find((u) => u.id === 4), // Already Suspended Teacher
+      testState.users.find((u) => u.id === 4), // Already Suspended
     ];
 
     // Filter for suspension targets

@@ -67,7 +67,7 @@ export function LoginPage() {
         if (user.teacherId) {
           localStorage.setItem("teacherId", user.teacherId);
         }
-        if (userRole === "teacher" || userRole === "program_head") {
+        if (userRole === "program_head") {
           localStorage.setItem("teacherStatus", user.teacherStatus || user.teacher?.status || "Full-Time");
         } else {
           localStorage.removeItem("teacherStatus");

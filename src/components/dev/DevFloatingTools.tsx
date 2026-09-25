@@ -13,7 +13,6 @@ import {
   Building2,
   GraduationCap,
   Users,
-  Clock,
   User,
   LayoutDashboard,
   CalendarDays,
@@ -58,13 +57,6 @@ const PRESET_ACCOUNTS: PresetAccount[] = [
     pass: "@program123",
     role: "program_head",
     icon: <GraduationCap size={16} />,
-  },
-  {
-    label: "Student / Read-Only",
-    email: "student@srcb.edu.ph",
-    pass: "@student123",
-    role: "student",
-    icon: <Users size={16} />,
   },
 ];
 
@@ -117,10 +109,10 @@ export function DevFloatingTools() {
       localStorage.setItem("userRole", targetRole);
       localStorage.setItem("userName", user.name || acc.label);
 
-      if (targetRole === "teacher" || targetRole === "program_head") {
+      if (targetRole === "program_head") {
         const teacher = user.teacher || {};
         const isPartTime = acc.label.includes("Part-Time") || teacher.status === "Part-Time" || acc.email.includes("parttime") || acc.email.includes("sabuero");
-        const defaultHeadId = targetRole === "program_head" ? "FAC-003" : (isPartTime ? "FAC-003" : "T001");
+        const defaultHeadId = "FAC-003";
         localStorage.setItem("teacherId", user.teacherId || teacher.id || defaultHeadId);
         localStorage.setItem("teacherStatus", isPartTime ? "Part-Time" : "Full-Time");
       } else {
@@ -330,7 +322,7 @@ export function DevFloatingTools() {
                             handleSwitchToPreset({
                               label: `${u.name} (${u.role})`,
                               email: u.email,
-                              pass: u.role === "teacher" && u.email.includes("teacher@") ? "@teacher123" : "@srcb123",
+                              pass: "@srcb123",
                               role: u.role,
                               icon: <User size={16} />,
                             });
@@ -389,15 +381,6 @@ export function DevFloatingTools() {
                 >
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                     <GraduationCap size={15} /> Program Head (BSIT / ITP)
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className={`dev-account-btn ${currentRole === "student" ? "active" : ""}`}
-                  onClick={() => handleRoleOverride("student")}
-                >
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                    <Users size={15} /> Student / Read-Only (Public Monitor)
                   </span>
                 </button>
               </div>

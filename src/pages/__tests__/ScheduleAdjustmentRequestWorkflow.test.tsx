@@ -201,6 +201,7 @@ describe("Schedule Adjustment Request Workflow (Frontend)", () => {
 
   it("4. ADMIN: Displays pending requests banner and allows opening review modal", async () => {
     localStorage.setItem("userRole", "admin");
+    localStorage.setItem("userName", "Academic Administrator");
 
     const mockPendingReq = {
       id: 1,
@@ -235,12 +236,12 @@ describe("Schedule Adjustment Request Workflow (Frontend)", () => {
 
     renderComponent();
 
-    // Verify Admin pending banner is displayed
-    expect(await screen.findByText(/1 Schedule Adjustment Request\(s\)/i)).toBeInTheDocument();
-    const reviewBtn = screen.getByRole("button", { name: /Review Requests/i });
-    expect(reviewBtn).toBeInTheDocument();
+    // Verify Admin pending banner is displayed and review button is clickable
+    const banner = await screen.findByTestId("admin-adjustment-requests-banner");
+    expect(banner).toBeInTheDocument();
 
-    // Click Review Requests to open Admin modal
+    const reviewBtn = screen.getByTestId("review-requests-banner-btn");
+    expect(reviewBtn).toBeInTheDocument();
     fireEvent.click(reviewBtn);
 
     expect(await screen.findByText("Review Schedule Adjustment Request")).toBeInTheDocument();

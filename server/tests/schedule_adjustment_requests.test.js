@@ -221,22 +221,27 @@ describe('Schedule Adjustment Requests Workflow (Program Head → Admin)', () =>
           requested_by_user_id: params[1],
           requester_name: params[2],
           requester_program: params[3],
-          subject_code: params[4],
-          subject_name: params[5],
-          section_name: params[6],
-          faculty_name: params[7],
-          room_number: params[8],
-          current_day: params[9],
-          current_start_time: params[10],
-          current_end_time: params[11],
-          suggested_day: params[12],
-          suggested_start_time: params[13],
-          suggested_end_time: params[14],
-          suggested_room: params[15],
-          reason: params[16],
-          status: params[17] || 'Pending',
+          program_id: params[4],
+          subject_code: params[5],
+          subject_name: params[6],
+          section_id: params[7],
+          section_name: params[8],
+          faculty_name: params[9],
+          room_number: params[10],
+          current_day: params[11],
+          current_start_time: params[12],
+          current_end_time: params[13],
+          suggested_day: params[14],
+          suggested_start_time: params[15],
+          suggested_end_time: params[16],
+          suggested_room: params[17],
+          requested_action: params[18] || 'SCHEDULE_ADJUSTMENT',
+          reason: params[19],
+          status: params[20] || 'Pending',
           admin_response: null,
+          admin_remarks: null,
           reviewed_by_user_id: null,
+          reviewed_by_name: null,
           reviewed_at: null,
           created_at: new Date().toISOString(),
         };
@@ -254,13 +259,15 @@ describe('Schedule Adjustment Requests Workflow (Program Head → Admin)', () =>
         return mockRequests;
       }
 
-      if (s.includes('UPDATE schedule_adjustment_requests') && (s.includes('Approved') || s.includes('status = ?'))) {
+      if (s.includes('UPDATE schedule_adjustment_requests') && (s.includes('Approved') || s.includes("status = 'Approved'"))) {
         const reqId = Number(params[params.length - 1]);
         const r = mockRequests.find((x) => Number(x.id) === reqId);
         if (r) {
           r.status = 'Approved';
           r.admin_response = params[0];
-          r.reviewed_by_user_id = params[1];
+          r.admin_remarks = params[1] || params[0];
+          r.reviewed_by_user_id = params[2];
+          r.reviewed_by_name = params[3];
           r.reviewed_at = new Date().toISOString();
         }
         return [{ affectedRows: 1 }];
@@ -272,7 +279,9 @@ describe('Schedule Adjustment Requests Workflow (Program Head → Admin)', () =>
         if (r) {
           r.status = 'Rejected';
           r.admin_response = params[0];
-          r.reviewed_by_user_id = params[1];
+          r.admin_remarks = params[1] || params[0];
+          r.reviewed_by_user_id = params[2];
+          r.reviewed_by_name = params[3];
           r.reviewed_at = new Date().toISOString();
         }
         return [{ affectedRows: 1 }];
@@ -524,6 +533,98 @@ describe('Schedule Adjustment Requests Workflow (Program Head → Admin)', () =>
         statusCode: 403,
         code: 'UNAUTHORIZED_ROLE',
       });
+    });
+  });
+
+  describe('3. Scoped Permission Actions (CREATE, MODIFY, DELETE) & Cross-Program Security', () => {
+    it('allows Program Head to request CREATE_SCHEDULE for a subject in their assigned program', async () => {
+      const result = await scheduleAdjustmentRequestsService.createAdjustmentRequest(
+        {
+          subjectCode: 'IT101',
+          subjectName: 'Computer Programming 1',
+          sectionName: 'BSIT 1-A',
+          requestedAction: 'CREATE_SCHEDULE',
+          reason: 'Need approval to add a laboratory section block for 1st Year BSIT.',
+          suggestedDay: 'Wednesday',
+          suggestedStartTime: '01:00 PM',
+          suggestedEndTime: '04:00 PM',
+          suggestedRoom: 'LAB-201',
+        },
+        programHeadIT
+      );
+
+      expect(result).toBeDefined();
+      expect(result.requestedAction).toBe('CREATE_SCHEDULE');
+      expect(result.subjectCode).toBe('IT101');
+      expect(result.requesterProgram).toBe('ITP');
+      expect(result.status).toBe('Pending');
+    });
+
+    it('blocks Program Head from requesting permission for a subject outside their assigned program (403 UNAUTHORIZED_PROGRAM_ACCESS)', async () => {
+      mockSubjects.push({ code: 'CRIM101', name: 'Intro to Criminology', program_code: 'CJEP' });
+
+      await expect(
+        scheduleAdjustmentRequestsService.createAdjustmentRequest(
+          {
+            subjectCode: 'CRIM101',
+            subjectName: 'Intro to Criminology',
+            requestedAction: 'CREATE_SCHEDULE',
+            reason: 'IT Program Head trying to schedule Criminology subject',
+          },
+          programHeadIT
+        )
+      ).rejects.toMatchObject({
+        statusCode: 403,
+        code: 'UNAUTHORIZED_PROGRAM_ACCESS',
+      });
+    });
+
+    it('allows Admin to approve a CREATE_SCHEDULE request and record Admin Remarks', async () => {
+      const req = await scheduleAdjustmentRequestsService.createAdjustmentRequest(
+        {
+          subjectCode: 'IT101',
+          subjectName: 'Computer Programming 1',
+          requestedAction: 'CREATE_SCHEDULE',
+          reason: 'Adding lab cohort',
+        },
+        programHeadIT
+      );
+
+      const approval = await scheduleAdjustmentRequestsService.approveAdjustmentRequest(
+        req.id,
+        {
+          adminRemarks: 'Granted: Authorization for IT101 lab scheduling issued for AY 2026-2027.',
+        },
+        admin
+      );
+
+      expect(approval.success).toBe(true);
+      expect(approval.request.status).toBe('Approved');
+      expect(approval.request.adminRemarks).toContain('Authorization for IT101');
+      expect(approval.request.reviewedByName).toBe('Dean College Admin');
+    });
+
+    it('allows Admin to reject a DELETE_SCHEDULE request with clear remarks', async () => {
+      const req = await scheduleAdjustmentRequestsService.createAdjustmentRequest(
+        {
+          scheduleId: 1,
+          requestedAction: 'DELETE_SCHEDULE',
+          reason: 'Requesting to cancel General Education subject block',
+        },
+        programHeadIT
+      );
+
+      const rejection = await scheduleAdjustmentRequestsService.rejectAdjustmentRequest(
+        req.id,
+        {
+          adminRemarks: 'Rejected: GE2 is a mandatory core curriculum subject required for CHED compliance.',
+        },
+        admin
+      );
+
+      expect(rejection.success).toBe(true);
+      expect(rejection.request.status).toBe('Rejected');
+      expect(rejection.request.adminRemarks).toContain('CHED compliance');
     });
   });
 });

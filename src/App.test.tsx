@@ -62,10 +62,10 @@ describe("Scheduling system app", () => {
     });
   });
 
-  it("shows teacher-specific dashboard content when a teacher role is active", async () => {
+  it("shows program-head-specific dashboard content when a program head role is active", async () => {
     window.localStorage.setItem("token", "test-token");
-    window.localStorage.setItem("userRole", "teacher");
-    window.localStorage.setItem("userName", "Ms. Santos");
+    window.localStorage.setItem("userRole", "program_head");
+    window.localStorage.setItem("userName", "Dr. Alan Turing");
 
     render(
       <ProgramProvider>
@@ -76,7 +76,7 @@ describe("Scheduling system app", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/teacher portal/i)).toBeTruthy();
+      expect(screen.getByText(/Program Operations/i)).toBeTruthy();
     });
   });
 

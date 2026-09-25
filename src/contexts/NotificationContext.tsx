@@ -87,13 +87,6 @@ function isNotificationAuthorizedForUser(
     return targetRoles.includes("all");
   }
 
-  if (userRole === "teacher") {
-    if (targetRoles.includes("super_admin") || targetRoles.includes("admin") || targetRoles.includes("program_head")) {
-      return false;
-    }
-    return targetRoles.includes("teacher") || targetRoles.includes("all");
-  }
-
   return false;
 }
 

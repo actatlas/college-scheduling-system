@@ -93,9 +93,7 @@ export function Topbar({ title, onToggleMobileSidebar }: TopbarProps) {
       ? "Super Admin (ICT)"
       : role === "program_head"
         ? "Dr. Alan Turing"
-        : role === "teacher"
-          ? "Mr. Juan Dela Cruz"
-          : "Dean of Student Affairs (Admin)");
+        : "Dean of Student Affairs (Admin)");
 
   useEffect(() => {
     const saved = localStorage.getItem("theme");
@@ -374,7 +372,7 @@ export function Topbar({ title, onToggleMobileSidebar }: TopbarProps) {
               {selectedProgram.shortLabel || selectedProgram.label}
             </span>
           </div>
-        ) : role !== "teacher" && role !== "super_admin" ? (
+        ) : role !== "super_admin" ? (
           <label className="topbar__program-badge" title="Active Academic Program Filter">
             <img
               src={currentProgramLogo}
@@ -709,9 +707,7 @@ export function Topbar({ title, onToggleMobileSidebar }: TopbarProps) {
                 ? "ICT"
                 : role === "program_head"
                   ? "PH"
-                  : role === "teacher"
-                    ? "TE"
-                    : "AD"}
+                  : "AD"}
             </div>
             <div>
               <p className="topbar__name">{userName}</p>

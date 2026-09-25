@@ -120,14 +120,13 @@ export function AppRoutes() {
           <Route
             element={
               <ProtectedRoute
-                allowedRoles={["super_admin", "admin", "program_head", "student"]}
+                allowedRoles={["super_admin", "admin", "program_head"]}
               />
             }
           >
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/admin-dashboard" element={<DashboardPage />} />
             <Route path="/program-head-dashboard" element={<DashboardPage />} />
-            <Route path="/student-dashboard" element={<DashboardPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/account" element={<ProfilePage />} />
           </Route>
@@ -157,16 +156,26 @@ export function AppRoutes() {
             <Route path="/audit-logs" element={<SystemLogsPage />} />
           </Route>
 
-          {/* General paths accessible by Super Admin, Admin, Program Head, Student */}
+          {/* Timetable & Exam Schedules accessible by Admin & Program Head */}
           <Route
             element={
               <ProtectedRoute
-                allowedRoles={["super_admin", "admin", "program_head", "student"]}
+                allowedRoles={["admin", "program_head"]}
               />
             }
           >
             <Route path="/schedules" element={<SchedulesPage />} />
             <Route path="/exams" element={<ExamSchedulesPage />} />
+          </Route>
+
+          {/* Rooms and Facilities accessible by Super Admin, Admin, Program Head */}
+          <Route
+            element={
+              <ProtectedRoute
+                allowedRoles={["super_admin", "admin", "program_head"]}
+              />
+            }
+          >
             <Route path="/rooms" element={<RoomsPage />} />
           </Route>
 

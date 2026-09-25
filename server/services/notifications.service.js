@@ -1,4 +1,5 @@
 const { query } = require('../utils/db');
+const { isProgramMatch } = require('../utils/programScope');
 
 async function ensureNotificationsTable() {
   try {
@@ -22,134 +23,136 @@ async function ensureNotificationsTable() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
-    // Check if initial seeds exist
-    const rows = await query('SELECT COUNT(*) AS cnt FROM notifications');
-    const count = Number(rows[0]?.cnt || 0);
+    const initialSeeds = [
+      // 1. Super Admin Only
+      {
+        id: 'notif-sa-1',
+        title: 'ICT Governance & Security Active',
+        message: 'System audit logging, user role management, and institutional access control matrix initialized.',
+        type: 'info',
+        link: '/users',
+        target_role: 'super_admin',
+        target_user_id: null,
+        target_program: null,
+        target_teacher_id: null,
+      },
+      {
+        id: 'notif-sa-2',
+        title: 'Account Security Monitoring',
+        message: 'All registered institutional accounts are monitored under active security policies.',
+        type: 'success',
+        link: '/users',
+        target_role: 'super_admin',
+        target_user_id: null,
+        target_program: null,
+        target_teacher_id: null,
+      },
+      // 2. Dean of Student Affairs / College Admin Only
+      {
+        id: 'notif-adm-1',
+        title: 'AY 2026–2027 1st Semester Active',
+        message: 'Collegiate academic semester timetable configuration and cross-program scheduling window is active.',
+        type: 'info',
+        link: '/schedules',
+        target_role: 'admin',
+        target_user_id: null,
+        target_program: null,
+        target_teacher_id: null,
+      },
+      {
+        id: 'notif-adm-2',
+        title: 'Timetable Constraint Engine Ready',
+        message: 'Multi-building classroom allocation matrix and conflict validation solver initialized.',
+        type: 'success',
+        link: '/schedules',
+        target_role: 'admin',
+        target_user_id: null,
+        target_program: null,
+        target_teacher_id: null,
+      },
+      {
+        id: 'notif-adm-3',
+        title: 'Faculty Load Compliance Review',
+        message: 'Review full-time and part-time teaching load limits and departmental instructor allocations.',
+        type: 'warning',
+        link: '/faculty',
+        target_role: 'admin',
+        target_user_id: null,
+        target_program: null,
+        target_teacher_id: null,
+      },
+      // 3. Program Head (IT / Departmental)
+      {
+        id: 'notif-ph-1',
+        title: 'IT Program Timetable Active',
+        message: 'Departmental timetable planning and major subject instructor allocations are active for ITP.',
+        type: 'info',
+        link: '/dashboard',
+        target_role: 'program_head',
+        target_user_id: null,
+        target_program: 'ITP',
+        target_teacher_id: null,
+      },
+      {
+        id: 'notif-ph-2',
+        title: 'Curriculum Subject Allocation',
+        message: 'Review 1st to 4th year collegiate major subject offerings and laboratory classroom assignments.',
+        type: 'success',
+        link: '/subjects',
+        target_role: 'program_head',
+        target_user_id: null,
+        target_program: 'ITP',
+        target_teacher_id: null,
+      },
+      // 4. Teachers
+      {
+        id: 'notif-tch-1',
+        title: 'Class Schedule & Venue Assignments Available',
+        message: 'Your official teaching schedule and room allocations have been updated for this semester.',
+        type: 'info',
+        link: '/dashboard',
+        target_role: 'teacher',
+        target_user_id: null,
+        target_program: null,
+        target_teacher_id: null,
+      },
+      {
+        id: 'notif-tch-2',
+        title: 'Teaching Availability Confirmed',
+        message: 'Your teaching availability schedule is locked and registered for academic timetable generation.',
+        type: 'success',
+        link: '/dashboard',
+        target_role: 'teacher',
+        target_user_id: null,
+        target_program: null,
+        target_teacher_id: null,
+      },
+    ];
 
-    if (count === 0) {
-      const initialSeeds = [
-        // 1. Super Admin Only
-        {
-          id: 'notif-sa-1',
-          title: 'ICT Governance & Security Active',
-          message: 'System audit logging, user role management, and institutional access control matrix initialized.',
-          type: 'info',
-          link: '/users',
-          target_role: 'super_admin',
-          target_user_id: null,
-          target_program: null,
-          target_teacher_id: null,
-        },
-        {
-          id: 'notif-sa-2',
-          title: 'Account Security Monitoring',
-          message: 'All registered institutional accounts are monitored under active security policies.',
-          type: 'success',
-          link: '/users',
-          target_role: 'super_admin',
-          target_user_id: null,
-          target_program: null,
-          target_teacher_id: null,
-        },
-        // 2. Dean of Student Affairs / College Admin Only
-        {
-          id: 'notif-adm-1',
-          title: 'AY 2026–2027 1st Semester Active',
-          message: 'Collegiate academic semester timetable configuration and cross-program scheduling window is active.',
-          type: 'info',
-          link: '/schedules',
-          target_role: 'admin',
-          target_user_id: null,
-          target_program: null,
-          target_teacher_id: null,
-        },
-        {
-          id: 'notif-adm-2',
-          title: 'Timetable Constraint Engine Ready',
-          message: 'Multi-building classroom allocation matrix and conflict validation solver initialized.',
-          type: 'success',
-          link: '/schedules',
-          target_role: 'admin',
-          target_user_id: null,
-          target_program: null,
-          target_teacher_id: null,
-        },
-        {
-          id: 'notif-adm-3',
-          title: 'Faculty Load Compliance Review',
-          message: 'Review full-time and part-time teaching load limits and departmental instructor allocations.',
-          type: 'warning',
-          link: '/faculty',
-          target_role: 'admin',
-          target_user_id: null,
-          target_program: null,
-          target_teacher_id: null,
-        },
-        // 3. Program Head (IT / Departmental)
-        {
-          id: 'notif-ph-1',
-          title: 'IT Program Timetable Active',
-          message: 'Departmental timetable planning and major subject instructor allocations are active for ITP.',
-          type: 'info',
-          link: '/dashboard',
-          target_role: 'program_head',
-          target_user_id: null,
-          target_program: 'ITP',
-          target_teacher_id: null,
-        },
-        {
-          id: 'notif-ph-2',
-          title: 'Curriculum Subject Allocation',
-          message: 'Review 1st to 4th year collegiate major subject offerings and laboratory classroom assignments.',
-          type: 'success',
-          link: '/subjects',
-          target_role: 'program_head',
-          target_program: 'ITP',
-          target_teacher_id: null,
-        },
-        // 4. Teachers
-        {
-          id: 'notif-tch-1',
-          title: 'Class Schedule & Venue Assignments Available',
-          message: 'Your official teaching schedule and room allocations have been updated for this semester.',
-          type: 'info',
-          link: '/dashboard',
-          target_role: 'teacher',
-          target_user_id: null,
-          target_program: null,
-          target_teacher_id: null,
-        },
-        {
-          id: 'notif-tch-2',
-          title: 'Teaching Availability Confirmed',
-          message: 'Your teaching availability schedule is locked and registered for academic timetable generation.',
-          type: 'success',
-          link: '/dashboard',
-          target_role: 'teacher',
-          target_user_id: null,
-          target_program: null,
-          target_teacher_id: null,
-        },
-      ];
-
-      for (const item of initialSeeds) {
-        await query(
-          `INSERT INTO notifications (id, title, message, type, link, target_role, target_user_id, target_program, target_teacher_id, read_by_user_ids)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            item.id,
-            item.title,
-            item.message,
-            item.type,
-            item.link,
-            item.target_role,
-            item.target_user_id,
-            item.target_program,
-            item.target_teacher_id,
-            JSON.stringify([]),
-          ]
-        );
-      }
+    for (const item of initialSeeds) {
+      await query(
+        `INSERT INTO notifications (id, title, message, type, link, target_role, target_user_id, target_program, target_teacher_id, read_by_user_ids)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           title = VALUES(title),
+           message = VALUES(message),
+           target_role = VALUES(target_role),
+           target_program = VALUES(target_program),
+           target_teacher_id = VALUES(target_teacher_id),
+           created_at = CURRENT_TIMESTAMP`,
+        [
+          item.id,
+          item.title,
+          item.message,
+          item.type,
+          item.link,
+          item.target_role,
+          item.target_user_id,
+          item.target_program,
+          item.target_teacher_id,
+          JSON.stringify([]),
+        ]
+      );
     }
   } catch (err) {
     // Graceful fallback for mock db or test environments
@@ -219,24 +222,33 @@ function isNotificationTargetingUser(n, user) {
   const userProgram = (user.programCode || user.program || 'ITP').toUpperCase();
   const userTeacherId = user.teacherId || null;
 
+  const targetUserId = n.target_user_id || n.targetUserId;
+  const targetTeacherId = n.target_teacher_id || n.targetTeacherId;
+  const targetProgram = n.target_program || n.targetProgram;
+  const targetRole = n.target_role || n.targetRole;
+
   // 1. Specific User ID targeting
-  if (n.target_user_id) {
-    return userId ? String(n.target_user_id) === String(userId) : false;
+  if (targetUserId) {
+    return userId ? String(targetUserId) === String(userId) : false;
   }
 
   // 2. Specific Teacher ID targeting (for Teacher or Program Head who teaches)
-  if (n.target_teacher_id) {
-    return userTeacherId ? String(n.target_teacher_id).toLowerCase() === String(userTeacherId).toLowerCase() : false;
+  if (targetTeacherId) {
+    return userTeacherId ? String(targetTeacherId).toLowerCase() === String(userTeacherId).toLowerCase() : false;
   }
 
   // 3. Role-based scoping
-  const targetRoles = String(n.target_role || '').toLowerCase().split(',').map((r) => r.trim());
+  const targetRoles = String(targetRole || '').toLowerCase().split(',').map((r) => r.trim());
 
-  if (targetRoles.includes('all') || targetRoles.length === 0 || !n.target_role) {
+  if (targetRoles.includes('all') || targetRoles.length === 0 || !targetRole) {
     // If targeted to a specific program, check program matching
-    if (n.target_program && n.target_program !== 'ALL') {
+    if (targetProgram && targetProgram !== 'ALL') {
       if (userRole === 'program_head') {
-        return String(n.target_program).toUpperCase() === userProgram;
+        return (
+          isProgramMatch(targetProgram, userProgram) ||
+          String(targetProgram).toUpperCase() === userProgram ||
+          (user.program && isProgramMatch(targetProgram, user.program))
+        );
       }
       return userRole === 'super_admin' || userRole === 'admin';
     }
@@ -262,8 +274,12 @@ function isNotificationTargetingUser(n, user) {
 
     // Check if target is program_head
     if (targetRoles.includes('program_head')) {
-      if (n.target_program && n.target_program !== 'ALL') {
-        return String(n.target_program).toUpperCase() === userProgram;
+      if (targetProgram && targetProgram !== 'ALL') {
+        return (
+          isProgramMatch(targetProgram, userProgram) ||
+          String(targetProgram).toUpperCase() === userProgram ||
+          (user.program && isProgramMatch(targetProgram, user.program))
+        );
       }
       return true;
     }
@@ -286,7 +302,7 @@ async function listNotifications({ user } = {}) {
   await ensureNotificationsTable();
 
   try {
-    const rows = await query('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 100');
+    const rows = await query('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 300');
     if (rows && rows.length > 0) {
       const filtered = rows.filter((n) => isNotificationTargetingUser(n, user));
       const userId = user?.id || user?.sub || null;

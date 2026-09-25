@@ -6,7 +6,6 @@ import {
   Sliders,
   ShieldCheck,
   KeyRound,
-  Shield,
   CheckCircle2,
   XCircle,
   Edit3,
@@ -15,13 +14,15 @@ import {
   DoorOpen,
   UserCheck,
   Loader2,
+  Eye,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "../components/common/Toast";
-import { Navigate } from "react-router-dom";
+import { Navigate, Link } from "react-router-dom";
 import { Modal } from "../components/common/Modal";
 import { api } from "../data/apiClient";
-import type { ProgramHeadDelegation, PrivilegeType } from "../types";
+import type { ProgramHeadDelegation, PrivilegeType, ScheduleAdjustmentRequest, RoomItem } from "../types";
+import { AdminAdjustmentReviewModal } from "../components/schedule/AdminAdjustmentReviewModal";
 
 export function SettingsPage() {
   const role = (localStorage.getItem("userRole") || "").toLowerCase();
@@ -53,6 +54,13 @@ export function SettingsPage() {
   const [selectedDelegation, setSelectedDelegation] = useState<ProgramHeadDelegation | null>(null);
   const [isDelegationModalOpen, setIsDelegationModalOpen] = useState(false);
   const [savingDelegation, setSavingDelegation] = useState(false);
+
+  // Permission Requests State in Settings
+  const [permissionRequests, setPermissionRequests] = useState<ScheduleAdjustmentRequest[]>([]);
+  const [loadingRequests, setLoadingRequests] = useState(true);
+  const [requestToReview, setRequestToReview] = useState<ScheduleAdjustmentRequest | null>(null);
+  const [reqStatusFilter, setReqStatusFilter] = useState<string>("all");
+  const [roomsList, setRoomsList] = useState<RoomItem[]>([]);
 
   // Modal Form State
   const [selectedPrivileges, setSelectedPrivileges] = useState<PrivilegeType[]>([]);
@@ -126,6 +134,18 @@ export function SettingsPage() {
     }
   };
 
+  const fetchRequests = async () => {
+    setLoadingRequests(true);
+    try {
+      const res = await api.get("/schedule-adjustment-requests");
+      setPermissionRequests(res.data?.data || []);
+    } catch {
+      setPermissionRequests([]);
+    } finally {
+      setLoadingRequests(false);
+    }
+  };
+
   useEffect(() => {
     api.get("/terms/settings")
       .then((res: any) => {
@@ -145,7 +165,9 @@ export function SettingsPage() {
         }
       });
 
+    api.get("/rooms").then((res: any) => setRoomsList(res.data?.data || [])).catch(() => setRoomsList([]));
     fetchDelegations();
+    fetchRequests();
   }, []);
 
   const handleSave = async () => {
@@ -535,6 +557,198 @@ export function SettingsPage() {
           </div>
         </article>
 
+        {/* Program Head Permission Requests Governance Panel */}
+        <article className="card" style={{ gridColumn: "1 / -1" }}>
+          <div className="card__header" style={{ flexWrap: "wrap", gap: 10 }}>
+            <div>
+              <p className="eyebrow">Academic Timetable Governance</p>
+              <h3>Program Head Permission Requests</h3>
+              <p className="muted">
+                Review and decide on scoped academic scheduling permission requests (Create, Modify, Delete, and Time Adjustments) submitted by Program Heads.
+              </p>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {/* Status Filter Tabs */}
+              <div style={{ display: "flex", gap: 4, background: "var(--srcb-surface-alt, #f8fafc)", padding: 2, borderRadius: 6, border: "1px solid var(--srcb-border)" }}>
+                {(["all", "Pending", "Approved", "Rejected"] as const).map((st) => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => setReqStatusFilter(st)}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 4,
+                      border: "none",
+                      background: reqStatusFilter === st ? "var(--srcb-navy)" : "transparent",
+                      color: reqStatusFilter === st ? "#ffffff" : "var(--srcb-text-muted)",
+                      fontSize: "0.76rem",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {st === "all" ? "All" : st}
+                  </button>
+                ))}
+              </div>
+              <Link to="/schedules?view=requests" className="action-button-outline" style={{ padding: "5px 12px", fontSize: "0.78rem", textDecoration: "none" }}>
+                Open Timetable Hub
+              </Link>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 16, overflowX: "auto" }}>
+            {loadingRequests ? (
+              <div style={{ padding: "24px", textAlign: "center", color: "#64748b" }}>
+                <Loader2 className="animate-spin" size={24} style={{ margin: "0 auto 8px" }} />
+                <p>Loading permission requests...</p>
+              </div>
+            ) : (() => {
+              const filtered = permissionRequests.filter((r) => {
+                if (reqStatusFilter !== "all" && String(r.status || "").toLowerCase() !== reqStatusFilter.toLowerCase()) {
+                  return false;
+                }
+                return true;
+              });
+
+              if (filtered.length === 0) {
+                return (
+                  <div style={{ padding: "24px", textAlign: "center", color: "#64748b" }}>
+                    <ShieldCheck size={32} style={{ margin: "0 auto 8px", opacity: 0.5 }} />
+                    <p style={{ margin: 0, fontWeight: 600 }}>No {reqStatusFilter === "all" ? "" : reqStatusFilter.toLowerCase()} permission requests found.</p>
+                  </div>
+                );
+              }
+
+              return (
+                <table className="user-mgmt-table" style={{ width: "100%", minWidth: 800 }}>
+                  <thead>
+                    <tr>
+                      <th>REQUEST ID</th>
+                      <th>PROGRAM HEAD</th>
+                      <th>PROGRAM</th>
+                      <th>TARGET SUBJECT &amp; SECTION</th>
+                      <th>ACTION</th>
+                      <th>STATUS</th>
+                      <th>ADMIN REMARKS</th>
+                      <th style={{ textAlign: "right" }}>DECISION</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((req) => {
+                      const isPending = req.status === "Pending" || String(req.status || "").toLowerCase() === "pending";
+                      const isApproved = req.status === "Approved" || String(req.status || "").toLowerCase() === "approved";
+                      const isRejected = req.status === "Rejected" || String(req.status || "").toLowerCase() === "rejected";
+                      const actionBadge =
+                        req.requestedAction === "CREATE_SCHEDULE"
+                          ? "pill--emerald"
+                          : req.requestedAction === "MODIFY_SCHEDULE"
+                          ? "pill--blue"
+                          : req.requestedAction === "DELETE_SCHEDULE"
+                          ? "pill--rose"
+                          : "pill--amber";
+
+                      return (
+                        <tr key={req.id}>
+                          <td>
+                            <strong style={{ color: "var(--srcb-navy)", fontSize: "0.82rem" }}>
+                              #REQ-{String(req.id).padStart(3, "0")}
+                            </strong>
+                          </td>
+                          <td>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <div
+                                style={{
+                                  width: 28,
+                                  height: 28,
+                                  borderRadius: "50%",
+                                  background: "rgba(13, 84, 153, 0.1)",
+                                  color: "var(--srcb-navy)",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  fontWeight: 700,
+                                  fontSize: "0.75rem",
+                                }}
+                              >
+                                {req.requesterName ? req.requesterName.charAt(0) : "P"}
+                              </div>
+                              <div>
+                                <strong style={{ display: "block", color: "var(--srcb-text)", fontSize: "0.84rem" }}>
+                                  {req.requesterName}
+                                </strong>
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <span className="pill pill--navy" style={{ fontWeight: 700, fontSize: "0.72rem" }}>
+                              {req.requesterProgram || req.programCode || req.programId || "ITP"}
+                            </span>
+                          </td>
+                          <td>
+                            <strong style={{ color: "var(--srcb-navy)", fontSize: "0.84rem", display: "block" }}>
+                              {req.subjectCode} – {req.subjectName}
+                            </strong>
+                            <span style={{ fontSize: "0.72rem", color: "#64748b" }}>
+                              {req.sectionName || "Program Cohort"}
+                            </span>
+                          </td>
+                          <td>
+                            <span className={`pill ${actionBadge}`} style={{ fontWeight: 700, fontSize: "0.7rem" }}>
+                              {req.requestedAction || "SCHEDULE_ADJUSTMENT"}
+                            </span>
+                          </td>
+                          <td>
+                            <span
+                              className={`pill ${
+                                isApproved
+                                  ? "pill--emerald"
+                                  : isRejected
+                                  ? "pill--rose"
+                                  : "pill--amber"
+                              }`}
+                              style={{ fontWeight: 800, fontSize: "0.72rem" }}
+                            >
+                              {req.status.toUpperCase()}
+                            </span>
+                          </td>
+                          <td>
+                            <div style={{ fontSize: "0.75rem", color: req.adminRemarks || req.adminResponse ? "var(--srcb-text)" : "#94a3b8", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {req.adminRemarks || req.adminResponse || "—"}
+                            </div>
+                          </td>
+                          <td style={{ textAlign: "right" }}>
+                            {isPending ? (
+                              <button
+                                type="button"
+                                className="action-button"
+                                style={{ padding: "4px 10px", fontSize: "0.76rem", display: "inline-flex", alignItems: "center", gap: 4 }}
+                                onClick={() => setRequestToReview(req)}
+                              >
+                                <ShieldCheck size={12} />
+                                <span>Review &amp; Decide</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                style={{ padding: "4px 10px", fontSize: "0.76rem", display: "inline-flex", alignItems: "center", gap: 4 }}
+                                onClick={() => setRequestToReview(req)}
+                              >
+                                <Eye size={12} />
+                                <span>Details</span>
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              );
+            })()}
+          </div>
+        </article>
+
         {/* System Integrity & Safety Notice */}
         <article className="card" style={{ gridColumn: "1 / -1" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -556,7 +770,7 @@ export function SettingsPage() {
           onClose={() => setIsDelegationModalOpen(false)}
           title={`Manage Delegated Privileges — ${selectedDelegation.userName}`}
           description={`Configure authorized capabilities for ${selectedDelegation.userName} (${selectedDelegation.programCode}). All changes are recorded in the System Audit Trail.`}
-          maxWidth="560px"
+          size="lg"
           footer={
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, width: "100%" }}>
               <button
@@ -707,6 +921,17 @@ export function SettingsPage() {
           </div>
         </Modal>
       )}
+
+      {/* Admin Schedule Adjustment & Permission Review Modal */}
+      <AdminAdjustmentReviewModal
+        isOpen={Boolean(requestToReview)}
+        onClose={() => setRequestToReview(null)}
+        request={requestToReview}
+        roomsList={roomsList}
+        onReviewed={() => {
+          fetchRequests();
+        }}
+      />
     </motion.div>
   );
 }

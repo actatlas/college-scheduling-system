@@ -43,8 +43,6 @@ function getRoleLabel(role: string) {
       return "Dean of Student Affairs (Admin)";
     case "program_head":
       return "Program Head";
-    case "student":
-      return "Student / Read-Only";
     default:
       return "Staff Portal";
   }
@@ -138,34 +136,7 @@ export function Sidebar({ isMobileOpen = false, onClose }: SidebarProps) {
         { to: "/users", label: "User Accounts", icon: Users },
         { to: "/system-logs", label: "System Logs", icon: ScrollText },
         { to: "/settings", label: "System Preferences", icon: Settings },
-      ],
-    },
-    {
-      groupTitle: "Academic Catalog & Schedules",
-      items: [
-        { to: "/schedules", label: "Class Schedules", icon: CalendarDays },
-        { to: "/exams", label: "Exam Schedules", icon: CalendarCheck },
         { to: "/reports", label: "Reports & Analytics", icon: FileBarChart },
-      ],
-    },
-    {
-      groupTitle: "Account",
-      items: [{ to: "/profile", label: "My Account", icon: UserCircle }],
-    },
-  ];
-
-  // Student / Read-Only IA (Public Schedule Monitoring)
-  const studentGroups: NavGroup[] = [
-    {
-      groupTitle: "Overview",
-      items: [{ to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, end: true }],
-    },
-    {
-      groupTitle: "Public Schedule Monitor",
-      items: [
-        { to: "/schedules", label: "Class Schedules", icon: CalendarDays },
-        { to: "/exams", label: "Exam Schedules", icon: CalendarCheck },
-        { to: "/rooms", label: "Campus Facilities", icon: DoorOpen },
       ],
     },
     {
@@ -179,9 +150,7 @@ export function Sidebar({ isMobileOpen = false, onClose }: SidebarProps) {
       ? superAdminGroups
       : role === "program_head"
         ? programHeadGroups
-        : role === "student"
-          ? studentGroups
-          : adminGroups;
+        : adminGroups;
 
   const handleLogout = () => {
     try {
@@ -229,7 +198,7 @@ export function Sidebar({ isMobileOpen = false, onClose }: SidebarProps) {
       </div>
 
       {/* Quick Action CTA Button */}
-      {role !== "student" && role !== "super_admin" && role !== "admin" && (
+      {role !== "super_admin" && role !== "admin" && (
         <button
           className="sidebar__cta"
           type="button"

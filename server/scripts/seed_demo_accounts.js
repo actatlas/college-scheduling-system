@@ -91,9 +91,9 @@ async function seedDemoAccounts() {
       `, [code, name, pCode]);
     }
 
-    // 4. Create / Update Super Admin, Admin, and Student accounts
+    // 4. Create / Update Super Admin and Admin accounts
     try {
-      await conn.query("ALTER TABLE users MODIFY COLUMN role VARCHAR(50) NOT NULL DEFAULT 'student'");
+      await conn.query("ALTER TABLE users MODIFY COLUMN role VARCHAR(50) NOT NULL DEFAULT 'admin'");
     } catch (e) {
       console.warn('Could not alter users.role column:', e.message);
     }
@@ -101,7 +101,6 @@ async function seedDemoAccounts() {
     const superAdminPasswordHash = await bcrypt.hash('@superadmin123', 10);
     const adminPasswordHash = await bcrypt.hash('@admin123', 10);
     const progHeadPasswordHash = await bcrypt.hash('@program123', 10);
-    const studentPasswordHash = await bcrypt.hash('@student123', 10);
 
     // Super Admin
     await conn.query(`
@@ -116,13 +115,6 @@ async function seedDemoAccounts() {
       VALUES (?, ?, ?, 'admin', 'Active', NULL)
       ON DUPLICATE KEY UPDATE name = VALUES(name), password_hash = VALUES(password_hash), role = 'admin', status = 'Active'
     `, ['System Administrator', 'admin@srcb.edu.ph', adminPasswordHash]);
-
-    // Student / Read-Only Account
-    await conn.query(`
-      INSERT INTO users (name, email, password_hash, role, status, program)
-      VALUES (?, ?, ?, 'student', 'Active', NULL)
-      ON DUPLICATE KEY UPDATE name = VALUES(name), password_hash = VALUES(password_hash), role = 'student', status = 'Active'
-    `, ['Collegiate Student Body', 'student@srcb.edu.ph', studentPasswordHash]);
 
     // 5. Create EXACTLY ONE Program Head per Program
     const programHeads = [
@@ -449,11 +441,10 @@ async function seedDemoAccounts() {
       `, [targetTeacherId, proctorName, exam.id]);
     }
 
-    // 11. Clean Up Unnecessary User Accounts (strictly active roles: super_admin, admin, program_head, student)
+    // 11. Clean Up Unnecessary User Accounts (strictly active roles: super_admin, admin, program_head)
     const validEmails = new Set([
       'superadmin@srcb.edu.ph',
       'admin@srcb.edu.ph',
-      'student@srcb.edu.ph',
       ...programHeads.map((ph) => ph.email.toLowerCase()),
     ]);
 

@@ -1,4 +1,4 @@
-export type UserRole = 'super_admin' | 'admin' | 'program_head' | 'student'
+export type UserRole = 'super_admin' | 'admin' | 'program_head'
 
 export interface UserAccount {
   id: string
@@ -255,28 +255,36 @@ export interface CourseItem {
 // Backwards compatibility alias
 export type ScheduleItem = ClassScheduleItem
 
+export type RequestedSchedulingAction = 'CREATE_SCHEDULE' | 'MODIFY_SCHEDULE' | 'DELETE_SCHEDULE' | 'SCHEDULE_ADJUSTMENT'
+
 export interface ScheduleAdjustmentRequest {
   id: number
-  scheduleId: number
+  scheduleId?: number | null
   requestedByUserId: number
   requesterName: string
   requesterProgram: string
+  programCode?: string
+  programId?: string
   subjectCode: string
   subjectName: string
   sectionName?: string
+  sectionId?: string | number
   facultyName?: string
   roomNumber?: string
-  currentDay: string
-  currentStartTime: string
-  currentEndTime: string
+  currentDay?: string
+  currentStartTime?: string
+  currentEndTime?: string
   suggestedDay?: string
   suggestedStartTime?: string
   suggestedEndTime?: string
   suggestedRoom?: string
+  requestedAction?: RequestedSchedulingAction
   reason: string
   status: 'Pending' | 'Approved' | 'Rejected'
   adminResponse?: string | null
+  adminRemarks?: string | null
   reviewedByUserId?: number | null
+  reviewedByName?: string | null
   reviewedAt?: string | null
   createdAt: string
   updatedAt: string

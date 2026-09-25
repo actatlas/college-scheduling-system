@@ -326,25 +326,25 @@ describe('Super Admin - One Program Head Per Program Backend Enforcement', () =>
     ).rejects.toThrow('Program is required for Program Head accounts.');
   });
 
-  it('9. Other roles (admin, teacher) creation are not restricted by one-per-program rule', async () => {
-    const teacher1 = await usersService.createUser({
-      name: 'Teacher One',
-      email: 'teacher1@srcb.edu.ph',
-      role: 'teacher',
+  it('9. Other roles (admin) creation are not restricted by one-per-program rule', async () => {
+    const admin1 = await usersService.createUser({
+      name: 'Admin One',
+      email: 'admin1@srcb.edu.ph',
+      role: 'admin',
       program: 'BSIT',
       status: 'Active',
     });
 
-    const teacher2 = await usersService.createUser({
-      name: 'Teacher Two',
-      email: 'teacher2@srcb.edu.ph',
-      role: 'teacher',
+    const admin2 = await usersService.createUser({
+      name: 'Admin Two',
+      email: 'admin2@srcb.edu.ph',
+      role: 'admin',
       program: 'BSIT',
       status: 'Active',
     });
 
-    expect(teacher1).toBeDefined();
-    expect(teacher2).toBeDefined();
+    expect(admin1).toBeDefined();
+    expect(admin2).toBeDefined();
   });
 
   it('10. usersController handles duplicate Program Head with 409 JSON error response', async () => {

@@ -115,7 +115,7 @@ describe("UserManagementPage - Program Head Creation & Assigned Academic Program
     expect(programSelect.value).toBe("CJEP");
   });
 
-  it("does not render link to faculty profile when creating teacher or program head accounts", async () => {
+  it("does not render link to faculty profile when creating admin or program head accounts", async () => {
     render(
       <BrowserRouter>
         <ToastProvider>
@@ -133,8 +133,8 @@ describe("UserManagementPage - Program Head Creation & Assigned Academic Program
 
     const roleSelect = screen.getByLabelText(/assigned system role/i);
 
-    // Check teacher role
-    fireEvent.change(roleSelect, { target: { value: "teacher" } });
+    // Check admin role
+    fireEvent.change(roleSelect, { target: { value: "admin" } });
     expect(screen.queryByLabelText(/link to faculty/i)).toBeNull();
     expect(screen.queryByText(/link to faculty profile/i)).toBeNull();
 

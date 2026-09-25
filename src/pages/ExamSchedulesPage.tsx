@@ -233,12 +233,9 @@ export function ExamSchedulesPage() {
   const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
   const isAdmin = role === "super_admin" || role === "admin";
   const isProgramHead = role === "program_head";
-  const isTeacher = role === "teacher";
-  const isStudent = role === "student";
 
   const [hasDelegatedExamPrivilege, setHasDelegatedExamPrivilege] = useState<boolean>(() => {
     if (role === "admin" || role === "super_admin") return true;
-    if (role === "student" || role === "teacher") return false;
     const cached = localStorage.getItem("srcb_exam_delegation_active");
     if (cached !== null) return cached === "true";
     const userProg = (localStorage.getItem("userProgram") || localStorage.getItem("selectedProgram") || "").toUpperCase();
@@ -455,8 +452,6 @@ export function ExamSchedulesPage() {
   }, [facultyList]);
 
   const availableSubjects = useMemo(() => {
-    if (isTeacher) return [];
-
     return subjectsList.filter((s) => {
       const status = String(s.status || "").toLowerCase();
       if (status === "inactive" || status === "archived") return false;
@@ -489,7 +484,7 @@ export function ExamSchedulesPage() {
       if (isGenEd) return true;
       return matchesProgram(s.program || s.department);
     });
-  }, [subjectsList, isTeacher, isProgramHead, storedUserProgram, selectedProgram.key, matchesProgram]);
+  }, [subjectsList, isProgramHead, storedUserProgram, selectedProgram.key, matchesProgram]);
 
   const availableSections = useMemo(() => {
     return sectionsList.filter((sec) => {
@@ -517,7 +512,7 @@ export function ExamSchedulesPage() {
         .includes(query.toLowerCase());
 
       const matchesTerm = termFilter === "All" || e.term === termFilter;
-      const matchesProg = role === "teacher" ? true : matchesProgram(e.program || selectedProgram.shortLabel);
+      const matchesProg = matchesProgram(e.program || selectedProgram.shortLabel);
 
       const isMine =
         (storedTeacherId && String(e.proctorId) === storedTeacherId) ||
@@ -1668,16 +1663,12 @@ export function ExamSchedulesPage() {
     >
       <PageHeader
         title={
-          role === "teacher"
-            ? "Faculty Examination Duties & Timetable"
-            : role === "program_head"
-              ? "Academic Program Examination Schedules"
-              : "Institutional Examination Schedules"
+          role === "program_head"
+            ? "Academic Program Examination Schedules"
+            : "Institutional Examination Schedules"
         }
         description={
-          role === "teacher"
-            ? "View your assigned proctoring duties alongside institutional examination timetables."
-            : "Plan institutional examination sessions, manage room assignments across campus buildings, and assign faculty proctors."
+          "Plan institutional examination sessions, manage room assignments across campus buildings, and assign faculty proctors."
         }
         breadcrumbs={
           <>
@@ -2048,21 +2039,6 @@ export function ExamSchedulesPage() {
               </select>
             </label>
 
-            {/* Teacher Duties Filter */}
-            {role === "teacher" && (
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.85rem", fontWeight: 600 }}>
-                Duties:
-                <select
-                  value={assignedFilter}
-                  onChange={(e) => setAssignedFilter(e.target.value as "All" | "Mine")}
-                  style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #cbd5e1" }}
-                >
-                  <option value="All">All Exam Sessions</option>
-                  <option value="Mine">My Assigned Duties Only</option>
-                </select>
-              </label>
-            )}
-
             {/* Search Input */}
             <label className="topbar__search" aria-label="Search exams">
               <Search size={16} />
@@ -2381,7 +2357,7 @@ export function ExamSchedulesPage() {
                 </table>
               </div>
             </div>
-            {canManage && !isTeacher && !isStudent && (
+            {canManage && (
               <SubjectPalette
                 subjects={availableSubjects}
                 scheduledSubjectCodes={scheduledExamSubjectCodes}

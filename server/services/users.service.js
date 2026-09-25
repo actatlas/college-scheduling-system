@@ -139,6 +139,13 @@ async function createUser({ name, email, role, password, program, status }) {
     throw err;
   }
 
+  if (role === 'teacher' || role === 'student') {
+    const err = new Error(`${role === 'student' ? 'Student' : 'Teacher'} is not a valid system user role. Only Super Admin, Admin, and Program Head roles are supported.`);
+    err.statusCode = 400;
+    err.code = `${role.toUpperCase()}_ROLE_NOT_SUPPORTED`;
+    throw err;
+  }
+
   if (role === 'program_head') {
     if (!program || !String(program).trim()) {
       const err = new Error('Program is required for Program Head accounts.');
@@ -178,10 +185,10 @@ async function createUser({ name, email, role, password, program, status }) {
     }
   }
 
-  if (role === 'teacher' || role === 'program_head') {
+  if (role === 'program_head') {
     const [existingTeacher] = await query('SELECT id FROM teachers WHERE email = ? LIMIT 1', [email]);
     if (!existingTeacher) {
-      const teacherId = role === 'program_head' ? `FAC-HEAD-${Date.now().toString().slice(-4)}` : `T${Date.now().toString().slice(-6)}`;
+      const teacherId = `FAC-HEAD-${Date.now().toString().slice(-4)}`;
       const targetProg = (program || 'BSIT').trim();
       const [majorRow] = await query('SELECT id FROM program_majors WHERE code = ? OR program_code = ? LIMIT 1', [targetProg, targetProg]);
       await query(
@@ -194,6 +201,13 @@ async function createUser({ name, email, role, password, program, status }) {
 }
 
 async function updateUser(id, { name, email, role, password, program, status }) {
+  if (role === 'teacher' || role === 'student') {
+    const err = new Error(`${role === 'student' ? 'Student' : 'Teacher'} is not a valid system user role. Only Super Admin, Admin, and Program Head roles are supported.`);
+    err.statusCode = 400;
+    err.code = `${role.toUpperCase()}_ROLE_NOT_SUPPORTED`;
+    throw err;
+  }
+
   const normalizedStatus = status
     ? (String(status).trim().toLowerCase() === 'suspended' ? 'Suspended' : 'Active')
     : null;
@@ -263,12 +277,12 @@ async function updateUser(id, { name, email, role, password, program, status }) 
     await query('UPDATE program_majors SET program_head_id = NULL WHERE program_head_id = ?', [id]);
   }
 
-  if ((targetRole === 'teacher' || targetRole === 'program_head') && email) {
+  if (targetRole === 'program_head' && email) {
     const [existingTeacher] = await query('SELECT id FROM teachers WHERE email = ? LIMIT 1', [email]);
     const targetProg = (program || currentProg || 'BSIT').trim();
     const [majorRow] = await query('SELECT id FROM program_majors WHERE code = ? OR program_code = ? LIMIT 1', [targetProg, targetProg]);
     if (!existingTeacher) {
-      const teacherId = targetRole === 'program_head' ? `FAC-HEAD-${Date.now().toString().slice(-4)}` : `T${Date.now().toString().slice(-6)}`;
+      const teacherId = `FAC-HEAD-${Date.now().toString().slice(-4)}`;
       await query(
         'INSERT INTO teachers (id, name, email, phone, status, program_major_id) VALUES (?, ?, ?, ?, ?, ?)',
         [teacherId, name, email, null, 'Full-Time', majorRow?.id || null]
@@ -293,10 +307,7 @@ async function deleteUser(id) {
     await query('UPDATE program_majors SET program_head_id = NULL WHERE program_head_id = ?', [id]);
   }
 
-  if (user.role === 'teacher') {
-    await query('DELETE FROM teachers WHERE email = ?', [user.email]);
-  }
-
+  // NOTE: Requirement 2 & 8: Faculty entities MUST remain in database. Do NOT delete from teachers directory table.
   await query('DELETE FROM users WHERE id = ?', [id]);
 }
 

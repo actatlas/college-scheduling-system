@@ -39,7 +39,7 @@ describe("UserManagementPage - Program Head Creation & One Program Head Per Prog
       id: "3",
       name: "Maria Santos",
       email: "santos@srcb.edu.ph",
-      role: "teacher",
+      role: "admin",
       program: "BSIT",
       status: "Active",
       createdAt: "2026-01-22T08:00:00.000Z",

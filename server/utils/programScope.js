@@ -104,9 +104,24 @@ function resolveUserProgramScope(user) {
   };
 }
 
+const GENED_SUBJECT_CODES = new Set([
+  'GE1', 'GE2', 'GE3', 'GE4', 'GE5', 'GE6', 'GE7', 'GE8', 'GE9',
+  'NSTP1', 'NSTP2', 'PATHFIT1', 'PATHFIT2', 'PATHFIT3', 'PATHFIT4',
+  'RELED1', 'RELED2', 'RELED3', 'RELED4', 'ETHICS', 'PURPCOM', 'UTS', 'MMW', 'ARTAPP', 'TCW', 'RPH', 'STS', 'LWR'
+]);
+
+function isGeneralEducationSubject(code, programCode) {
+  if (!code) return false;
+  const cleanCode = String(code).toUpperCase().replace(/[\s-_]/g, '');
+  const cleanProg = String(programCode || '').toUpperCase().trim();
+  if (['ALL', 'GEN', 'GENED', 'GENERAL EDUCATION', 'UNIVERSAL'].includes(cleanProg)) return true;
+  return GENED_SUBJECT_CODES.has(cleanCode) || /^GE\d+/i.test(cleanCode) || /^PATHFIT/i.test(cleanCode) || /^NSTP/i.test(cleanCode) || /^RELED/i.test(cleanCode);
+}
+
 module.exports = {
   PROGRAM_FAMILIES,
   getProgramFamily,
   isProgramMatch,
+  isGeneralEducationSubject,
   resolveUserProgramScope,
 };

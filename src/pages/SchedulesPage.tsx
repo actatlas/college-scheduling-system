@@ -28,7 +28,6 @@ import {
   ArrowRight,
   ArrowLeft,
   BookOpen,
-  GripVertical,
   Sparkles,
   Check,
   Building2,
@@ -44,6 +43,9 @@ import {
   ChevronUp,
   Mail,
   Send,
+  FileText,
+  Clock3,
+  XCircle,
 } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
 import {
@@ -473,17 +475,27 @@ export function SchedulesPage() {
   const [isFetching, setIsFetching] = useState(true);
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialView = (searchParams.get("view") || searchParams.get("filter") || "grid") as "grid" | "list" | "unscheduled";
-  const [viewMode, setViewMode] = useState<"grid" | "list" | "unscheduled">(
-    initialView === "unscheduled" ? "unscheduled" : initialView === "list" ? "list" : "grid"
+  const initialView = (searchParams.get("view") || searchParams.get("filter") || "grid") as "grid" | "list" | "unscheduled" | "requests";
+  const [viewMode, setViewMode] = useState<"grid" | "list" | "unscheduled" | "requests">(
+    initialView === "requests" ? "requests" : initialView === "unscheduled" ? "unscheduled" : initialView === "list" ? "list" : "grid"
   );
   const [query, setQuery] = useState(searchParams.get("q") || searchParams.get("search") || "");
   const [matrixProgram, setMatrixProgram] = useState<string>("All");
   const [matrixYearLevel, setMatrixYearLevel] = useState<string>("All");
 
+  // Permission Requests Governance Filters
+  const [requestStatusFilter, setRequestStatusFilter] = useState<string>("all");
+  const [requestActionFilter, setRequestActionFilter] = useState<string>("all");
+  const [requestProgramFilter, setRequestProgramFilter] = useState<string>("all");
+  const [requestSearchQuery, setRequestSearchQuery] = useState<string>("");
+  const [selectedPermissionSubject, setSelectedPermissionSubject] = useState<any | null>(null);
+  const [isDirectPermissionModalOpen, setIsDirectPermissionModalOpen] = useState(false);
+
   useEffect(() => {
     const v = searchParams.get("view") || searchParams.get("filter");
-    if (v === "unscheduled") {
+    if (v === "requests") {
+      setViewMode("requests");
+    } else if (v === "unscheduled") {
       setViewMode("unscheduled");
     } else if (v === "list") {
       setViewMode("list");
@@ -921,6 +933,40 @@ export function SchedulesPage() {
         (sub.program && sub.program.toLowerCase().includes(q))
     );
   }, [unscheduledSubjects, query]);
+
+  // Permission Requests Filtered List
+  const filteredRequests = useMemo(() => {
+    return adjustmentRequests.filter((r) => {
+      if (requestStatusFilter !== "all" && String(r.status || "").toLowerCase() !== requestStatusFilter.toLowerCase()) {
+        return false;
+      }
+      if (requestActionFilter !== "all" && String(r.requestedAction || "SCHEDULE_ADJUSTMENT").toUpperCase() !== requestActionFilter.toUpperCase()) {
+        return false;
+      }
+      if (requestProgramFilter !== "all" && !matchesProgram(r.requesterProgram || r.programCode || r.programId)) {
+        return false;
+      }
+      if (requestSearchQuery.trim()) {
+        const q = requestSearchQuery.toLowerCase();
+        const match =
+          String(r.id).includes(q) ||
+          (r.requesterName || "").toLowerCase().includes(q) ||
+          (r.requesterProgram || "").toLowerCase().includes(q) ||
+          (r.subjectCode || "").toLowerCase().includes(q) ||
+          (r.subjectName || "").toLowerCase().includes(q) ||
+          (r.sectionName || "").toLowerCase().includes(q) ||
+          (r.reason || "").toLowerCase().includes(q) ||
+          (r.adminRemarks || "").toLowerCase().includes(q) ||
+          (r.adminResponse || "").toLowerCase().includes(q);
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [adjustmentRequests, requestStatusFilter, requestActionFilter, requestProgramFilter, requestSearchQuery, matchesProgram]);
+
+  const pendingRequestsCount = useMemo(() => {
+    return adjustmentRequests.filter((r) => String(r.status || "").toLowerCase() === "pending").length;
+  }, [adjustmentRequests]);
 
   // Step 1: Subject options (filtered by Program Head if applicable)
   const subjectOptionsForStep1: SearchableOption[] = useMemo(() => {
@@ -1862,16 +1908,12 @@ export function SchedulesPage() {
     >
       <PageHeader
         title={
-          role === "teacher"
-            ? "Faculty Timetable & Class Schedules"
-            : role === "program_head"
-              ? "Academic Program Class Schedules"
-              : "Institutional Class Schedules"
+          role === "program_head"
+            ? "Academic Program Class Schedules"
+            : "Institutional Class Schedules"
         }
         description={
-          role === "teacher"
-            ? "View your assigned classes alongside all departmental and institutional teaching schedules."
-            : "Manually schedule, monitor, and adjust classes with real-time faculty availability and room clash prevention."
+          "Manually schedule, monitor, and adjust classes with real-time faculty availability and room clash prevention."
         }
         breadcrumbs={
           <>
@@ -1879,9 +1921,7 @@ export function SchedulesPage() {
           </>
         }
         helpText={
-          role === "teacher"
-            ? "Browse your schedule or view other instructors' timetables to coordinate class times and room availability."
-            : "Supports College, SHS, and JHS room assignments, paired lecture/laboratory scheduling, and instructor conflict prevention."
+          "Supports College, SHS, and JHS room assignments, paired lecture/laboratory scheduling, and instructor conflict prevention."
         }
         actions={
           canCreate ? (
@@ -1947,21 +1987,72 @@ export function SchedulesPage() {
         }
       />
 
+      {/* Pending Schedule Adjustment / Permission Requests Banner for Admin */}
+      {pendingRequestsCount > 0 && (role === "admin" || role === "super_admin") && (
+        <div
+          data-testid="admin-adjustment-requests-banner"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "12px 16px",
+            marginBottom: 16,
+            background: "rgba(245, 158, 11, 0.08)",
+            border: "1px solid rgba(245, 158, 11, 0.3)",
+            borderRadius: 8,
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Clock size={18} color="#d97706" />
+            <div>
+              <div style={{ fontWeight: 700, color: "var(--srcb-text)" }}>
+                {`${pendingRequestsCount} Schedule Adjustment Request(s)`}
+              </div>
+              <div style={{ fontSize: "0.82rem", color: "var(--srcb-text-muted)" }}>
+                Program Heads have submitted schedule adjustment or timetable permission requests.
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              data-testid="review-requests-banner-btn"
+              className="action-button"
+              style={{ padding: "6px 14px", fontSize: "0.82rem" }}
+              onClick={() => {
+                const firstPending = adjustmentRequests.find((r) => String(r.status || "").toLowerCase() === "pending") || adjustmentRequests[0] || null;
+                if (firstPending) {
+                  setRequestToReview(firstPending);
+                } else {
+                  setViewMode("requests");
+                }
+              }}
+            >
+              Review Requests
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Control Bar */}
       <section className="card">
         <div className="card__header" style={{ flexWrap: "wrap", gap: 12 }}>
           <div>
-            <p className="eyebrow">Class Timetable</p>
+            <p className="eyebrow">Class Timetable &amp; Governance</p>
             <h3>
               {viewMode === "unscheduled"
                 ? `Unscheduled Curriculum Subjects (${filteredUnscheduled.length})`
+                : viewMode === "requests"
+                ? `Program Head Permission Requests (${filteredRequests.length})`
                 : `Scheduled Classes (${visibleSchedules.length})`}
             </h3>
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             {/* View Mode Switcher */}
-            <div style={{ display: "flex", background: "var(--srcb-surface-alt, #e2e8f0)", borderRadius: 8, padding: 2, border: "1px solid var(--srcb-border)" }}>
+            <div style={{ display: "flex", background: "var(--srcb-surface-alt, #e2e8f0)", borderRadius: 8, padding: 2, border: "1px solid var(--srcb-border)", flexWrap: "wrap", gap: 2 }}>
               <Tooltip content="Weekly Timetable Grid">
                 <button
                   type="button"
@@ -2065,6 +2156,64 @@ export function SchedulesPage() {
                 </button>
               </Tooltip>
 
+              <Tooltip content="Program Head Permission Requests & Governance">
+                <button
+                  type="button"
+                  aria-label="Program Head Permission Requests"
+                  onClick={() => {
+                    setViewMode("requests");
+                    setSearchParams((prev) => {
+                      const next = new URLSearchParams(prev);
+                      next.set("view", "requests");
+                      return next;
+                    });
+                  }}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 6,
+                    border: "none",
+                    background: viewMode === "requests" ? "var(--srcb-surface-elevated, #ffffff)" : "transparent",
+                    fontWeight: 600,
+                    fontSize: "0.85rem",
+                    cursor: "pointer",
+                    color: viewMode === "requests" ? "var(--srcb-navy, #0d5499)" : "var(--srcb-text-muted, #64748b)",
+                    boxShadow: viewMode === "requests" ? "var(--srcb-shadow-soft, 0 1px 3px rgba(0,0,0,0.1))" : "none",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <ShieldCheck size={14} />
+                  <span>Permission Requests</span>
+                  {pendingRequestsCount > 0 ? (
+                    <span
+                      style={{
+                        padding: "1px 6px",
+                        borderRadius: 10,
+                        fontSize: "0.72rem",
+                        fontWeight: 700,
+                        background: "var(--srcb-gold-soft, #fef3c7)",
+                        color: "var(--srcb-gold, #92400e)",
+                      }}
+                    >
+                      {pendingRequestsCount}
+                    </span>
+                  ) : (
+                    <span
+                      style={{
+                        padding: "1px 6px",
+                        borderRadius: 10,
+                        fontSize: "0.72rem",
+                        fontWeight: 700,
+                        background: "var(--srcb-surface-alt, rgba(148, 163, 184, 0.3))",
+                        color: "var(--srcb-text-muted, #475569)",
+                      }}
+                    >
+                      {adjustmentRequests.length}
+                    </span>
+                  )}
+                </button>
+              </Tooltip>
             </div>
 
             {/* Multi-Perspective Matrix View Selector */}
@@ -2183,9 +2332,9 @@ export function SchedulesPage() {
                 style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", color: "var(--srcb-text)", maxWidth: 190 }}
               >
                 <option value="All">All Faculty Members</option>
-                {(role === "teacher" || role === "program_head") && currentUserName && (
+                {role === "program_head" && currentUserName && (
                   <option value={currentTeacherId || currentUserName}>
-                    {role === "program_head" ? `My Classes (${currentUserName})` : `My Schedule (${currentUserName})`}
+                    My Classes ({currentUserName})
                   </option>
                 )}
                 {availableFaculty.map((f) => (
@@ -2791,7 +2940,21 @@ export function SchedulesPage() {
                           </div>
 
                           {canCreate && (
-                            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14, paddingTop: 10, borderTop: "1px solid var(--srcb-border)" }}>
+                            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14, paddingTop: 10, borderTop: "1px solid var(--srcb-border)", flexWrap: "wrap" }}>
+                              {role === "program_head" && (
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  onClick={() => {
+                                    setSelectedPermissionSubject(sub);
+                                    setIsDirectPermissionModalOpen(true);
+                                  }}
+                                  style={{ padding: "6px 12px", fontSize: "0.8rem", display: "inline-flex", alignItems: "center", gap: 6 }}
+                                  title="Submit a permission request to Admin for this subject"
+                                >
+                                  <ShieldCheck size={14} /> Request Permission
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 className="action-button"
@@ -2805,6 +2968,367 @@ export function SchedulesPage() {
                         </div>
                       );
                     })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Program Head Permission Requests Governance View */}
+            {viewMode === "requests" && (
+              <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+                {/* Header Title & CTA */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: "1.05rem", color: "var(--srcb-text)", fontWeight: 700 }}>
+                      Program Head Academic Permission Requests ({filteredRequests.length})
+                    </h4>
+                    <p className="muted" style={{ margin: "2px 0 0", fontSize: "0.84rem" }}>
+                      Centralized administrative governance for scoped academic scheduling actions (Create, Modify, Delete, and Time Adjustment).
+                    </p>
+                  </div>
+
+                  {role === "program_head" && (
+                    <button
+                      type="button"
+                      className="action-button"
+                      onClick={() => {
+                        setSelectedPermissionSubject(null);
+                        setScheduleToAdjust(null);
+                        setIsDirectPermissionModalOpen(true);
+                      }}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                    >
+                      <Plus size={16} />
+                      <span>New Permission Request</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Summary Metric Stats Grid */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+                  <div
+                    style={{
+                      background: "var(--srcb-surface-alt, #f8fafc)",
+                      border: "1px solid var(--srcb-border)",
+                      borderRadius: 8,
+                      padding: "12px 14px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: "0.76rem", color: "var(--srcb-text-muted)", fontWeight: 600 }}>Total Requests</div>
+                      <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "var(--srcb-navy)" }}>{adjustmentRequests.length}</div>
+                    </div>
+                    <div style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(13, 84, 153, 0.1)", color: "var(--srcb-navy)", display: "grid", placeItems: "center" }}>
+                      <FileText size={18} />
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      background: "rgba(245, 158, 11, 0.06)",
+                      border: "1px solid rgba(245, 158, 11, 0.25)",
+                      borderRadius: 8,
+                      padding: "12px 14px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: "0.76rem", color: "#b45309", fontWeight: 600 }}>Pending Review</div>
+                      <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "#b45309" }}>{pendingRequestsCount}</div>
+                    </div>
+                    <div style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(245, 158, 11, 0.15)", color: "#d97706", display: "grid", placeItems: "center" }}>
+                      <Clock3 size={18} />
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      background: "rgba(16, 185, 129, 0.06)",
+                      border: "1px solid rgba(16, 185, 129, 0.25)",
+                      borderRadius: 8,
+                      padding: "12px 14px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: "0.76rem", color: "#047857", fontWeight: 600 }}>Approved / Granted</div>
+                      <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "#047857" }}>
+                        {adjustmentRequests.filter((r) => String(r.status || "").toLowerCase() === "approved").length}
+                      </div>
+                    </div>
+                    <div style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(16, 185, 129, 0.15)", color: "#059669", display: "grid", placeItems: "center" }}>
+                      <CheckCircle2 size={18} />
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      background: "rgba(239, 68, 68, 0.06)",
+                      border: "1px solid rgba(239, 68, 68, 0.25)",
+                      borderRadius: 8,
+                      padding: "12px 14px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: "0.76rem", color: "#b91c1c", fontWeight: 600 }}>Rejected</div>
+                      <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "#b91c1c" }}>
+                        {adjustmentRequests.filter((r) => String(r.status || "").toLowerCase() === "rejected").length}
+                      </div>
+                    </div>
+                    <div style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(239, 68, 68, 0.15)", color: "#dc2626", display: "grid", placeItems: "center" }}>
+                      <XCircle size={18} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Filter Controls Toolbar */}
+                <div
+                  style={{
+                    background: "var(--srcb-surface-alt, #f8fafc)",
+                    padding: "10px 14px",
+                    borderRadius: 8,
+                    border: "1px solid var(--srcb-border)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    {/* Status Filter Tabs */}
+                    <div style={{ display: "flex", gap: 4, background: "var(--srcb-surface)", padding: 2, borderRadius: 6, border: "1px solid var(--srcb-border)" }}>
+                      {(["all", "Pending", "Approved", "Rejected"] as const).map((st) => (
+                        <button
+                          key={st}
+                          type="button"
+                          onClick={() => setRequestStatusFilter(st)}
+                          style={{
+                            padding: "4px 10px",
+                            borderRadius: 4,
+                            border: "none",
+                            background: requestStatusFilter === st ? "var(--srcb-navy)" : "transparent",
+                            color: requestStatusFilter === st ? "#ffffff" : "var(--srcb-text-muted)",
+                            fontSize: "0.78rem",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {st === "all" ? "All" : st}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Action Type Filter */}
+                    <select
+                      value={requestActionFilter}
+                      onChange={(e) => setRequestActionFilter(e.target.value)}
+                      style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", color: "var(--srcb-text)", fontSize: "0.82rem", fontWeight: 600 }}
+                    >
+                      <option value="all">All Requested Actions</option>
+                      <option value="CREATE_SCHEDULE">CREATE_SCHEDULE</option>
+                      <option value="MODIFY_SCHEDULE">MODIFY_SCHEDULE</option>
+                      <option value="DELETE_SCHEDULE">DELETE_SCHEDULE</option>
+                      <option value="SCHEDULE_ADJUSTMENT">SCHEDULE_ADJUSTMENT</option>
+                    </select>
+
+                    {/* Program Filter for Admins */}
+                    {role !== "program_head" && (
+                      <select
+                        value={requestProgramFilter}
+                        onChange={(e) => setRequestProgramFilter(e.target.value)}
+                        style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", color: "var(--srcb-text)", fontSize: "0.82rem", fontWeight: 600 }}
+                      >
+                        <option value="all">All Programs</option>
+                        <option value="ITP">ITP (BSIT)</option>
+                        <option value="BAP">BAP (BSBA)</option>
+                        <option value="CJEP">CJEP (BSCRIM)</option>
+                        <option value="HMP">HMP (BSHM)</option>
+                        <option value="TEP">TEP (BSED/BEED)</option>
+                      </select>
+                    )}
+                  </div>
+
+                  {/* Search Filter */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+                      <Search size={14} style={{ position: "absolute", left: 8, color: "var(--srcb-text-muted)" }} />
+                      <input
+                        type="text"
+                        value={requestSearchQuery}
+                        onChange={(e) => setRequestSearchQuery(e.target.value)}
+                        placeholder="Search requests by ID, subject, program head..."
+                        className="input-base"
+                        style={{ padding: "5px 10px 5px 28px", fontSize: "0.82rem", width: 240 }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Permission Requests Data Table */}
+                {filteredRequests.length === 0 ? (
+                  <div className="card" style={{ textAlign: "center", padding: "40px 20px" }}>
+                    <ShieldCheck size={38} color="#94a3b8" style={{ margin: "0 auto 10px" }} />
+                    <h3 style={{ margin: 0, color: "var(--srcb-text)" }}>No Permission Requests Found</h3>
+                    <p className="muted" style={{ margin: "4px 0 0", fontSize: "0.86rem" }}>
+                      {requestStatusFilter !== "all" || requestActionFilter !== "all" || requestSearchQuery
+                        ? "No permission requests match your active filters."
+                        : "There are currently no permission requests recorded in the system."}
+                    </p>
+                  </div>
+                ) : (
+                  <div style={{ overflowX: "auto" }}>
+                    <table className="user-mgmt-table" style={{ width: "100%", minWidth: 850 }}>
+                      <thead>
+                        <tr>
+                          <th>REQUEST ID</th>
+                          <th>PROGRAM HEAD</th>
+                          <th>PROGRAM</th>
+                          <th>TARGET SUBJECT &amp; SECTION</th>
+                          <th>REQUESTED ACTION</th>
+                          <th>STATUS</th>
+                          <th>REQUESTED DATE</th>
+                          <th>ADMIN REMARKS</th>
+                          <th style={{ textAlign: "right" }}>ACTIONS</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredRequests.map((req) => {
+                          const isPending = req.status === "Pending" || String(req.status || "").toLowerCase() === "pending";
+                          const isApproved = req.status === "Approved" || String(req.status || "").toLowerCase() === "approved";
+                          const isRejected = req.status === "Rejected" || String(req.status || "").toLowerCase() === "rejected";
+                          const actionBadgeClass =
+                            req.requestedAction === "CREATE_SCHEDULE"
+                              ? "pill--emerald"
+                              : req.requestedAction === "MODIFY_SCHEDULE"
+                              ? "pill--blue"
+                              : req.requestedAction === "DELETE_SCHEDULE"
+                              ? "pill--rose"
+                              : "pill--amber";
+
+                          return (
+                            <tr key={req.id}>
+                              <td>
+                                <span style={{ fontWeight: 800, color: "var(--srcb-navy)", fontSize: "0.82rem" }}>
+                                  #REQ-{String(req.id).padStart(3, "0")}
+                                </span>
+                              </td>
+                              <td>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  <div
+                                    style={{
+                                      width: 28,
+                                      height: 28,
+                                      borderRadius: "50%",
+                                      background: "rgba(13, 84, 153, 0.1)",
+                                      color: "var(--srcb-navy)",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      fontWeight: 700,
+                                      fontSize: "0.75rem",
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    {req.requesterName ? req.requesterName.charAt(0) : "P"}
+                                  </div>
+                                  <div>
+                                    <div style={{ fontWeight: 700, color: "var(--srcb-text)", fontSize: "0.84rem" }}>
+                                      {req.requesterName}
+                                    </div>
+                                    <div style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)" }}>
+                                      Program Head
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td>
+                                <span className="pill pill--navy" style={{ fontWeight: 700, fontSize: "0.72rem" }}>
+                                  {req.requesterProgram || req.programCode || req.programId || "ITP"}
+                                </span>
+                              </td>
+                              <td>
+                                <div>
+                                  <div style={{ fontWeight: 700, color: "var(--srcb-navy)", fontSize: "0.84rem" }}>
+                                    {req.subjectCode} – {req.subjectName}
+                                  </div>
+                                  <div style={{ fontSize: "0.74rem", color: "var(--srcb-text-muted)" }}>
+                                    {req.sectionName || "Program Cohort"} {req.roomNumber ? `• Room ${req.roomNumber}` : ""}
+                                  </div>
+                                </div>
+                              </td>
+                              <td>
+                                <span className={`pill ${actionBadgeClass}`} style={{ fontWeight: 700, fontSize: "0.7rem", padding: "2px 8px" }}>
+                                  {req.requestedAction || "SCHEDULE_ADJUSTMENT"}
+                                </span>
+                              </td>
+                              <td>
+                                <span
+                                  className={`pill ${
+                                    isApproved
+                                      ? "pill--emerald"
+                                      : isRejected
+                                      ? "pill--rose"
+                                      : "pill--amber"
+                                  }`}
+                                  style={{ fontWeight: 800, fontSize: "0.72rem" }}
+                                >
+                                  {req.status.toUpperCase()}
+                                </span>
+                              </td>
+                              <td>
+                                <span style={{ fontSize: "0.78rem", color: "var(--srcb-text-muted)" }}>
+                                  {req.createdAt ? new Date(req.createdAt).toLocaleDateString() : "Today"}
+                                </span>
+                              </td>
+                              <td>
+                                <div style={{ fontSize: "0.76rem", color: req.adminRemarks || req.adminResponse ? "var(--srcb-text)" : "var(--srcb-text-muted)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={req.adminRemarks || req.adminResponse || "No remarks"}>
+                                  {req.adminRemarks || req.adminResponse || "—"}
+                                </div>
+                                {req.reviewedByName && (
+                                  <div style={{ fontSize: "0.68rem", color: "var(--srcb-text-muted)" }}>
+                                    By: {req.reviewedByName}
+                                  </div>
+                                )}
+                              </td>
+                              <td style={{ textAlign: "right" }}>
+                                {isPending && (role === "admin" || role === "super_admin" || role === "dsa") ? (
+                                  <button
+                                    type="button"
+                                    className="action-button"
+                                    onClick={() => setRequestToReview(req)}
+                                    style={{ padding: "4px 10px", fontSize: "0.76rem", display: "inline-flex", alignItems: "center", gap: 4 }}
+                                  >
+                                    <ShieldCheck size={12} />
+                                    <span>Review &amp; Decide</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="secondary-button"
+                                    onClick={() => setRequestToReview(req)}
+                                    style={{ padding: "4px 10px", fontSize: "0.76rem", display: "inline-flex", alignItems: "center", gap: 4 }}
+                                  >
+                                    <Eye size={12} />
+                                    <span>View Details</span>
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
@@ -4000,12 +4524,19 @@ export function SchedulesPage() {
         userRole={role}
       />
 
-      {/* Program Head Schedule Adjustment Request Modal */}
+      {/* Program Head Schedule Adjustment & Permission Request Modal */}
       <ScheduleAdjustmentRequestModal
-        isOpen={Boolean(scheduleToAdjust)}
-        onClose={() => setScheduleToAdjust(null)}
+        isOpen={Boolean(scheduleToAdjust) || isDirectPermissionModalOpen}
+        onClose={() => {
+          setScheduleToAdjust(null);
+          setIsDirectPermissionModalOpen(false);
+          setSelectedPermissionSubject(null);
+        }}
         schedule={scheduleToAdjust}
+        initialSubject={selectedPermissionSubject}
         roomsList={roomsList}
+        subjectsList={availableSubjects}
+        sectionsList={availableSections}
         onSubmitSuccess={() => {
           fetchAdjustmentRequests();
           fetchSchedules();
@@ -4031,7 +4562,7 @@ export function SchedulesPage() {
           onClose={() => setIsGmailDispatchModalOpen(false)}
           title="Dispatch Finalized Schedule to Faculty via Institutional Gmail"
           description="Send formatted digital schedule breakdown directly to faculty school Gmail accounts. Physical schedules remain placed in departmental cubicles."
-          maxWidth="620px"
+          size="lg"
           footer={
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, width: "100%" }}>
               <button
