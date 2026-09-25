@@ -1,10 +1,28 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { examSchedulesService } from '../services/examSchedules.service.js';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+const { examSchedulesService } = require('../services/examSchedules.service.js');
+const { listDelegations, grantOrRevokePrivileges } = require('../services/delegations.service.js');
 
 describe('Official Examination Date Setting & Permissions', () => {
   const adminUser = { id: 1, role: 'admin', program: 'ALL' };
   const programHeadUser = { id: 2, role: 'program_head', program: 'BSIT', sub: 'PH001' };
   const teacherUser = { id: 3, role: 'teacher', program: 'BSIT' };
+
+  beforeEach(async () => {
+    const dels = await listDelegations();
+    const itHead = dels.find((d) => d.programCode === 'BSIT' || d.userEmail?.includes('ithead'));
+    if (itHead) {
+      programHeadUser.id = itHead.userId;
+    }
+    await grantOrRevokePrivileges({
+      userId: programHeadUser.id,
+      programCode: 'BSIT',
+      privileges: ['MANAGE_EXAM_SCHEDULE', 'MANAGE_CLASS_SCHEDULE'],
+      grantedBy: 1,
+    });
+  });
 
   it('allows Admin to get and update official examination period dates', async () => {
     const settings = await examSchedulesService.getExamPeriodSettings();

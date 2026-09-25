@@ -234,7 +234,19 @@ export function ExamSchedulesPage() {
   const isAdmin = role === "super_admin" || role === "admin";
   const isProgramHead = role === "program_head";
   const isTeacher = role === "teacher";
-  const canManage = isAdmin || isProgramHead;
+  const isStudent = role === "student";
+
+  const [hasDelegatedExamPrivilege, setHasDelegatedExamPrivilege] = useState<boolean>(() => {
+    if (role === "admin" || role === "super_admin") return true;
+    if (role === "student" || role === "teacher") return false;
+    const cached = localStorage.getItem("srcb_exam_delegation_active");
+    if (cached !== null) return cached === "true";
+    const userProg = (localStorage.getItem("userProgram") || localStorage.getItem("selectedProgram") || "").toUpperCase();
+    const uName = (localStorage.getItem("userName") || "").toLowerCase();
+    return userProg === "BSIT" || userProg === "ITP" || uName.includes("turing");
+  });
+
+  const canManage = isAdmin || (isProgramHead && hasDelegatedExamPrivilege);
   const canEditOfficialDates = isAdmin;
   const storedUserProgram = window.localStorage.getItem("userProgram") || window.localStorage.getItem("selectedProgram") || selectedProgram.key || "";
 
@@ -309,10 +321,30 @@ export function ExamSchedulesPage() {
     }
   };
 
+  const fetchDelegationPrivileges = async () => {
+    if (isAdmin) {
+      setHasDelegatedExamPrivilege(true);
+      return;
+    }
+    if (isProgramHead) {
+      try {
+        const res = await api.get("/delegations/my-privileges");
+        const hasPriv = Boolean(res.data?.data?.hasExamSchedulePrivilege);
+        setHasDelegatedExamPrivilege(hasPriv);
+        localStorage.setItem("srcb_exam_delegation_active", String(hasPriv));
+      } catch {
+        // preserve current or default state
+      }
+    } else {
+      setHasDelegatedExamPrivilege(false);
+    }
+  };
+
   useEffect(() => {
     fetchExams();
     fetchOfficialDates();
     fetchDependencies();
+    fetchDelegationPrivileges();
   }, []);
 
   // Sync URL query params
@@ -1750,6 +1782,55 @@ export function ExamSchedulesPage() {
         );
       })()}
 
+      {/* Delegated Access Marian Blue Banner for Program Heads with MANAGE_EXAM_SCHEDULE */}
+      {isProgramHead && hasDelegatedExamPrivilege && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: "10px 16px",
+            borderRadius: 8,
+            background: "rgba(30, 64, 175, 0.08)",
+            border: "1px solid rgba(30, 64, 175, 0.25)",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            color: "#1e40af",
+          }}
+        >
+          <ShieldCheck size={18} style={{ color: "#1e40af", flexShrink: 0 }} />
+          <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>
+            Delegated Access: Authorized to manage {storedUserProgram || selectedProgram.key || "Departmental"} exam schedules.
+          </span>
+        </div>
+      )}
+
+      {/* Locked Read-Only Status Notice for Program Heads WITHOUT MANAGE_EXAM_SCHEDULE */}
+      {isProgramHead && !hasDelegatedExamPrivilege && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: "12px 16px",
+            borderRadius: 8,
+            background: "rgba(220, 38, 38, 0.06)",
+            border: "1px solid rgba(220, 38, 38, 0.22)",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            color: "#b91c1c",
+          }}
+        >
+          <Lock size={18} style={{ color: "#dc2626", flexShrink: 0 }} />
+          <div>
+            <strong style={{ fontSize: "0.85rem", color: "#991b1b" }}>
+              Read-Only Exam Timetable View
+            </strong>
+            <div style={{ fontSize: "0.78rem", color: "#b91c1c", marginTop: 2 }}>
+              Exam schedule editing requires Admin authorization. Contact the Dean of Student Affairs.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Control Bar - Unified UX Matching Class Scheduling */}
       <section className="card">
         <div className="card__header" style={{ flexWrap: "wrap", gap: 12 }}>
@@ -2300,7 +2381,7 @@ export function ExamSchedulesPage() {
                 </table>
               </div>
             </div>
-            {!isTeacher && (
+            {canManage && !isTeacher && !isStudent && (
               <SubjectPalette
                 subjects={availableSubjects}
                 scheduledSubjectCodes={scheduledExamSubjectCodes}

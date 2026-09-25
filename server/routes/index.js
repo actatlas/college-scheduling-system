@@ -20,6 +20,9 @@ const notificationsRoutes = require('./notifications.routes');
 const scheduleAdjustmentRequestsRoutes = require('./scheduleAdjustmentRequests.routes');
 const systemLogsRoutes = require('./systemLogs.routes');
 
+const delegationsRoutes = require('./delegations.routes');
+const facultyDispatchRoutes = require('./facultyDispatch.routes');
+
 const router = express.Router();
 
 router.use('/auth', authRoutes);
@@ -44,6 +47,8 @@ router.use('/system-settings', academicTermsRoutes);
 router.use('/notifications', notificationsRoutes);
 router.use('/system-logs', systemLogsRoutes);
 router.use('/audit-logs', systemLogsRoutes);
+router.use('/delegations', delegationsRoutes);
+router.use('/faculty-dispatch', facultyDispatchRoutes);
 
 module.exports = router;
 

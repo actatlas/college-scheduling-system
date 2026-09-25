@@ -149,7 +149,54 @@ describe("Program Head Dashboard Additions & Categories", () => {
     ).toBeInTheDocument();
   });
 
-  it("filters departmental class schedules by Year Level category pills", async () => {
+  it("renders Today's Schedule daily operations and opens schedule details modal", async () => {
+    const todayName = new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(new Date());
+
+    vi.mocked(api.get).mockImplementation((url: string) => {
+      if (url === "/faculty") {
+        return Promise.resolve({
+          data: {
+            data: [
+              { id: "FAC-003", name: "Dr. Reyes", title: "Program Head / Assoc. Professor", department: "ITP", units: 12, maxUnits: 15 },
+            ],
+          },
+        });
+      }
+      if (url === "/subjects") {
+        return Promise.resolve({
+          data: {
+            data: [
+              { code: "IT101", name: "Intro to Computing", program: "ITP", yearLevel: 1 },
+            ],
+          },
+        });
+      }
+      if (url === "/schedules") {
+        return Promise.resolve({
+          data: {
+            data: [
+              {
+                id: "s1",
+                subjectCode: "IT101",
+                subject: "Intro to Computing",
+                section: "BSIT 1-A",
+                yearLevel: "1st Year",
+                day: todayName,
+                time: "08:00 AM - 09:30 AM",
+                faculty: "Prof. Lovelace",
+                facultyId: "FAC-001",
+                room: "COMLAB-1",
+                building: "College Building",
+                modality: "Face-to-Face",
+                program: "ITP",
+              },
+            ],
+          },
+        });
+      }
+      return Promise.resolve({ data: { data: [] } });
+    });
+
     render(
       <BrowserRouter>
         <ToastProvider>
@@ -164,29 +211,20 @@ describe("Program Head Dashboard Additions & Categories", () => {
 
     // Wait for initial data load
     expect(await screen.findByText("Intro to Computing")).toBeInTheDocument();
-    expect(screen.getAllByText("Data Structures").length).toBeGreaterThan(0);
+    expect(screen.getByText("IT101")).toBeInTheDocument();
+    expect(screen.getByText("Total Classes Today")).toBeInTheDocument();
+    expect(screen.getByText("Currently Ongoing")).toBeInTheDocument();
+    expect(screen.getByText("Action Required")).toBeInTheDocument();
 
-    // Find and click the 1st Year Category Filter button
-    const firstYearBtn = screen.getByRole("button", { name: "1st Year" });
-    fireEvent.click(firstYearBtn);
+    // Click on schedule card to open Schedule Details modal
+    const scheduleRow = screen.getByText("Intro to Computing").closest(".today-schedule-row");
+    expect(scheduleRow).toBeInTheDocument();
+    if (scheduleRow) {
+      fireEvent.click(scheduleRow);
+    }
 
     await waitFor(() => {
-      const tables = screen.getAllByRole("table");
-      const schedTable = tables[tables.length - 1];
-      // 1st Year schedule should be present in schedules table
-      expect(within(schedTable).getByText("IT101")).toBeInTheDocument();
-      // 2nd Year schedule should not be present in schedules table
-      expect(within(schedTable).queryByText("IT201")).not.toBeInTheDocument();
-    });
-
-    // Click All Schedules to reset
-    const allSchedsBtn = screen.getByRole("button", { name: "All Schedules" });
-    fireEvent.click(allSchedsBtn);
-    await waitFor(() => {
-      const tables = screen.getAllByRole("table");
-      const schedTable = tables[tables.length - 1];
-      expect(within(schedTable).getByText("IT101")).toBeInTheDocument();
-      expect(within(schedTable).getByText("IT201")).toBeInTheDocument();
+      expect(screen.getByText(/Schedule Details/i)).toBeInTheDocument();
     });
   });
 });

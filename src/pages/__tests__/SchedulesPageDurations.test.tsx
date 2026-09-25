@@ -163,9 +163,10 @@ describe("SchedulesPage Institutional Class Durations", () => {
     const shiftMarkers = screen.getAllByText(":30 Shift");
     expect(shiftMarkers.length).toBeGreaterThan(0);
 
-    // 5. Subject cards render explicit institutional duration badges
-    expect(await screen.findByText("Minor (1.5h)")).toBeInTheDocument();
-    expect(screen.getByText("Major Lec (2h)")).toBeInTheDocument();
+    // 5. Subject durations are clearly indicated in the institutional guidelines
+    expect(await screen.findByText(/Minor: 1 hr 30 mins \(1.5h\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Major Lecture \(2h\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Major Lab \(3h\)/i)).toBeInTheDocument();
   });
 
   it("does not render Delivery Mode or Virtual Link when adding a schedule", async () => {
@@ -210,8 +211,8 @@ describe("SchedulesPage Institutional Class Durations", () => {
       </BrowserRouter>
     );
 
-    // Minor (1.5h) card badge is rendered
-    expect(await screen.findByText("Minor (1.5h)")).toBeInTheDocument();
+    // Institutional guidelines banner is present
+    expect(await screen.findByText(/Minor: 1 hr 30 mins \(1.5h\)/i)).toBeInTheDocument();
 
     // Verify "Face-to-Face" is not rendered as a badge on the cards
     const facePills = screen.queryAllByText("Face-to-Face");

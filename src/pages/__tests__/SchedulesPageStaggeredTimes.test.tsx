@@ -112,7 +112,9 @@ describe("SchedulesPage Staggered Times (7:00 AM & 7:30 AM multi-track)", () => 
     });
   });
 
-  it("renders both 7:00 AM and 7:30 AM classes simultaneously with accurate slot positioning", async () => {
+  it("aggregates overlapping 7:00 AM and 7:30 AM classes into a single 100% width vertical cluster pill", async () => {
+    const { fireEvent, waitFor, within } = await import("@testing-library/react");
+
     render(
       <BrowserRouter>
         <ToastProvider>
@@ -125,31 +127,33 @@ describe("SchedulesPage Staggered Times (7:00 AM & 7:30 AM multi-track)", () => 
       </BrowserRouter>
     );
 
-    // Wait for both subjects to render
-    expect(await screen.findByText("IT101")).toBeInTheDocument();
-    expect(screen.getByText("Computer Programming 1")).toBeInTheDocument();
-    expect(screen.getByText("BA101")).toBeInTheDocument();
-    expect(screen.getByText("Principles of Management")).toBeInTheDocument();
+    // Wait for schedule data to load and pill to render
+    const stackCard = await screen.findByTestId("same-time-stack-card");
+    expect(within(stackCard).getByText("2 CLASSES")).toBeInTheDocument();
 
-    // Verify both blocks exist on Monday
+    // Verify unified cluster pill exists in Monday column
     const mondayColumn = document.querySelector('.timetable-day-column[data-day="Monday"]');
     expect(mondayColumn).toBeInTheDocument();
 
     const blocks = mondayColumn?.querySelectorAll(".timetable-schedule-positioned-block");
-    expect(blocks?.length).toBe(2);
+    // All overlapping schedules in the day merge into 1 single vertical block (no horizontal track splitting)
+    expect(blocks?.length).toBe(1);
 
-    // Block 1 (7:00 AM) starts at top 0px
-    const block1 = blocks?.[0] as HTMLElement;
-    expect(block1.style.top).toBe("0px");
+    const block = blocks?.[0] as HTMLElement;
+    expect(block.style.top).toBe("0px");
+    // Occupies 100% width of the column track
+    expect(block.style.width).toContain("100%");
+    expect(block.style.left).toContain("0%");
 
-    // Block 2 (7:30 AM) starts at top 52px (1 slot down)
-    const block2 = blocks?.[1] as HTMLElement;
-    expect(block2.style.top).toBe("52px");
+    // Clicking pill opens drawer showing both subjects
+    fireEvent.click(stackCard);
 
-    // Both blocks render in side-by-side tracks (approx 50% width each)
-    expect(block1.style.width).toContain("50%");
-    expect(block2.style.width).toContain("50%");
-    expect(block1.style.left).toContain("0%");
-    expect(block2.style.left).toContain("50%");
+    await waitFor(() => {
+      expect(screen.getByText(/2 Concurrent Classes Scheduled/i)).toBeInTheDocument();
+      expect(screen.getByText("IT101")).toBeInTheDocument();
+      expect(screen.getByText("Computer Programming 1")).toBeInTheDocument();
+      expect(screen.getByText("BA101")).toBeInTheDocument();
+      expect(screen.getByText("Principles of Management")).toBeInTheDocument();
+    });
   });
 });

@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
 import { SchedulesPage } from "../SchedulesPage";
 import { ScheduleDetailsModal } from "../../components/schedule/ScheduleDetailsModal";
@@ -19,6 +19,10 @@ vi.mock("../../data/apiClient", () => ({
 }));
 
 describe("Schedule Adjustment Request Workflow (Frontend)", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   const mockSchedules = [
     {
       id: "1",
@@ -97,12 +101,16 @@ describe("Schedule Adjustment Request Workflow (Frontend)", () => {
 
     renderComponent();
 
-    // Wait for schedule card to render
-    const cardCodes = await screen.findAllByText("GE2");
-    expect(cardCodes[0]).toBeInTheDocument();
+    // Wait for schedule pill to render and click it to open drawer
+    const stackCard = await screen.findByTestId("same-time-stack-card");
+    fireEvent.click(stackCard);
 
-    // Click on schedule card
-    fireEvent.click(cardCodes[0]);
+    // In drawer, expand details and click Full Details
+    const detailsBtn = await screen.findByRole("button", { name: /Details for GE2/i });
+    fireEvent.click(detailsBtn);
+
+    const fullDetailsBtn = await screen.findByRole("button", { name: /Full Details/i });
+    fireEvent.click(fullDetailsBtn);
 
     // Verify Details Modal opened
     expect(await screen.findByText("Assigned Class Schedule Details")).toBeInTheDocument();
@@ -117,8 +125,14 @@ describe("Schedule Adjustment Request Workflow (Frontend)", () => {
 
     renderComponent();
 
-    const cardCodes = await screen.findAllByText("GE2");
-    fireEvent.click(cardCodes[0]);
+    const stackCard = await screen.findByTestId("same-time-stack-card");
+    fireEvent.click(stackCard);
+
+    const detailsBtn = await screen.findByRole("button", { name: /Details for GE2/i });
+    fireEvent.click(detailsBtn);
+
+    const fullDetailsBtn = await screen.findByRole("button", { name: /Full Details/i });
+    fireEvent.click(fullDetailsBtn);
 
     const requestBtn = await screen.findByRole("button", { name: /Request Permission to Move/i });
     fireEvent.click(requestBtn);

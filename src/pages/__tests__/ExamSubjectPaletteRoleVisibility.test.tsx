@@ -73,6 +73,19 @@ describe("Exam Subject Palette Role-Based Visibility & Filtering", () => {
       if (url.startsWith("/subjects")) {
         return Promise.resolve({ data: { data: catalogSubjects } });
       }
+      if (url === "/delegations/my-privileges") {
+        const role = localStorage.getItem("userRole");
+        const isPH = role === "program_head";
+        return Promise.resolve({
+          data: {
+            data: {
+              role,
+              hasExamSchedulePrivilege: isPH,
+              grantedPrivileges: isPH ? ["MANAGE_EXAM_SCHEDULE", "MANAGE_CLASS_SCHEDULE"] : [],
+            },
+          },
+        });
+      }
       return Promise.resolve({ data: { data: [] } });
     });
   });
@@ -288,10 +301,9 @@ describe("Exam Subject Palette Role-Based Visibility & Filtering", () => {
     expect(screen.queryByText("GE 1")).not.toBeInTheDocument();
   });
 
-  it("7. TEACHER: Exam Subject Palette is COMPLETELY ABSENT (no palette, no toggle strip, no quick-schedule controls)", async () => {
-    localStorage.setItem("userRole", "teacher");
-    localStorage.setItem("teacherId", "T001");
-    localStorage.setItem("userName", "Maria Santos");
+  it("7. STUDENT / READ-ONLY: Exam Subject Palette is COMPLETELY ABSENT (no palette, no toggle strip, no quick-schedule controls)", async () => {
+    localStorage.setItem("userRole", "student");
+    localStorage.setItem("userName", "Collegiate Student Body");
 
     render(
       <BrowserRouter>
@@ -306,7 +318,7 @@ describe("Exam Subject Palette Role-Based Visibility & Filtering", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Faculty Examination Duties & Timetable")).toBeInTheDocument();
+      expect(screen.getByText("Institutional Examination Timetable")).toBeInTheDocument();
     });
 
     // Exam Subject Palette and collapsed strip should NOT exist in the DOM
@@ -319,7 +331,7 @@ describe("Exam Subject Palette Role-Based Visibility & Filtering", () => {
     expect(screen.queryByText("IT 101")).not.toBeInTheDocument();
     expect(screen.queryByText("GE 1")).not.toBeInTheDocument();
 
-    // Scheduling actions should NOT be available for teacher
+    // Scheduling actions should NOT be available for student
     expect(screen.queryByText("Use Previous Schedule")).not.toBeInTheDocument();
     expect(screen.queryByText("+ Schedule")).not.toBeInTheDocument();
   });

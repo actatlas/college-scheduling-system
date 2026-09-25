@@ -50,6 +50,9 @@ describe('Exam Subject Palette Backend Role-Based Enforcement', () => {
       if (s.includes('FROM subjects s')) {
         return sampleSubjects;
       }
+      if (s.includes('FROM delegations')) {
+        return [{ id: 1, program_code: 'ALL', status: 'ACTIVE' }];
+      }
       if (s.includes('FROM exam_schedules WHERE id !=')) {
         return [];
       }

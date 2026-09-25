@@ -1,4 +1,4 @@
-export type UserRole = 'super_admin' | 'admin' | 'program_head' | 'teacher'
+export type UserRole = 'super_admin' | 'admin' | 'program_head' | 'student'
 
 export interface UserAccount {
   id: string
@@ -10,6 +10,71 @@ export interface UserAccount {
   createdAt: string
   teacherId?: string
   facultyId?: string
+}
+
+export type PrivilegeType = 'MANAGE_EXAM_SCHEDULE' | 'MANAGE_CLASS_SCHEDULE' | 'ROOM_REALLOCATION'
+
+export type DelegationStatus = 'ACTIVE' | 'REVOKED'
+
+export interface DelegationRecord {
+  id?: number | string
+  delegation_id?: number | string
+  userId?: number | string
+  user_id?: number | string
+  programCode?: string
+  program_code?: string
+  privilegeType?: PrivilegeType
+  privilege_type?: PrivilegeType
+  status: DelegationStatus
+  grantedBy?: number | string
+  granted_by?: number | string
+  updatedAt?: string
+  updated_at?: string
+  createdAt?: string
+  created_at?: string
+}
+
+export interface ProgramHeadDelegation {
+  userId: number | string
+  userName: string
+  userEmail: string
+  programCode: string
+  programName?: string
+  userStatus?: string
+  delegations?: DelegationRecord[]
+  grantedPrivileges: PrivilegeType[]
+  hasExamSchedulePrivilege: boolean
+  hasClassSchedulePrivilege: boolean
+  hasRoomReallocationPrivilege: boolean
+}
+
+export interface FacultyDispatchItem {
+  subjectCode: string
+  subjectName: string
+  section: string
+  day: string
+  time: string
+  room: string
+  mode: string
+  durationHours: string
+}
+
+export interface FacultyDispatchPayload {
+  to: string
+  from: string
+  subject: string
+  facultyName: string
+  facultyEmail: string
+  department: string
+  academicTerm: string
+  totalWeeklyHours: number
+  totalUnits: number
+  subjectCount: number
+  scheduleItems: FacultyDispatchItem[]
+  cubicleAdvisoryNote: string
+  customNotes?: string | null
+  dispatchedAt: string
+  deliveryStatus: 'Sent' | 'Delivered' | 'Error'
 }
 
 export type ClassModality = 'Face-to-Face' | 'Online'

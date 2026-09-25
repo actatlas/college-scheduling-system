@@ -589,11 +589,11 @@ export function UserManagementPage() {
       case "super_admin":
         return "Super Admin (ICT)";
       case "admin":
-        return "Administrator";
+        return "Dean of Student Affairs (Admin)";
       case "program_head":
         return "Program Head";
-      case "teacher":
-        return "Teacher / Faculty";
+      case "student":
+        return "Student / Read-Only";
       default:
         return role;
     }
@@ -604,11 +604,11 @@ export function UserManagementPage() {
       case "super_admin":
         return <span className="pill pill--royal">Super Admin</span>;
       case "admin":
-        return <span className="pill pill--navy">Administrator</span>;
+        return <span className="pill pill--navy">Dean of Student Affairs</span>;
       case "program_head":
         return <span className="pill pill--emerald">Program Head</span>;
-      case "teacher":
-        return <span className="pill pill--slate">Teacher</span>;
+      case "student":
+        return <span className="pill pill--slate">Student / Read-Only</span>;
       default:
         return <span className="pill">{role}</span>;
     }
@@ -1052,9 +1052,9 @@ export function UserManagementPage() {
                     >
                       <option value="all">All Roles</option>
                       <option value="super_admin">Super Admin (ICT)</option>
-                      <option value="admin">Administrator</option>
+                      <option value="admin">Dean of Student Affairs (Admin)</option>
                       <option value="program_head">Program Head</option>
-                      <option value="teacher">Teacher / Faculty</option>
+                      <option value="student">Student / Read-Only</option>
                     </select>
                   </div>
 
@@ -1997,7 +1997,7 @@ export function UserManagementPage() {
               <option value="super_admin">Super Admin (ICT Office)</option>
               <option value="admin">Dean of Student Affairs (Admin)</option>
               <option value="program_head">Program Head</option>
-              <option value="teacher">Faculty Member / Teacher</option>
+              <option value="student">Student / Read-Only</option>
             </select>
           </div>
 

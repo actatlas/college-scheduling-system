@@ -99,6 +99,24 @@ export function FacultyPage() {
   const canDelete = isSuperAdmin;
   const isProgramHead = role === "program_head";
 
+  const handleDispatchFacultyGmail = async (f: FacultyMember) => {
+    try {
+      const res = await api.post("/faculty-dispatch/send", {
+        teacherId: f.id,
+        recipientEmail: f.email,
+      });
+      toast.push(res.data?.message || `Schedule dispatched to ${f.name} via institutional Gmail!`, "success");
+      addNotification({
+        title: "Schedule Dispatched via Gmail",
+        message: `Digital timetable dispatched to ${f.name} (${f.email || `${f.id.toLowerCase()}@srcb.edu.ph`}). Physical copy in departmental cubicle.`,
+        type: "success",
+        link: "/faculty",
+      });
+    } catch (err: any) {
+      toast.push(err?.response?.data?.error || "Failed to dispatch schedule via Gmail", "error");
+    }
+  };
+
   const [form, setForm] = useState({
     id: "",
     department: "Information Technology",
@@ -885,6 +903,19 @@ export function FacultyPage() {
                                     <span>Edit Profile</span>
                                   </button>
                                 )}
+                                <div className="user-mgmt-menu-divider" />
+                                <button
+                                  type="button"
+                                  className="user-mgmt-menu-item"
+                                  onClick={() => {
+                                    setOpenRowActionId(null);
+                                    handleDispatchFacultyGmail(f);
+                                  }}
+                                  role="menuitem"
+                                >
+                                  <Mail size={15} />
+                                  <span>Dispatch Schedule (Gmail)</span>
+                                </button>
                                 {canDelete && (
                                   <>
                                     <div className="user-mgmt-menu-divider" />

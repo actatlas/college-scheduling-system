@@ -12,8 +12,8 @@ vi.mock("../../data/apiClient", () => ({
   },
 }));
 
-describe("DashboardPage - Clean Real-Time Data", () => {
-  it("renders clean state without dummy data like Turing or fake conflicts when data is empty", async () => {
+describe("DashboardPage - Clean Real-Time Data & Daily Operations", () => {
+  it("renders daily operations dashboard with status badges and clean nominal state when empty", async () => {
     window.localStorage.setItem("userRole", "admin");
     window.localStorage.setItem("userName", "Admin User");
 
@@ -28,10 +28,14 @@ describe("DashboardPage - Clean Real-Time Data", () => {
     );
 
     expect(await screen.findByText(/College Academic Scheduling Dashboard/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Today's Schedule/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Total Classes Today/i)).toBeInTheDocument();
+    expect(screen.getByText(/Currently Ongoing/i)).toBeInTheDocument();
+    expect(screen.getByText(/Action Required/i)).toBeInTheDocument();
     expect(screen.queryByText(/Dr. Alan Turing/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Prof. Ada Lovelace/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/LAB-402/i)).not.toBeInTheDocument();
     expect(await screen.findByText(/All Systems Nominal/i)).toBeInTheDocument();
-    expect(await screen.findByText(/No Faculty Assigned/i)).toBeInTheDocument();
+    expect(screen.getByText(/No classes scheduled for today/i)).toBeInTheDocument();
   });
 });

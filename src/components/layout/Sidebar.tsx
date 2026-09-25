@@ -43,8 +43,8 @@ function getRoleLabel(role: string) {
       return "Dean of Student Affairs (Admin)";
     case "program_head":
       return "Program Head";
-    case "teacher":
-      return "Faculty Member";
+    case "student":
+      return "Student / Read-Only";
     default:
       return "Staff Portal";
   }
@@ -137,6 +137,15 @@ export function Sidebar({ isMobileOpen = false, onClose }: SidebarProps) {
       items: [
         { to: "/users", label: "User Accounts", icon: Users },
         { to: "/system-logs", label: "System Logs", icon: ScrollText },
+        { to: "/settings", label: "System Preferences", icon: Settings },
+      ],
+    },
+    {
+      groupTitle: "Academic Catalog & Schedules",
+      items: [
+        { to: "/schedules", label: "Class Schedules", icon: CalendarDays },
+        { to: "/exams", label: "Exam Schedules", icon: CalendarCheck },
+        { to: "/reports", label: "Reports & Analytics", icon: FileBarChart },
       ],
     },
     {
@@ -145,17 +154,18 @@ export function Sidebar({ isMobileOpen = false, onClose }: SidebarProps) {
     },
   ];
 
-  // Faculty Member / Teacher IA
-  const teacherGroups: NavGroup[] = [
+  // Student / Read-Only IA (Public Schedule Monitoring)
+  const studentGroups: NavGroup[] = [
     {
       groupTitle: "Overview",
       items: [{ to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, end: true }],
     },
     {
-      groupTitle: "My Academic Timetable",
+      groupTitle: "Public Schedule Monitor",
       items: [
         { to: "/schedules", label: "Class Schedules", icon: CalendarDays },
-        { to: "/exams", label: "Assigned Exam Duties", icon: CalendarCheck },
+        { to: "/exams", label: "Exam Schedules", icon: CalendarCheck },
+        { to: "/rooms", label: "Campus Facilities", icon: DoorOpen },
       ],
     },
     {
@@ -169,8 +179,8 @@ export function Sidebar({ isMobileOpen = false, onClose }: SidebarProps) {
       ? superAdminGroups
       : role === "program_head"
         ? programHeadGroups
-        : role === "teacher"
-          ? teacherGroups
+        : role === "student"
+          ? studentGroups
           : adminGroups;
 
   const handleLogout = () => {
@@ -219,7 +229,7 @@ export function Sidebar({ isMobileOpen = false, onClose }: SidebarProps) {
       </div>
 
       {/* Quick Action CTA Button */}
-      {role !== "teacher" && role !== "super_admin" && role !== "admin" && (
+      {role !== "student" && role !== "super_admin" && role !== "admin" && (
         <button
           className="sidebar__cta"
           type="button"

@@ -120,27 +120,28 @@ export function AppRoutes() {
           <Route
             element={
               <ProtectedRoute
-                allowedRoles={["super_admin", "admin", "program_head", "teacher"]}
+                allowedRoles={["super_admin", "admin", "program_head", "student"]}
               />
             }
           >
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/admin-dashboard" element={<DashboardPage />} />
             <Route path="/program-head-dashboard" element={<DashboardPage />} />
-            <Route path="/teacher-dashboard" element={<DashboardPage />} />
+            <Route path="/student-dashboard" element={<DashboardPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/account" element={<ProfilePage />} />
           </Route>
 
-          {/* Admin only: System Preferences & Configuration (Requirement 2) */}
+          {/* Admin & Super Admin: System Preferences & Configuration */}
           <Route
             element={
               <ProtectedRoute
-                allowedRoles={["admin"]}
+                allowedRoles={["super_admin", "admin"]}
               />
             }
           >
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/system-preferences" element={<SettingsPage />} />
           </Route>
 
           {/* Super Admin only: User Account Management & System Audit Logs */}
@@ -156,11 +157,11 @@ export function AppRoutes() {
             <Route path="/audit-logs" element={<SystemLogsPage />} />
           </Route>
 
-          {/* General paths accessible by Super Admin, Admin, Program Head, Teacher */}
+          {/* General paths accessible by Super Admin, Admin, Program Head, Student */}
           <Route
             element={
               <ProtectedRoute
-                allowedRoles={["super_admin", "admin", "program_head", "teacher"]}
+                allowedRoles={["super_admin", "admin", "program_head", "student"]}
               />
             }
           >

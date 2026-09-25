@@ -40,6 +40,10 @@ import {
   Loader2,
   Printer,
   ArrowRightLeft,
+  ChevronDown,
+  ChevronUp,
+  Mail,
+  Send,
 } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
 import {
@@ -292,97 +296,65 @@ interface DayTimelineBlock {
 function buildDayTimelineBlocks(daySchedules: ClassScheduleItem[]): DayTimelineBlock[] {
   if (!daySchedules || daySchedules.length === 0) return [];
 
-  // 1. Group items that have the exact same start time AND exact same duration span
-  // so exact same-time schedules become a unified compact stack
-  const exactTimeMap = new Map<string, { startIdx: number; span: number; endIdx: number; slot: string; items: ClassScheduleItem[] }>();
+  // Group items into non-overlapping clusters sorted chronologically
+  const sorted = [...daySchedules].sort((a, b) => {
+    const aStart = Math.max(0, getScheduleStartSlotIdx(a.time));
+    const bStart = Math.max(0, getScheduleStartSlotIdx(b.time));
+    if (aStart !== bStart) return aStart - bStart;
+    const aSpan = Math.max(1, getScheduleRowSpan(a.time));
+    const bSpan = Math.max(1, getScheduleRowSpan(b.time));
+    return bSpan - aSpan;
+  });
 
-  for (const item of daySchedules) {
+  interface Cluster {
+    startIdx: number;
+    endIdx: number;
+    items: ClassScheduleItem[];
+  }
+
+  const clusters: Cluster[] = [];
+
+  for (const item of sorted) {
     const startIdx = Math.max(0, getScheduleStartSlotIdx(item.time));
     const span = Math.max(1, getScheduleRowSpan(item.time));
     const endIdx = Math.min(TIME_SLOTS.length, startIdx + span);
-    const slotStr = item.time || (TIME_SLOTS[startIdx] ? `${TIME_SLOTS[startIdx].split("-")[0].trim()} - ${TIME_SLOTS[endIdx - 1]?.split("-")[1]?.trim() || ''}` : "07:00 AM - 07:30 AM");
-    const exactKey = `${startIdx}_${span}`;
 
-    if (!exactTimeMap.has(exactKey)) {
-      exactTimeMap.set(exactKey, { startIdx, span, endIdx, slot: slotStr, items: [item] });
+    // Merge overlapping / concurrent schedules into the same single-track cluster
+    const lastCluster = clusters[clusters.length - 1];
+    if (lastCluster && startIdx < lastCluster.endIdx) {
+      lastCluster.endIdx = Math.max(lastCluster.endIdx, endIdx);
+      lastCluster.items.push(item);
     } else {
-      exactTimeMap.get(exactKey)!.items.push(item);
-    }
-  }
-
-  const rawBlocks = Array.from(exactTimeMap.values());
-
-  // 2. Sort by startIdx ascending, then span descending
-  rawBlocks.sort((a, b) => a.startIdx - b.startIdx || b.span - a.span);
-
-  // 3. Cluster overlapping blocks (blocks that overlap in time range [startIdx, endIdx))
-  const clusters: typeof rawBlocks[] = [];
-  for (const block of rawBlocks) {
-    let placed = false;
-    for (const cluster of clusters) {
-      // Check if this block overlaps with any block in the cluster
-      const overlaps = cluster.some((b) => block.startIdx < b.endIdx && b.startIdx < block.endIdx);
-      if (overlaps) {
-        cluster.push(block);
-        placed = true;
-        break;
-      }
-    }
-    if (!placed) {
-      clusters.push([block]);
-    }
-  }
-
-  // 4. Within each cluster, assign tracks (lanes)
-  const result: DayTimelineBlock[] = [];
-
-  for (const cluster of clusters) {
-    // Sort cluster blocks by startIdx
-    cluster.sort((a, b) => a.startIdx - b.startIdx || b.span - a.span);
-
-    // Track end times for each lane
-    const laneEndTimes: number[] = [];
-    const blockTracks: number[] = [];
-
-    for (const block of cluster) {
-      // Find the first lane where laneEndTime <= block.startIdx
-      let assignedLane = -1;
-      for (let l = 0; l < laneEndTimes.length; l++) {
-        if (laneEndTimes[l] <= block.startIdx) {
-          assignedLane = l;
-          laneEndTimes[l] = block.endIdx;
-          break;
-        }
-      }
-      if (assignedLane === -1) {
-        assignedLane = laneEndTimes.length;
-        laneEndTimes.push(block.endIdx);
-      }
-      blockTracks.push(assignedLane);
-    }
-
-    const totalTracks = Math.max(1, laneEndTimes.length);
-    const widthPercent = 100 / totalTracks;
-
-    for (let i = 0; i < cluster.length; i++) {
-      const block = cluster[i];
-      const trackIndex = blockTracks[i];
-      result.push({
-        key: `${block.startIdx}-${block.span}-${block.items[0]?.id || i}`,
-        startIdx: block.startIdx,
-        span: block.span,
-        endIdx: block.endIdx,
-        slot: block.slot,
-        items: block.items,
-        trackIndex,
-        totalTracks,
-        leftPercent: trackIndex * widthPercent,
-        widthPercent,
+      clusters.push({
+        startIdx,
+        endIdx,
+        items: [item],
       });
     }
   }
 
-  return result;
+  return clusters.map((c, idx) => {
+    const span = Math.max(1, c.endIdx - c.startIdx);
+    const startStr = TIME_SLOTS[c.startIdx]?.split("-")[0]?.trim() || "07:00 AM";
+    const endStr =
+      TIME_SLOTS[c.endIdx - 1]?.split("-")[1]?.trim() ||
+      TIME_SLOTS[c.startIdx]?.split("-")[1]?.trim() ||
+      "08:30 AM";
+    const slotStr = `${startStr} - ${endStr}`;
+
+    return {
+      key: `block-${c.startIdx}-${span}-${c.items[0]?.id || idx}`,
+      startIdx: c.startIdx,
+      span,
+      endIdx: c.endIdx,
+      slot: slotStr,
+      items: c.items,
+      trackIndex: 0,
+      totalTracks: 1,
+      leftPercent: 0,
+      widthPercent: 100,
+    };
+  });
 }
 
 interface StackedScheduleCellProps {
@@ -399,227 +371,73 @@ interface StackedScheduleCellProps {
   onOpenStackGroup?: (group: { day: string; slot: string; schedules: ClassScheduleItem[] }) => void;
 }
 
+function getClusterConflicts(items: ClassScheduleItem[]) {
+  const roomMap: Record<string, ClassScheduleItem[]> = {};
+  const facultyMap: Record<string, ClassScheduleItem[]> = {};
+
+  items.forEach((item) => {
+    if (item.room && item.room !== "TBA") {
+      roomMap[item.room] = roomMap[item.room] || [];
+      roomMap[item.room].push(item);
+    }
+    if (item.faculty && item.faculty !== "TBA" && item.faculty !== "Unassigned") {
+      facultyMap[item.faculty] = facultyMap[item.faculty] || [];
+      facultyMap[item.faculty].push(item);
+    }
+  });
+
+  const roomClashes = Object.entries(roomMap).filter(([_, list]) => list.length > 1);
+  const facultyClashes = Object.entries(facultyMap).filter(([_, list]) => list.length > 1);
+  const totalConflicts = roomClashes.length + facultyClashes.length;
+
+  return {
+    roomClashes,
+    facultyClashes,
+    totalConflicts,
+    hasConflict: totalConflicts > 0,
+    hasRoomClash: roomClashes.length > 0,
+    hasFacultyClash: facultyClashes.length > 0,
+  };
+}
+
 function StackedScheduleCell({
   day,
   slot,
   slotIdx: _slotIdx,
   rowSpan: _rowSpan,
   schedules,
-  canCreate,
-  onEdit,
-  onDelete,
-  onView,
-  onAddAtSlot,
+  canCreate: _canCreate,
+  onEdit: _onEdit,
+  onDelete: _onDelete,
+  onView: _onView,
+  onAddAtSlot: _onAddAtSlot,
   onOpenStackGroup,
 }: StackedScheduleCellProps) {
-  const isStacked = schedules.length > 1;
+  if (!schedules || schedules.length === 0) return null;
 
-  const renderCard = (item: ClassScheduleItem, isCompact = false) => {
-    if (!item) return null;
-    const progTheme = getProgramTheme(item);
-    const cardBorderColor = progTheme.primary || item.color || (item.modality === "Online" ? "#10b981" : "#2563eb");
-
-    return (
-      <div
-        key={item.id}
-        className={`schedule-card-draggable ${item.modality === "Online" ? "is-online" : ""}`}
-        draggable={canCreate}
-        onDragStart={(e) => {
-          e.dataTransfer.setData(
-            "application/json",
-            JSON.stringify({ type: "move_schedule", item })
-          );
-        }}
-        onClick={() => onView(item)}
-        role="button"
-        tabIndex={0}
-        aria-label={`View class ${item.subjectCode} ${item.subject} scheduled ${item.day} ${item.time}`}
-        style={{
-          borderLeftColor: cardBorderColor,
-          height: "100%",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "space-between",
-          cursor: canCreate ? "grab" : "pointer",
-          overflow: "hidden",
-        }}
-      >
-        <div style={{ display: "flex", flexDirection: "column", gap: 2, minHeight: 0, overflow: "hidden" }}>
-          {/* Institutional Matrix Subject (Room) Header */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 4 }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 4, flexWrap: "wrap", minWidth: 0 }}>
-              <span className="schedule-card-code" style={{ fontWeight: 900, fontSize: isCompact ? "0.82rem" : "0.88rem", letterSpacing: "-0.01em" }}>
-                {item.subjectCode}
-              </span>
-              <span className="schedule-card-room" style={{ fontWeight: 800, fontSize: isCompact ? "0.76rem" : "0.82rem" }}>
-                ({item.room || "TBA"})
-              </span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
-              {canCreate && <GripVertical size={11} style={{ opacity: 0.6 }} />}
-              <span
-                className="program-card-badge"
-                style={{
-                  backgroundColor: progTheme.badgeBg,
-                  color: progTheme.badgeText,
-                  fontSize: "0.6rem",
-                  fontWeight: 800,
-                  padding: "1px 4px",
-                  borderRadius: 3,
-                }}
-                title={`Program: ${progTheme.name}`}
-              >
-                {progTheme.code}
-              </span>
-              {item.classMode === "Laboratory" || String(item.roomType || "").toLowerCase().includes("lab") ? (
-                <span className="pill pill--purple" style={{ fontSize: "0.6rem", fontWeight: 700, padding: "1px 4px" }} title="Major Laboratory Session (3 Hours)">
-                  Major Lab (3h)
-                </span>
-              ) : item.isMajor ? (
-                <span className="pill pill--blue" style={{ fontSize: "0.6rem", fontWeight: 700, padding: "1px 4px" }} title="Major Lecture Session (2 Hours)">
-                  Major Lec (2h)
-                </span>
-              ) : (
-                <span className="pill pill--amber" style={{ fontSize: "0.6rem", fontWeight: 700, padding: "1px 4px" }} title="Minor / Gen Ed Session (1 Hour 30 Mins)">
-                  Minor (1.5h)
-                </span>
-              )}
-              {item.modality === "Online" && (
-                <span
-                  className="pill pill--emerald"
-                  style={{ fontSize: "0.6rem", padding: "1px 4px" }}
-                >
-                  Online
-                </span>
-              )}
-            </div>
-          </div>
-          <div
-            className="schedule-card-subject"
-            style={{
-              fontSize: isCompact ? "0.7rem" : "0.74rem",
-              marginTop: 1,
-              fontWeight: 600,
-              lineHeight: 1.2,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-            title={item.subject}
-          >
-            {item.subject}
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 1, marginTop: 1 }}>
-            <div className="schedule-card-meta" style={{ fontSize: "0.68rem", display: "flex", alignItems: "center", gap: 4 }}>
-              <GraduationCap size={11} style={{ flexShrink: 0 }} />
-              <span><strong>Sec:</strong> {item.section}</span>
-              {item.isCombinedCohort && (
-                <span className="pill pill--cyan" style={{ fontSize: "0.58rem", padding: "0 4px", fontWeight: 700 }} title="Shared / Combined Cohort Session">
-                  Combined
-                </span>
-              )}
-            </div>
-            <div className="schedule-card-faculty" style={{ fontSize: "0.68rem", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
-              <UserCheck size={11} style={{ flexShrink: 0 }} />
-              <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.faculty}</span>
-            </div>
-            <div className="schedule-card-meta schedule-card-time" style={{ fontSize: "0.65rem", display: "flex", alignItems: "center", gap: 4 }}>
-              <Clock size={10} style={{ flexShrink: 0 }} />
-              <span>{item.time}</span>
-            </div>
-          </div>
-
-          {item.modality === "Online" && item.onlineLink && (
-            <a
-              href={item.onlineLink}
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                fontSize: "0.66rem",
-                color: "var(--srcb-green, #10b981)",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 3,
-                marginTop: 1,
-                textDecoration: "underline",
-                fontWeight: 600,
-              }}
-            >
-              <ExternalLink size={10} /> Join Class
-            </a>
-          )}
-        </div>
-
-        {canCreate && (
-          <div className="schedule-card-actions" style={{ display: "flex", justifyContent: "flex-end", gap: 4, marginTop: 3, paddingTop: 3 }}>
-            <button
-              type="button"
-              className="icon-button icon-button--sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                onAddAtSlot(day, item.time || slot);
-              }}
-              title={`+ Add Subject / Add another subject to slot (${day} ${item.time || slot})`}
-              aria-label={`+ Add Subject / Add another subject to slot ${day} ${item.time || slot}`}
-              style={{ width: 22, height: 22, padding: 0, color: "var(--srcb-royal, #2563eb)" }}
-            >
-              <Plus size={11} />
-            </button>
-            <button
-              type="button"
-              className="icon-button icon-button--sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                onEdit(item);
-              }}
-              title="Edit Class Block"
-              aria-label={`Edit class block ${item.subjectCode}`}
-              style={{ width: 22, height: 22, padding: 0 }}
-            >
-              <Edit2 size={11} />
-            </button>
-            <button
-              type="button"
-              className="icon-button icon-button--sm icon-button--danger"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(item);
-              }}
-              title="Delete Class Block"
-              aria-label={`Delete class block ${item.subjectCode}`}
-              style={{ width: 22, height: 22, padding: 0 }}
-            >
-              <Trash2 size={11} />
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  if (!isStacked) {
-    return (
-      <div className="single-schedule-container" style={{ height: "100%", display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
-        <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
-          {renderCard(schedules[0])}
-        </div>
-      </div>
-    );
-  }
-
-  // 2+ Schedules with exact same Day, Start Time, and End Time
+  const isSingle = schedules.length === 1;
   const timeStr = schedules[0]?.time || slot;
-  const distinctRooms = Array.from(new Set(schedules.map((s) => s.room).filter(Boolean)));
-  const hasRoomClash = distinctRooms.length < schedules.length;
+  const conflicts = getClusterConflicts(schedules);
+  const progTheme = getProgramTheme(schedules[0]);
+
+  let pillLabel = "";
+  if (conflicts.hasConflict) {
+    pillLabel = `⚠️ ${schedules.length} ${schedules.length === 1 ? "CLASS" : "CLASSES"}`;
+  } else if (isSingle) {
+    const code = schedules[0]?.subjectCode;
+    pillLabel = code ? `${code} • 1 Class` : "1 CLASS";
+  } else {
+    pillLabel = `${schedules.length} CLASSES`;
+  }
 
   return (
     <div
       data-testid="same-time-stack-card"
-      className={`same-time-stack-card ${hasRoomClash ? "has-room-clash" : ""}`}
+      className="same-time-cluster-cell-wrapper"
       onClick={() => onOpenStackGroup?.({ day, slot: timeStr, schedules })}
       role="button"
       tabIndex={0}
-      aria-label={`${schedules.length} classes scheduled on ${day} ${timeStr}. Click to view all.`}
+      aria-label={`${pillLabel} scheduled on ${day} ${timeStr}. Click to view class details.`}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -627,56 +445,23 @@ function StackedScheduleCell({
         }
       }}
     >
-      <div className="same-time-stack-header">
-        <div className="same-time-stack-title-row">
-          <span className="same-time-stack-badge">
-            <Layers size={11} />
-            <span>{schedules.length} CLASSES</span>
-          </span>
-          <span className="same-time-stack-time">
-            <Clock size={10} />
-            {timeStr}
-          </span>
-        </div>
-
-        {hasRoomClash ? (
-          <span className="same-time-conflict-pill" title="Multiple classes share the same room at this time">
-            <AlertTriangle size={10} /> Room Conflict
-          </span>
-        ) : distinctRooms.length > 1 ? (
-          <span className="same-time-rooms-pill" title={`${distinctRooms.length} rooms in use: ${distinctRooms.join(", ")}`}>
-            <Building2 size={10} /> {distinctRooms.length} Rooms
-          </span>
+      <div
+        className={`same-time-cluster-pill ${conflicts.hasConflict ? "is-conflict-pill" : isSingle ? "is-single-pill" : ""}`}
+        style={isSingle && !conflicts.hasConflict ? { borderLeft: `3px solid ${progTheme.primary || "var(--srcb-royal, #2563eb)"}` } : undefined}
+      >
+        {conflicts.hasConflict ? (
+          <span className="cluster-pill-text">{pillLabel}</span>
+        ) : isSingle ? (
+          <>
+            <BookOpen size={12} className="cluster-pill-icon" style={{ color: progTheme.primary || "var(--srcb-royal, #2563eb)" }} />
+            <span className="cluster-pill-text">{pillLabel}</span>
+          </>
         ) : (
-          <span className="same-time-rooms-pill" title={`Room ${distinctRooms[0]}`}>
-            <DoorOpen size={10} /> {distinctRooms[0] || "TBA"}
-          </span>
+          <>
+            <Layers size={12} className="cluster-pill-icon" />
+            <span className="cluster-pill-text">{pillLabel}</span>
+          </>
         )}
-      </div>
-
-      {/* Subject codes summary */}
-      <div className="same-time-stack-subjects" title={schedules.map((s) => `${s.subjectCode} (${s.section || s.room})`).join(", ")}>
-        <div className="same-time-stack-subject-pills">
-          {schedules.slice(0, 4).map((item, idx) => {
-            const sTheme = getProgramTheme(item);
-            return (
-              <span key={item.id || idx} className="same-time-subject-chip" style={{ borderLeftColor: sTheme.primary }}>
-                <span className="subject-chip-code">{item.subjectCode}</span>
-                {item.section && <span className="subject-chip-sec">({item.section})</span>}
-              </span>
-            );
-          })}
-          {schedules.length > 4 && (
-            <span className="same-time-more-chip">+{schedules.length - 4} more</span>
-          )}
-        </div>
-      </div>
-
-      {/* Footer link */}
-      <div className="same-time-stack-footer">
-        <span className="same-time-view-cta">
-          View {schedules.length} Classes <ArrowRight size={11} />
-        </span>
       </div>
     </div>
   );
@@ -735,6 +520,7 @@ export function SchedulesPage() {
   const [adjustmentRequests, setAdjustmentRequests] = useState<ScheduleAdjustmentRequest[]>([]);
   const [scheduleToDelete, setScheduleToDelete] = useState<ClassScheduleItem | null>(null);
   const [activeStackGroup, setActiveStackGroup] = useState<{ day: string; slot: string; schedules: ClassScheduleItem[] } | null>(null);
+  const [expandedStackItemId, setExpandedStackItemId] = useState<string | null>(null);
   const [isDraggingGrid, setIsDraggingGrid] = useState(false);
   const [dragStart, setDragStart] = useState<{ day: string; slotIdx: number } | null>(null);
   const [dragCurrent, setDragCurrent] = useState<{ day: string; slotIdx: number } | null>(null);
@@ -749,8 +535,64 @@ export function SchedulesPage() {
   const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
   const currentUserName = localStorage.getItem("userName") || "";
   const currentTeacherId = localStorage.getItem("teacherId") || "";
-
   const canCreate = role === "super_admin" || role === "admin" || role === "program_head";
+
+  // Automated Faculty Gmail Dispatch Modal
+  const [isGmailDispatchModalOpen, setIsGmailDispatchModalOpen] = useState(false);
+  const [selectedDispatchFacultyId, setSelectedDispatchFacultyId] = useState<string>("ALL");
+  const [dispatchPreview, setDispatchPreview] = useState<any>(null);
+  const [isDispatching, setIsDispatching] = useState(false);
+  const [customDispatchNotes, setCustomDispatchNotes] = useState("");
+
+  const handleOpenGmailDispatch = (facultyId?: string) => {
+    const targetId = facultyId || "ALL";
+    setSelectedDispatchFacultyId(targetId);
+    setCustomDispatchNotes("");
+    setIsGmailDispatchModalOpen(true);
+    if (targetId !== "ALL") {
+      api.get(`/faculty-dispatch/preview/${encodeURIComponent(targetId)}`)
+        .then((res: any) => setDispatchPreview(res.data?.data || null))
+        .catch(() => setDispatchPreview(null));
+    } else {
+      setDispatchPreview(null);
+    }
+  };
+
+  const handleDispatchFacultyChange = (teacherId: string) => {
+    setSelectedDispatchFacultyId(teacherId);
+    if (teacherId !== "ALL") {
+      api.get(`/faculty-dispatch/preview/${encodeURIComponent(teacherId)}`)
+        .then((res: any) => setDispatchPreview(res.data?.data || null))
+        .catch(() => setDispatchPreview(null));
+    } else {
+      setDispatchPreview(null);
+    }
+  };
+
+  const handleExecuteGmailDispatch = async () => {
+    setIsDispatching(true);
+    try {
+      if (selectedDispatchFacultyId === "ALL") {
+        const res = await api.post("/faculty-dispatch/batch", {
+          programCode: selectedProgram.key,
+        });
+        toast.push(res.data?.message || "Schedules successfully dispatched to faculty via institutional Gmail!", "success");
+      } else {
+        const targetFac = facultyList.find((f) => f.id === selectedDispatchFacultyId || f.name === selectedDispatchFacultyId);
+        const res = await api.post("/faculty-dispatch/send", {
+          teacherId: selectedDispatchFacultyId,
+          recipientEmail: targetFac?.email,
+          customNotes: customDispatchNotes,
+        });
+        toast.push(res.data?.message || `Schedule dispatched to ${targetFac?.name || selectedDispatchFacultyId} via Gmail!`, "success");
+      }
+      setIsGmailDispatchModalOpen(false);
+    } catch (err: any) {
+      toast.push(err?.response?.data?.error || "Failed to dispatch schedule via Gmail", "error");
+    } finally {
+      setIsDispatching(false);
+    }
+  };
 
   const [facultyList, setFacultyList] = useState<any[]>([]);
   const [subjectsList, setSubjectsList] = useState<any[]>([]);
@@ -2043,10 +1885,21 @@ export function SchedulesPage() {
         }
         actions={
           canCreate ? (
-            <button
-              className="action-button"
-              type="button"
-              onClick={() => {
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => handleOpenGmailDispatch()}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700 }}
+                title="Dispatch finalized teaching schedules to assigned faculty institutional Gmail accounts"
+              >
+                <Mail size={15} color="var(--srcb-navy)" />
+                <span>Notify Faculty (Gmail)</span>
+              </button>
+              <button
+                className="action-button"
+                type="button"
+                onClick={() => {
                 setEditingSchedule(null);
                 const firstSec = availableSections[0] || sectionsList[0];
                 const defSecVal = firstSec ? (firstSec.course && firstSec.section ? `${firstSec.course} ${firstSec.yearLevel || ''}-${firstSec.section}`.trim() : firstSec.section) : "BSIT 1-A";
@@ -2089,6 +1942,7 @@ export function SchedulesPage() {
               <Plus size={16} />
               Schedule Class
             </button>
+          </div>
           ) : undefined
         }
       />
@@ -3866,160 +3720,254 @@ export function SchedulesPage() {
         )}
       </Modal>
 
-      {/* Stacked Same-Time Schedules Group Modal */}
+      {/* Stacked Same-Time Schedules Group Modal / Drawer */}
       <Modal
         isOpen={Boolean(activeStackGroup)}
-        onClose={() => setActiveStackGroup(null)}
-        title={`${activeStackGroup?.day || ""} • ${activeStackGroup?.slot || ""} (${activeStackGroup?.schedules.length || 0} Scheduled Classes)`}
+        onClose={() => {
+          setActiveStackGroup(null);
+          setExpandedStackItemId(null);
+        }}
+        title={`${activeStackGroup?.day || ""} • ${activeStackGroup?.slot || ""} (${activeStackGroup?.schedules.length || 0} ${activeStackGroup?.schedules.length === 1 ? "Class" : "Classes"})`}
         size="lg"
       >
-        {activeStackGroup && (
-          <div className="stacked-group-modal-content">
-            <div className="stacked-group-modal-banner">
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ padding: "8px", borderRadius: 8, background: "rgba(37, 99, 235, 0.1)", color: "var(--srcb-royal, #2563eb)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Layers size={20} />
-                </div>
-                <div>
-                  <h4 style={{ margin: 0, fontSize: "0.95rem", fontWeight: 700, color: "var(--srcb-navy, #0f2c59)" }}>
-                    {activeStackGroup.schedules.length} Concurrent Classes Scheduled
-                  </h4>
-                  <p style={{ margin: "2px 0 0", fontSize: "0.8rem", color: "var(--srcb-text-muted, #64748b)" }}>
-                    All classes below are scheduled simultaneously on {activeStackGroup.day} from {activeStackGroup.slot}.
-                  </p>
-                </div>
-              </div>
+        {activeStackGroup && (() => {
+          const groupConflicts = getClusterConflicts(activeStackGroup.schedules);
+          const isSingle = activeStackGroup.schedules.length === 1;
 
-              {Array.from(new Set(activeStackGroup.schedules.map((s) => s.room).filter(Boolean))).length < activeStackGroup.schedules.length && (
-                <div className="stacked-group-conflict-alert">
-                  <AlertTriangle size={16} style={{ flexShrink: 0 }} />
-                  <span><strong>Room Conflict Detected:</strong> Multiple classes are assigned to the same room at this time slot.</span>
-                </div>
-              )}
-            </div>
-
-            <div className="stacked-group-modal-list">
-              {activeStackGroup.schedules.map((item, index) => {
-                const sTheme = getProgramTheme(item);
-                return (
-                  <div
-                    key={item.id || index}
-                    className="stacked-group-modal-card"
-                    style={{ borderLeftColor: sTheme.primary }}
-                    onClick={() => {
-                      setViewingSchedule(item);
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`View class ${item.subjectCode} - ${item.subject}`}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        setViewingSchedule(item);
-                      }
-                    }}
-                  >
-                    <div className="stacked-group-modal-card-header">
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                        <span className="stacked-card-code" style={{ color: sTheme.primary }}>
-                          {item.subjectCode}
-                        </span>
-                        <span
-                          className="program-card-badge"
-                          style={{
-                            backgroundColor: sTheme.badgeBg,
-                            color: sTheme.badgeText,
-                          }}
-                        >
-                          {sTheme.code}
-                        </span>
-                        <span className={`pill ${item.isMajor ? "pill--royal" : "pill--slate"}`} style={{ fontSize: "0.68rem" }}>
-                          {item.classMode === "Laboratory" || String(item.roomType || "").toLowerCase().includes("lab") ? "Major Lab (3h)" : item.isMajor ? "Major Lec (2h)" : "Minor (1.5h)"}
-                        </span>
-                        {item.modality === "Online" && (
-                          <span className="pill pill--emerald" style={{ fontSize: "0.68rem" }}>Online</span>
-                        )}
-                      </div>
-
-                      <div className="stacked-card-actions" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          className="secondary-button"
-                          style={{ padding: "4px 10px", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: 4 }}
-                          onClick={() => setViewingSchedule(item)}
-                          title="View Full Details"
-                        >
-                          <Eye size={12} />
-                          <span>Details</span>
-                        </button>
-
-                        {canCreate && (
-                          <>
-                            <button
-                              type="button"
-                              className="icon-button icon-button--sm"
-                              onClick={() => {
-                                setActiveStackGroup(null);
-                                handleEdit(item);
-                              }}
-                              title="Edit Schedule Block"
-                              style={{ width: 26, height: 26 }}
-                            >
-                              <Edit2 size={12} />
-                            </button>
-                            <button
-                              type="button"
-                              className="icon-button icon-button--sm icon-button--danger"
-                              onClick={() => {
-                                setActiveStackGroup(null);
-                                setScheduleToDelete(item);
-                              }}
-                              title="Delete Schedule Block"
-                              style={{ width: 26, height: 26 }}
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          </>
-                        )}
-                      </div>
+          return (
+            <div className="stacked-group-modal-content">
+              <div className="stacked-group-modal-banner">
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ padding: "8px", borderRadius: 8, background: "rgba(37, 99, 235, 0.1)", color: "var(--srcb-royal, #2563eb)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {isSingle ? <BookOpen size={20} /> : <Layers size={20} />}
                     </div>
-
-                    {/* Subject Title */}
-                    <div className="stacked-group-modal-subject-title">
-                      {item.subject}
-                    </div>
-
-                    {/* Metadata Grid */}
-                    <div className="stacked-group-modal-meta-grid">
-                      <div className="stacked-meta-item">
-                        <GraduationCap size={13} className="meta-icon" />
-                        <span><strong>Section:</strong> {item.section || "N/A"}</span>
-                        {item.isCombinedCohort && (
-                          <span className="pill pill--cyan" style={{ fontSize: "0.62rem", padding: "0 4px" }}>Combined</span>
-                        )}
-                      </div>
-
-                      <div className="stacked-meta-item">
-                        <UserCheck size={13} className="meta-icon" />
-                        <span><strong>Instructor:</strong> {item.faculty || "Unassigned"}</span>
-                      </div>
-
-                      <div className="stacked-meta-item">
-                        <DoorOpen size={13} className="meta-icon" />
-                        <span><strong>Room:</strong> {item.room || "TBA"} ({item.building || "College Building"})</span>
-                      </div>
-
-                      <div className="stacked-meta-item">
-                        <Clock size={13} className="meta-icon" />
-                        <span><strong>Time:</strong> {item.time}</span>
-                      </div>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: "0.95rem", fontWeight: 700, color: "var(--srcb-navy, #0f2c59)" }}>
+                        {isSingle ? "1 Class Scheduled" : `${activeStackGroup.schedules.length} Concurrent Classes Scheduled`}
+                      </h4>
+                      <p style={{ margin: "2px 0 0", fontSize: "0.8rem", color: "var(--srcb-text-muted, #64748b)" }}>
+                        {isSingle
+                          ? `Scheduled on ${activeStackGroup.day} from ${activeStackGroup.slot}. Click "Details" to expand full assignment and actions.`
+                          : `All classes below are scheduled simultaneously on ${activeStackGroup.day} from ${activeStackGroup.slot}. Click "Details" on any class to expand its full assignment.`}
+                      </p>
                     </div>
                   </div>
-                );
-              })}
+
+                  {canCreate && (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => {
+                        const slotDay = activeStackGroup.day;
+                        const slotTime = activeStackGroup.slot;
+                        setActiveStackGroup(null);
+                        handleOpenAddAtSlot(slotDay, slotTime);
+                      }}
+                      title={`+ Add Subject / Add another subject to slot (${activeStackGroup.day} ${activeStackGroup.slot})`}
+                      aria-label={`+ Add Subject / Add another subject to slot ${activeStackGroup.day} ${activeStackGroup.slot}`}
+                      style={{ padding: "5px 12px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: 5 }}
+                    >
+                      <Plus size={13} />
+                      <span>+ Add Subject</span>
+                    </button>
+                  )}
+                </div>
+
+                {groupConflicts.hasConflict && (
+                  <div className="stacked-group-conflict-alert">
+                    <AlertTriangle size={16} style={{ flexShrink: 0 }} />
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      {groupConflicts.hasRoomClash && (
+                        <span>
+                          <strong>Room Collision:</strong> Multiple classes share room {groupConflicts.roomClashes.map(([r]) => r).join(", ")}.
+                        </span>
+                      )}
+                      {groupConflicts.hasFacultyClash && (
+                        <span>
+                          <strong>Instructor Double-Booking:</strong> Faculty member {groupConflicts.facultyClashes.map(([f]) => f).join(", ")} is assigned to multiple classes.
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* TIER 2: Clean Subject-Only List with TIER 3 Accordion Details */}
+              <div className="stacked-group-modal-list">
+                {activeStackGroup.schedules.map((item, index) => {
+                  const sTheme = getProgramTheme(item);
+                  const itemId = item.id || `stack-item-${index}`;
+                  const isExpanded = expandedStackItemId === itemId;
+                  const isRoomClashed = item.room && item.room !== "TBA" && activeStackGroup.schedules.filter((s) => s.room === item.room).length > 1;
+                  const isFacultyClashed = item.faculty && item.faculty !== "TBA" && item.faculty !== "Unassigned" && activeStackGroup.schedules.filter((s) => s.faculty === item.faculty).length > 1;
+                  const hasItemConflict = isRoomClashed || isFacultyClashed;
+
+                  return (
+                    <div
+                      key={itemId}
+                      className={`stacked-accordion-item ${isExpanded ? "is-expanded" : ""} ${hasItemConflict ? "has-conflict" : ""}`}
+                      style={{ borderLeftColor: sTheme.primary }}
+                    >
+                      {/* TIER 2: Clean Subject-Only Header Row */}
+                      <div
+                        className="stacked-accordion-header"
+                        onClick={() => setExpandedStackItemId(isExpanded ? null : itemId)}
+                        role="button"
+                        tabIndex={0}
+                        aria-expanded={isExpanded}
+                        aria-label={`${item.subjectCode} — ${item.subject}`}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setExpandedStackItemId(isExpanded ? null : itemId);
+                          }
+                        }}
+                      >
+                        <div className="stacked-accordion-title-area">
+                          <span className="stacked-accordion-code" style={{ color: sTheme.primary }}>
+                            {item.subjectCode}
+                          </span>
+                          <span className="stacked-accordion-divider">—</span>
+                          <span className="stacked-accordion-subject">
+                            {item.subject}
+                          </span>
+                          {hasItemConflict && (
+                            <span className="stacked-row-conflict-badge" title="Collision flagged for this class">
+                              ⚠️
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="stacked-accordion-actions" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            className={`secondary-button stacked-details-toggle-btn ${isExpanded ? "is-active" : ""}`}
+                            onClick={() => setExpandedStackItemId(isExpanded ? null : itemId)}
+                            aria-label={`Details for ${item.subjectCode}`}
+                          >
+                            <span>Details</span>
+                            {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* TIER 3: Expanded Full Details Section */}
+                      {isExpanded && (
+                        <div className="stacked-accordion-body">
+                          {/* Specific conflict details if flagged */}
+                          {hasItemConflict && (
+                            <div className="stacked-group-conflict-alert" style={{ padding: "6px 10px", fontSize: "0.76rem" }}>
+                              <AlertTriangle size={13} style={{ flexShrink: 0 }} />
+                              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                                {isRoomClashed && (
+                                  <span><strong>Room Conflict:</strong> Room {item.room} is assigned to another concurrent class in this slot.</span>
+                                )}
+                                {isFacultyClashed && (
+                                  <span><strong>Instructor Conflict:</strong> {item.faculty} is double-booked in this slot.</span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="stacked-group-modal-meta-grid">
+                            <div className="stacked-meta-item">
+                              <UserCheck size={13} className="meta-icon" />
+                              <span><strong>Faculty / Instructor:</strong> {item.faculty || "Unassigned"}</span>
+                            </div>
+
+                            <div className="stacked-meta-item">
+                              <DoorOpen size={13} className="meta-icon" />
+                              <span><strong>Room & Building:</strong> {item.room || "TBA"} ({item.building || "College Building"})</span>
+                            </div>
+
+                            <div className="stacked-meta-item">
+                              <GraduationCap size={13} className="meta-icon" />
+                              <span><strong>Section & Year:</strong> {item.section || "N/A"}{item.yearLevel ? ` (Year ${item.yearLevel})` : ""}</span>
+                              {item.isCombinedCohort && (
+                                <span className="pill pill--cyan" style={{ fontSize: "0.62rem", padding: "0 4px" }}>Combined</span>
+                              )}
+                            </div>
+
+                            <div className="stacked-meta-item">
+                              <Monitor size={13} className="meta-icon" />
+                              <span><strong>Modality:</strong> {item.modality || "Face-to-Face"}</span>
+                            </div>
+
+                            <div className="stacked-meta-item">
+                              <Clock size={13} className="meta-icon" />
+                              <span><strong>Time:</strong> {item.time}</span>
+                            </div>
+                          </div>
+
+                          {/* Action controls */}
+                          <div className="stacked-accordion-action-bar">
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              style={{ padding: "4px 10px", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: 4 }}
+                              onClick={() => setViewingSchedule(item)}
+                              title="View Full Profile Details"
+                            >
+                              <Eye size={12} />
+                              <span>Full Details</span>
+                            </button>
+
+                            {canCreate && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  style={{ padding: "4px 10px", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: 4 }}
+                                  onClick={() => {
+                                    setActiveStackGroup(null);
+                                    handleEdit(item);
+                                  }}
+                                  title="Reassign Room"
+                                >
+                                  <DoorOpen size={12} />
+                                  <span>Reassign Room</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="primary-button"
+                                  style={{ padding: "4px 10px", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: 4 }}
+                                  onClick={() => {
+                                    setActiveStackGroup(null);
+                                    handleEdit(item);
+                                  }}
+                                  title="Edit Schedule"
+                                >
+                                  <Edit2 size={12} />
+                                  <span>Edit Schedule</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="icon-button icon-button--sm icon-button--danger"
+                                  onClick={() => {
+                                    setActiveStackGroup(null);
+                                    setScheduleToDelete(item);
+                                  }}
+                                  title="Delete"
+                                  aria-label="Delete"
+                                  style={{ width: 28, height: 28 }}
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </Modal>
 
       {/* Read-Only Assigned Schedule Details Modal */}
@@ -4075,6 +4023,133 @@ export function SchedulesPage() {
           fetchSchedules();
         }}
       />
+
+      {/* Automated Faculty Gmail Dispatch Modal */}
+      {isGmailDispatchModalOpen && (
+        <Modal
+          isOpen={isGmailDispatchModalOpen}
+          onClose={() => setIsGmailDispatchModalOpen(false)}
+          title="Dispatch Finalized Schedule to Faculty via Institutional Gmail"
+          description="Send formatted digital schedule breakdown directly to faculty school Gmail accounts. Physical schedules remain placed in departmental cubicles."
+          maxWidth="620px"
+          footer={
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, width: "100%" }}>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setIsGmailDispatchModalOpen(false)}
+                disabled={isDispatching}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="action-button"
+                onClick={handleExecuteGmailDispatch}
+                disabled={isDispatching}
+              >
+                <Send size={15} style={{ marginRight: 6 }} />
+                {isDispatching ? "Dispatching..." : "Send via Gmail"}
+              </button>
+            </div>
+          }
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div className="field-group">
+              <label htmlFor="dispatchFacultySelect">Target Faculty Member</label>
+              <select
+                id="dispatchFacultySelect"
+                value={selectedDispatchFacultyId}
+                onChange={(e) => handleDispatchFacultyChange(e.target.value)}
+              >
+                <option value="ALL">All Departmental Faculty Members (Batch Dispatch)</option>
+                {facultyList.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name} ({f.email || `${f.id.toLowerCase()}@srcb.edu.ph`}) • {f.department || "Faculty"}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Email Payload Preview Card */}
+            <div
+              style={{
+                background: "var(--srcb-surface-alt, #f8fafc)",
+                border: "1px solid var(--srcb-border)",
+                borderRadius: 8,
+                padding: "14px 16px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                <span className="pill pill--royal" style={{ fontSize: "0.74rem", fontWeight: 700 }}>
+                  <Mail size={12} style={{ marginRight: 4 }} /> Institutional Gmail Payload
+                </span>
+                <span style={{ fontSize: "0.78rem", color: "#64748b" }}>
+                  Sender: <code>academic.scheduling@srcb.edu.ph</code>
+                </span>
+              </div>
+
+              <div style={{ fontSize: "0.82rem", color: "var(--srcb-text)", lineHeight: 1.5 }}>
+                {selectedDispatchFacultyId === "ALL" ? (
+                  <div>
+                    <strong>Batch Recipient Scope:</strong> All {facultyList.length} faculty instructors across {selectedProgram.label || "Department"}.
+                    <br />
+                    Each instructor receives a personalized breakdown of their assigned subjects, sections, lecture/lab hours, and room assignments.
+                  </div>
+                ) : (
+                  <div>
+                    <strong>Recipient:</strong>{" "}
+                    {dispatchPreview?.faculty?.name || facultyList.find((f) => f.id === selectedDispatchFacultyId)?.name || selectedDispatchFacultyId} (
+                    <code>
+                      {dispatchPreview?.faculty?.email || facultyList.find((f) => f.id === selectedDispatchFacultyId)?.email || `${selectedDispatchFacultyId.toLowerCase()}@srcb.edu.ph`}
+                    </code>
+                    )
+                    <br />
+                    <strong>Assigned Classes:</strong> {dispatchPreview?.schedules?.length || 0} scheduled block(s)
+                  </div>
+                )}
+              </div>
+
+              {/* Cubicle Advisory Note Preview */}
+              <div
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 6,
+                  background: "rgba(0, 40, 85, 0.05)",
+                  border: "1px solid rgba(0, 40, 85, 0.12)",
+                  fontSize: "0.78rem",
+                  color: "var(--srcb-navy)",
+                }}
+              >
+                <strong>Departmental Cubicle Advisory:</strong>
+                <p style={{ margin: "3px 0 0", fontStyle: "italic" }}>
+                  "A physical printed copy of this finalized teaching schedule has been placed in your departmental faculty cubicle for daily classroom reference."
+                </p>
+              </div>
+            </div>
+
+            <div className="field-group">
+              <label htmlFor="customNotes">Additional Advisory Notes (Optional)</label>
+              <textarea
+                id="customNotes"
+                rows={2}
+                value={customDispatchNotes}
+                onChange={(e) => setCustomDispatchNotes(e.target.value)}
+                placeholder="Add departmental notices, syllabus submission deadlines, or room guidelines..."
+                style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--srcb-border)" }}
+              />
+            </div>
+
+            <div style={{ fontSize: "0.75rem", color: "#64748b", display: "flex", alignItems: "center", gap: 6 }}>
+              <ShieldCheck size={14} color="#10b981" />
+              <span>Email dispatch status will be logged into the immutable SRCB Audit Trail (/system-logs).</span>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Delete Schedule Block Confirmation Modal (Heuristic 3 & 5) */}
       <ConfirmModal

@@ -95,7 +95,9 @@ describe("SchedulesPage - Concurrent Multi-Subject Scheduling in Same Time Slot"
     });
   });
 
-  it("renders '+ Add Subject' on single schedule card slot to add another subject to same time", async () => {
+  it("renders '+ Add Subject' via drawer modal on single class slot to add another subject to same time", async () => {
+    const { within } = await import("@testing-library/react");
+
     render(
       <BrowserRouter>
         <ToastProvider>
@@ -108,16 +110,23 @@ describe("SchedulesPage - Concurrent Multi-Subject Scheduling in Same Time Slot"
       </BrowserRouter>
     );
 
+    // Single class pill in grid
+    const stackCard = await screen.findByTestId("same-time-stack-card");
+    expect(within(stackCard).getByText("CC101 • 1 Class")).toBeInTheDocument();
+
+    // Click pill to open drawer
+    fireEvent.click(stackCard);
+
     await waitFor(() => {
-      expect(screen.getByText("CC101")).toBeInTheDocument();
+      expect(screen.getByText(/1 Class Scheduled/i)).toBeInTheDocument();
     });
 
-    // Check that + Add Subject button is present for the slot
-    const addSubjectBtns = screen.getAllByRole("button", { name: /\+ Add Subject|Add another subject to slot/i });
-    expect(addSubjectBtns.length).toBeGreaterThan(0);
+    // Check that + Add Subject button is present in the drawer for the slot
+    const addSubjectBtn = screen.getByRole("button", { name: /\+ Add Subject|Add another subject to slot/i });
+    expect(addSubjectBtn).toBeInTheDocument();
 
     // Clicking + Add Subject opens the modal with pre-filled day & time
-    fireEvent.click(addSubjectBtns[0]);
+    fireEvent.click(addSubjectBtn);
 
     await waitFor(() => {
       expect(screen.getByText(/Create Class Schedule/i)).toBeInTheDocument();
@@ -137,12 +146,11 @@ describe("SchedulesPage - Concurrent Multi-Subject Scheduling in Same Time Slot"
       </BrowserRouter>
     );
 
-    await waitFor(() => {
-      expect(screen.getByText("CC101")).toBeInTheDocument();
-    });
+    const stackCard = await screen.findByTestId("same-time-stack-card");
+    fireEvent.click(stackCard);
 
-    const addBtns = screen.getAllByRole("button", { name: /\+ Add Subject|Add another subject to slot/i });
-    fireEvent.click(addBtns[0]);
+    const addBtn = await screen.findByRole("button", { name: /\+ Add Subject|Add another subject to slot/i });
+    fireEvent.click(addBtn);
 
     // In Step 1, verify Concurrent Time Slot alert is visible
     await waitFor(() => {

@@ -72,6 +72,15 @@ function parseTimeToMinutes(tStr: string): number {
   return h * 60 + m;
 }
 
+function getStartAndEndMinutes(timeStr: string): { start: number; end: number } {
+  if (!timeStr) return { start: 0, end: 0 };
+  const clean = timeStr.replace(/–/g, "-");
+  const parts = clean.split("-").map((p) => p.trim());
+  const start = parseTimeToMinutes(parts[0] || "");
+  const end = parts.length > 1 ? parseTimeToMinutes(parts[1]) : start + 90;
+  return { start, end };
+}
+
 function to12HourTime(t: string): string {
   if (!t) return "";
   const [hStr, mStr = "00"] = t.split(":");
@@ -136,7 +145,6 @@ function parseAvailabilityToMap(raw?: string | null): Record<string, string[]> {
 
 export function DashboardPage() {
   const [isSavingAvailability, setIsSavingAvailability] = useState(false);
-  const [assignmentQuery, setAssignmentQuery] = useState("");
   const [isDraggingAvail, setIsDraggingAvail] = useState(false);
   const [dragMode, setDragMode] = useState<"select" | "deselect">("select");
   const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
@@ -153,10 +161,6 @@ export function DashboardPage() {
   const [teacherStatus, setTeacherStatus] = useState<string>("Full-Time");
   const [schedules, setSchedules] = useState<ClassScheduleItem[]>([]);
   const [sectionsList, setSectionsList] = useState<any[]>([]);
-  const [scheduleYearFilter, setScheduleYearFilter] = useState<string>("all");
-  const [scheduleSectionFilter, setScheduleSectionFilter] = useState<string>("all");
-  const [scheduleModalityFilter, setScheduleModalityFilter] = useState<string>("all");
-  const [scheduleDayFilter, setScheduleDayFilter] = useState<string>("all");
   const [teacherExams, setTeacherExams] = useState<ExamScheduleItem[]>([]);
   const [allExamsList, setAllExamsList] = useState<any[]>([]);
   const [facultyList, setFacultyList] = useState<any[]>([]);
@@ -417,49 +421,133 @@ export function DashboardPage() {
       !scheduledSubjectCodes.has((s.code || "").toUpperCase()) &&
       !schedules.some((sc: any) => (sc.subject || "").toLowerCase() === (s.name || "").toLowerCase())
   );
-  const totalSubjectsCount = targetSubjects.length;
   const unscheduledCount = unscheduledSubjects.length;
-  const scheduledCount = Math.max(0, targetSubjects.length - unscheduledCount);
-  const completionRate = targetSubjects.length > 0 ? Math.min(100, Math.round((scheduledCount / targetSubjects.length) * 100)) : 0;
 
-  const scopedFaculty = facultyList.filter((f: any) => matchesProgram(f.programs || f.department));
+  // Today's Date Information
+  const now = new Date();
+  const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const currentDayName = dayNames[now.getDay()];
+  const formattedTodayDate = new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  }).format(now);
 
-  const attentionItems: { code: string; reason: string; path: string }[] = [];
+  // Scoped Program Schedules & Today's Chronological Classes
+  const programSchedules = schedules.filter((s: any) =>
+    matchesProgram(s.program || s.department)
+  );
 
-  if (Number(metrics.conflicts) > 0) {
-    attentionItems.push({
-      code: `${metrics.conflicts} Schedule Conflict${Number(metrics.conflicts) === 1 ? "" : "s"} Detected`,
+  const todayNameLower = currentDayName.toLowerCase();
+  const todayClasses = programSchedules
+    .filter((s: any) => {
+      const day = String(s.day || "").toLowerCase().trim();
+      return day === todayNameLower || day.startsWith(todayNameLower.slice(0, 3));
+    })
+    .sort((a: any, b: any) => {
+      const aMin = getStartAndEndMinutes(a.time || a.schedule || "").start;
+      const bMin = getStartAndEndMinutes(b.time || b.schedule || "").start;
+      return aMin - bMin;
+    });
+
+  // Currently Ongoing Classes
+  const currentMinutesNow = now.getHours() * 60 + now.getMinutes();
+  const ongoingClasses = todayClasses.filter((s: any) => {
+    const { start, end } = getStartAndEndMinutes(s.time || s.schedule || "");
+    return start <= currentMinutesNow && currentMinutesNow < end;
+  });
+
+  // Room collisions among today's classes
+  const roomCollisionItems: { code: string; reason: string; path: string }[] = [];
+  for (let i = 0; i < todayClasses.length; i++) {
+    for (let j = i + 1; j < todayClasses.length; j++) {
+      const c1 = todayClasses[i];
+      const c2 = todayClasses[j];
+      if (
+        c1.room &&
+        c2.room &&
+        c1.room.trim().toLowerCase() === c2.room.trim().toLowerCase() &&
+        !c1.room.toLowerCase().includes("tba")
+      ) {
+        const t1 = getStartAndEndMinutes(c1.time || c1.schedule || "");
+        const t2 = getStartAndEndMinutes(c2.time || c2.schedule || "");
+        if (Math.max(t1.start, t2.start) < Math.min(t1.end, t2.end)) {
+          roomCollisionItems.push({
+            code: `Room Collision Today: ${c1.room}`,
+            reason: `Overlapping ${c1.subjectCode || c1.subject} & ${c2.subjectCode || c2.subject} (${c1.time || "scheduled slot"})`,
+            path: "/schedules?filter=conflict",
+          });
+        }
+      }
+    }
+  }
+
+  // Unassigned rooms among today's classes
+  const unassignedRoomClasses = todayClasses.filter(
+    (s: any) =>
+      !s.room ||
+      s.room.trim() === "" ||
+      s.room.toLowerCase().includes("tba") ||
+      s.room.toLowerCase().includes("unassigned")
+  );
+
+  // Unassigned teachers among today's classes
+  const unassignedFacultyClasses = todayClasses.filter(
+    (s: any) =>
+      !s.faculty ||
+      s.faculty.trim() === "" ||
+      s.faculty.toLowerCase().includes("tba") ||
+      s.faculty.toLowerCase().includes("unassigned")
+  );
+
+  // Immediate Attention alerts for today + urgent conflicts
+  const dailyAttentionItems: { code: string; reason: string; path: string }[] = [];
+
+  roomCollisionItems.forEach((item) => dailyAttentionItems.push(item));
+
+  if (unassignedRoomClasses.length > 0) {
+    dailyAttentionItems.push({
+      code: `${unassignedRoomClasses.length} Class${unassignedRoomClasses.length > 1 ? "es" : ""} Missing Room Today`,
+      reason: `Venue unassigned for: ${unassignedRoomClasses
+        .map((s: any) => s.subjectCode || s.subject)
+        .slice(0, 2)
+        .join(", ")}${unassignedRoomClasses.length > 2 ? ` (+${unassignedRoomClasses.length - 2} more)` : ""}`,
+      path: "/schedules",
+    });
+  }
+
+  if (unassignedFacultyClasses.length > 0) {
+    dailyAttentionItems.push({
+      code: `${unassignedFacultyClasses.length} Class${unassignedFacultyClasses.length > 1 ? "es" : ""} Missing Instructor Today`,
+      reason: `Teacher pending for: ${unassignedFacultyClasses
+        .map((s: any) => s.subjectCode || s.subject)
+        .slice(0, 2)
+        .join(", ")}${unassignedFacultyClasses.length > 2 ? ` (+${unassignedFacultyClasses.length - 2} more)` : ""}`,
+      path: "/schedules",
+    });
+  }
+
+  if (Number(metrics.conflicts) > 0 && roomCollisionItems.length === 0) {
+    dailyAttentionItems.push({
+      code: `${metrics.conflicts} Timetable Conflict${Number(metrics.conflicts) === 1 ? "" : "s"} Detected`,
       reason: "Action Required: Resolve room, faculty, or time overlapping",
       path: "/schedules?filter=conflict",
     });
   }
 
   if (unscheduledCount > 0) {
-    attentionItems.push({
+    dailyAttentionItems.push({
       code: `${unscheduledCount} Unscheduled Major Subject${unscheduledCount === 1 ? "" : "s"}`,
       reason: "Action Required: Allocate Timetable Blocks",
       path: "/schedules?view=unscheduled",
     });
   }
 
-  const overloadedTeachers = scopedFaculty.filter((f: any) => {
-    const facScheds = schedules.filter(
-      (s: any) =>
-        (s.facultyId && String(s.facultyId) === String(f.id)) ||
-        (s.faculty && f.name && s.faculty.toLowerCase().includes(f.name.toLowerCase()))
-    );
-    const u = facScheds.reduce((acc: number, s: any) => acc + (Number(s.units) || 3), 0);
-    const maxU = f.status === "Part-Time" ? 12 : 18;
-    return u > maxU;
-  });
-
-  for (const ot of overloadedTeachers.slice(0, 2)) {
-    attentionItems.push({
-      code: `${ot.name} (${ot.status || "Faculty"})`,
-      reason: "Faculty Load Alert: Maximum units exceeded",
-      path: "/faculty",
-    });
-  }
+  const todayActionCount =
+    roomCollisionItems.length +
+    unassignedRoomClasses.length +
+    unassignedFacultyClasses.length +
+    Number(metrics.conflicts);
 
   // Proactive Examination Period Status & Sequence Tracking (Prelim -> Midterm -> Semi-Final -> Final)
   const examPeriodStatus = (() => {
@@ -485,123 +573,6 @@ export function DashboardPage() {
       allScheduled: termStats.every((t) => t.isScheduled),
     };
   })();
-
-  const displayFaculty = scopedFaculty.slice(0, 5).map((f: any) => {
-    const facScheds = schedules.filter(
-      (s: any) =>
-        (s.facultyId && String(s.facultyId) === String(f.id)) ||
-        (s.faculty && f.name && s.faculty.toLowerCase().includes(f.name.toLowerCase()))
-    );
-    const units = facScheds.reduce((acc: number, s: any) => acc + (Number(s.units) || 3), 0);
-    const maxUnits = f.status === "Part-Time" ? 12 : 18;
-    return {
-      id: f.id,
-      name: f.name,
-      title: f.status || "Faculty Member",
-      units,
-      maxUnits,
-      isOverload: units > maxUnits,
-    };
-  });
-
-  // Scoped Program Schedules
-  const programSchedules = schedules.filter((s: any) =>
-    matchesProgram(s.program || s.department)
-  );
-
-  // Year level extraction helper
-  const getScheduleYearNumber = (item: any): string => {
-    if (item.yearLevel) {
-      const match = String(item.yearLevel).match(/\d+/);
-      if (match) return match[0];
-    }
-    if (item.section) {
-      const secStr = String(item.section);
-      const match = secStr.match(/\b([1-4])\s*[-_]/) || secStr.match(/\b([1-4])[A-Za-z]/) || secStr.match(/\b([1-4])\b/);
-      if (match) return match[1];
-    }
-    if (item.subjectCode) {
-      const codeMatch = String(item.subjectCode).match(/[A-Za-z]+([1-4])\d{2}/);
-      if (codeMatch) return codeMatch[1];
-    }
-    return "";
-  };
-
-  const filteredAssignments = programSchedules.filter((s: any) => {
-    // 1. Year level filter
-    if (scheduleYearFilter !== "all") {
-      const yNum = getScheduleYearNumber(s);
-      if (yNum !== scheduleYearFilter) return false;
-    }
-
-    // 2. Section filter
-    if (scheduleSectionFilter !== "all") {
-      if (s.section !== scheduleSectionFilter && s.sectionName !== scheduleSectionFilter) {
-        return false;
-      }
-    }
-
-    // 3. Modality filter
-    if (scheduleModalityFilter !== "all") {
-      const mod = String(s.modality || "Face-to-Face").toLowerCase();
-      if (!mod.includes(scheduleModalityFilter.toLowerCase())) return false;
-    }
-
-    // 4. Day filter
-    if (scheduleDayFilter !== "all") {
-      if (String(s.day).toLowerCase() !== scheduleDayFilter.toLowerCase()) return false;
-    }
-
-    // 5. Query filter
-    if (assignmentQuery.trim()) {
-      const q = assignmentQuery.toLowerCase().trim();
-      const code = String(s.subjectCode || s.code || "").toLowerCase();
-      const title = String(s.subject || s.subjectName || "").toLowerCase();
-      const fac = String(s.faculty || "").toLowerCase();
-      const rm = String(s.room || "").toLowerCase();
-      const sec = String(s.section || "").toLowerCase();
-      if (!code.includes(q) && !title.includes(q) && !fac.includes(q) && !rm.includes(q) && !sec.includes(q)) {
-        return false;
-      }
-    }
-
-    return true;
-  });
-
-  const availableSectionsForProgram = Array.from(
-    new Set([
-      ...programSchedules
-        .filter((s: any) => {
-          if (scheduleYearFilter === "all") return true;
-          return getScheduleYearNumber(s) === scheduleYearFilter;
-        })
-        .map((s: any) => s.section)
-        .filter(Boolean),
-      ...sectionsList
-        .filter((sec: any) => matchesProgram(sec.course || sec.course_code || sec.program))
-        .filter((sec: any) => {
-          if (scheduleYearFilter === "all") return true;
-          return String(sec.yearLevel || sec.year_level || "") === scheduleYearFilter;
-        })
-        .map((sec: any) => sec.name || `${sec.course_code || sec.course || "BSIT"} ${sec.year_level || sec.yearLevel || "1"}-${sec.section_label || sec.label || "A"}`)
-        .filter(Boolean),
-    ])
-  ).sort();
-
-  const isScheduleFilterActive =
-    scheduleYearFilter !== "all" ||
-    scheduleSectionFilter !== "all" ||
-    scheduleModalityFilter !== "all" ||
-    scheduleDayFilter !== "all" ||
-    assignmentQuery.trim() !== "";
-
-  const handleResetScheduleFilters = () => {
-    setScheduleYearFilter("all");
-    setScheduleSectionFilter("all");
-    setScheduleModalityFilter("all");
-    setScheduleDayFilter("all");
-    setAssignmentQuery("");
-  };
 
   return (
     <motion.div
@@ -730,498 +701,424 @@ export function DashboardPage() {
         </>
       )}
 
-      {/* -------------------- ADMIN & PROGRAM HEAD VIEW (EDUSCHED 2x2 LAYOUT) -------------------- */}
+      {/* -------------------- ADMIN & PROGRAM HEAD VIEW (DAILY OPERATIONS MONITOR) -------------------- */}
       {(role === "admin" || role === "program_head") && (
         <>
-          {/* Header Title & Actions */}
-          <div className="edusched-header">
-            <div className="edusched-title-box" style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+          {/* Hero / Header Summary with Dynamic Date Banner */}
+          <div className="daily-hero-banner">
+            <div className="daily-hero-left">
               <button
                 type="button"
                 title="Click to view enlarged logo"
                 onClick={() => setIsLogoModalOpen(true)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  padding: 0,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  borderRadius: "16px",
-                }}
+                className="daily-logo-btn"
               >
                 <img
                   src={getProgramLogo(selectedProgram.key || selectedProgram.label)}
                   alt="Program Logo"
-                  style={{
-                    width: "68px",
-                    height: "68px",
-                    borderRadius: "16px",
-                    objectFit: "contain",
-                    background: "#ffffff",
-                    padding: "4px",
-                    border: "1px solid var(--srcb-border)",
-                    boxShadow: "0 6px 16px rgba(15, 23, 42, 0.08)",
-                    transition: "transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease",
-                  }}
+                  className="daily-logo-img"
                   onMouseEnter={(e) => {
                     e.currentTarget.style.transform = "scale(1.08)";
-                    e.currentTarget.style.boxShadow = "0 10px 24px rgba(15, 23, 42, 0.16)";
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.transform = "scale(1)";
-                    e.currentTarget.style.boxShadow = "0 6px 16px rgba(15, 23, 42, 0.08)";
                   }}
                 />
               </button>
-              <div>
+              <div className="daily-hero-text">
+                <div className="daily-date-chip">
+                  <CalendarClock size={15} />
+                  <span>Today's Schedule — {formattedTodayDate}</span>
+                </div>
                 <h1>
                   {role === "program_head"
-                    ? `Program Head Portal • ${selectedProgram.label}`
+                    ? `Program Operations • ${selectedProgram.label}`
                     : "College Academic Scheduling Dashboard"}
                 </h1>
                 <p>
                   {role === "program_head"
-                    ? `Assigned Program: ${selectedProgram.label} (${selectedProgram.key || "ITP"}) • Departmental Management`
-                    : `Active Program Focus: ${selectedProgram.label} (${selectedProgram.shortLabel || "Collegiate Scope"})`}
+                    ? `Assigned Program: ${selectedProgram.label} (${selectedProgram.key || "ITP"}) · Real-Time Daily Operations Focus`
+                    : `Active Program Focus: ${selectedProgram.label} (${selectedProgram.shortLabel || "Collegiate Scope"}) · Daily Timetable Operations`}
                 </p>
               </div>
             </div>
-            <div className="edusched-header-actions">
+            <div className="daily-hero-actions">
               <button
                 type="button"
                 className="action-button"
                 onClick={() => navigate("/schedules")}
               >
                 <CalendarRange size={16} />
-                <span>Schedule Major Subject</span>
+                <span>Full Timetable</span>
               </button>
             </div>
           </div>
 
-          {/* Top Row: Departmental Progress (Left) & Immediate Attention (Right) */}
-          <div className="edusched-grid-top">
-            {/* Departmental Progress Card */}
-            <article className="card">
-              <div className="card__header">
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <RefreshCw size={18} color="var(--srcb-navy)" />
-                  <h3>Departmental Progress</h3>
+          {/* 3 Compact Status Badges */}
+          <div className="daily-status-strip">
+            {/* 1. Total Classes Today */}
+            <div
+              className="daily-stat-badge royal"
+              onClick={() => navigate("/schedules")}
+              style={{ cursor: "pointer" }}
+              title="Click to view all schedules in the Timetable Workspace"
+            >
+              <div className="daily-stat-info">
+                <span className="daily-stat-label">Total Classes Today</span>
+                <div className="daily-stat-val-row">
+                  <span className="daily-stat-value">{todayClasses.length}</span>
+                  <span className="daily-stat-subtext">
+                    {todayClasses.length === 1 ? "Class Scheduled" : "Classes Scheduled"}
+                  </span>
                 </div>
               </div>
+              <div className="daily-stat-icon-wrap royal">
+                <BookOpen size={22} />
+              </div>
+            </div>
 
-              <div className="progress-card-inner">
-                {/* Metric Boxes */}
-                <div className="progress-metrics-col">
-                  <div className="progress-metric-box">
-                    <span className="progress-metric-label">Scheduled Subjects</span>
-                    <div className="progress-metric-number">
-                      {scheduledCount}
-                      <span className="progress-metric-total">/{totalSubjectsCount}</span>
-                    </div>
-                  </div>
-                  <div
-                    className="progress-metric-box unscheduled"
-                    onClick={() => navigate("/schedules?view=unscheduled")}
-                    role="button"
-                    tabIndex={0}
-                    title="Click to view and schedule remaining subjects"
-                    style={{
-                      cursor: "pointer",
-                      transition: "transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease",
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        navigate("/schedules?view=unscheduled");
-                      }
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span className="progress-metric-label">Unscheduled</span>
-                      <span style={{ fontSize: "0.7rem", color: "#d97706", fontWeight: 700, display: "flex", alignItems: "center", gap: 2 }}>
-                        View <ChevronRight size={12} />
-                      </span>
-                    </div>
-                    <div className="progress-metric-number">
-                      {unscheduledCount} <span style={{ fontSize: "0.82rem", fontWeight: 600 }}>Remaining</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Progress Bar & Notes */}
-                <div className="progress-bar-col">
-                  <div className="progress-bar-top">
-                    <span>Completion Rate</span>
-                    <span style={{ fontWeight: 800 }}>{completionRate}%</span>
-                  </div>
-                  <div className="progress-bar-track">
-                    <div
-                      className="progress-bar-fill"
-                      style={{ width: `${completionRate}%` }}
-                    />
-                  </div>
-                  <p className="progress-footnote">
-                    {Number(metrics.conflicts) > 0
-                      ? `* ${metrics.conflicts} conflict(s) currently detected in scheduled subjects. Review required.`
-                      : "* All scheduled subjects are verified. No timetable conflicts detected."}
-                  </p>
+            {/* 2. Currently Ongoing */}
+            <div
+              className="daily-stat-badge emerald"
+              title="Classes currently in session based on system clock"
+            >
+              <div className="daily-stat-info">
+                <span className="daily-stat-label">Currently Ongoing</span>
+                <div className="daily-stat-val-row">
+                  <span className="daily-stat-value">{ongoingClasses.length}</span>
+                  <span className="daily-stat-subtext">
+                    {ongoingClasses.length > 0 ? "Active in Session" : "None Ongoing Now"}
+                  </span>
                 </div>
               </div>
-            </article>
-
-            {/* Immediate Attention Alert Card */}
-            <article className="card attention-card">
-              <div className="attention-header">
-                <AlertTriangle size={18} />
-                <span>Immediate Attention</span>
-              </div>
-              <div className="attention-items-list">
-                {attentionItems.length === 0 ? (
-                  <div style={{ padding: "24px 16px", textAlign: "center", color: "var(--srcb-text-muted)" }}>
-                    <CheckCircle2 size={26} color="#10b981" style={{ margin: "0 auto 8px" }} />
-                    <p style={{ margin: 0, fontWeight: 700, fontSize: "0.88rem", color: "var(--srcb-navy)" }}>All Systems Nominal</p>
-                    <p style={{ margin: "4px 0 0", fontSize: "0.78rem" }}>No active timetable conflicts, unscheduled courses, or overload warnings.</p>
-                  </div>
+              <div className="daily-stat-icon-wrap emerald">
+                {ongoingClasses.length > 0 ? (
+                  <span className="pulse-dot" style={{ width: 12, height: 12 }} />
                 ) : (
-                  attentionItems.map((item, idx) => (
-                    <div
-                      key={idx}
-                      className="attention-item-box"
-                      onClick={() => navigate(item.path)}
-                    >
-                      <div className="attention-item-left">
-                        <p className="attention-item-title">{item.code}</p>
-                        <p className="attention-item-desc">{item.reason}</p>
-                      </div>
-                      <ChevronRight size={16} className="attention-item-chevron" />
-                    </div>
-                  ))
+                  <Clock size={22} />
                 )}
               </div>
-            </article>
+            </div>
+
+            {/* 3. Action Required */}
+            <div
+              className={`daily-stat-badge ${todayActionCount > 0 ? "danger" : "emerald"}`}
+              onClick={() => {
+                if (todayActionCount > 0) {
+                  navigate(dailyAttentionItems[0]?.path || "/schedules");
+                }
+              }}
+              style={{ cursor: todayActionCount > 0 ? "pointer" : "default" }}
+              title={todayActionCount > 0 ? "Click to resolve urgent daily items" : "All systems clear"}
+            >
+              <div className="daily-stat-info">
+                <span className="daily-stat-label">Action Required</span>
+                <div className="daily-stat-val-row">
+                  <span className="daily-stat-value">{todayActionCount}</span>
+                  <span className="daily-stat-subtext">
+                    {todayActionCount > 0
+                      ? "Room Collisions & Unassigned"
+                      : "All Clear for Today"}
+                  </span>
+                </div>
+              </div>
+              <div className={`daily-stat-icon-wrap ${todayActionCount > 0 ? "danger" : "emerald"}`}>
+                {todayActionCount > 0 ? <AlertTriangle size={22} /> : <CheckCircle2 size={22} />}
+              </div>
+            </div>
           </div>
 
-          {/* Bottom Row: Faculty Load (Left) & Assignment Monitor (Right) */}
-          <div className="edusched-grid-bottom">
-            {/* Faculty Load Card */}
-            <article className="card">
-              <div className="card__header">
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <Users size={18} color="var(--srcb-navy)" />
-                  <h3>Faculty Load</h3>
-                </div>
-                <span
-                  className="card__header-link"
-                  onClick={() => navigate("/faculty")}
-                >
-                  View All
-                </span>
-              </div>
+          {/* Primary Area (70% width) vs Secondary Aside (30% width) */}
+          <div className="daily-ops-layout">
+            {/* Primary Area: Today's Schedule (70% width) */}
+            <section className="daily-ops-main">
+              <article className="card daily-today-card">
+                <div className="card__header" style={{ marginBottom: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div className="daily-section-icon">
+                      <CalendarRange size={20} />
+                    </div>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: "1.1rem", color: "var(--srcb-navy)" }}>
+                        Today's Schedule
+                      </h3>
+                      <span style={{ fontSize: "0.78rem", color: "var(--srcb-text-muted)" }}>
+                        {currentDayName} Timetable · Chronological Order · {selectedProgram.label}
+                      </span>
+                    </div>
+                  </div>
 
-              <div className="faculty-load-table">
-                {displayFaculty.length === 0 ? (
-                  <div style={{ padding: "28px 16px", textAlign: "center", color: "var(--srcb-text-muted)" }}>
-                    <Users size={28} color="var(--srcb-slate)" style={{ margin: "0 auto 8px", opacity: 0.6 }} />
-                    <p style={{ margin: 0, fontWeight: 700, fontSize: "0.88rem", color: "var(--srcb-navy)" }}>No Faculty Assigned</p>
-                    <p style={{ margin: "4px 0 0", fontSize: "0.78rem" }}>Add faculty members in the Faculty Directory to view workload allocations.</p>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span className="pill pill--royal" style={{ fontSize: "0.74rem" }}>
+                      {todayClasses.length} {todayClasses.length === 1 ? "Class" : "Classes"} Today
+                    </span>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      style={{ fontSize: "0.76rem", padding: "5px 10px" }}
+                      onClick={() => navigate("/schedules")}
+                      title="Open Full Schedules Workspace"
+                    >
+                      <span>Manage Timetables</span>
+                      <ChevronRight size={13} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* List of Today's Scheduled Classes */}
+                {todayClasses.length === 0 ? (
+                  <div className="today-empty-state">
+                    <div className="today-empty-icon">
+                      <CalendarCheck size={28} />
+                    </div>
+                    <p className="today-empty-title">No classes scheduled for today</p>
+                    <p className="today-empty-desc">
+                      There are no class sessions scheduled for {selectedProgram.label} on {currentDayName}. You can view or add classes in the full schedules workspace.
+                    </p>
+                    <button
+                      type="button"
+                      className="action-button"
+                      style={{ marginTop: 14, fontSize: "0.82rem", padding: "6px 14px" }}
+                      onClick={() => navigate("/schedules")}
+                    >
+                      <CalendarRange size={14} />
+                      <span>Open Schedules Workspace</span>
+                    </button>
                   </div>
                 ) : (
-                  displayFaculty.map((f: any, idx: number) => {
-                    const units = Number(f.units) || 0;
-                    const maxUnits = Number(f.maxUnits) || 18;
-                    const isOverload = Boolean(f.isOverload);
-                    const pct = Math.min(100, Math.round((units / maxUnits) * 100));
+                  <div className="today-schedule-list">
+                    {todayClasses.map((item: any, idx: number) => {
+                      const isOngoing = ongoingClasses.some((og: any) => og.id === item.id);
+                      const mod = String(item.modality || "Face-to-Face");
+                      let pillClass = "pill--f2f";
+                      if (mod.toLowerCase().includes("online")) pillClass = "pill--online";
+                      else if (mod.toLowerCase().includes("hybrid")) pillClass = "pill--hybrid";
+                      else if (mod.toLowerCase().includes("conflict")) pillClass = "pill--conflict";
 
-                    return (
-                      <div key={f.id || idx} className="faculty-load-row">
-                        <div className="faculty-load-user">
-                          <div className="faculty-load-avatar">
-                            {f.name ? f.name.slice(0, 2).toUpperCase() : "FA"}
+                      const isFacultyMissing =
+                        !item.faculty ||
+                        item.faculty.trim() === "" ||
+                        item.faculty.toLowerCase().includes("unassigned") ||
+                        item.faculty.toLowerCase().includes("tba");
+
+                      const isRoomMissing =
+                        !item.room ||
+                        item.room.trim() === "" ||
+                        item.room.toLowerCase().includes("tba") ||
+                        item.room.toLowerCase().includes("unassigned");
+
+                      return (
+                        <div
+                          key={item.id || idx}
+                          className={`today-schedule-row ${isOngoing ? "is-ongoing" : ""}`}
+                          onClick={() => setViewingSchedule(item)}
+                          role="button"
+                          tabIndex={0}
+                          title="Click to view schedule details"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              setViewingSchedule(item);
+                            }
+                          }}
+                        >
+                          {/* Time Column */}
+                          <div className="today-sched-time-col">
+                            <div className="today-sched-time-badge">
+                              <Clock size={13} />
+                              <span>{item.time || item.schedule || "TBA"}</span>
+                            </div>
+                            {isOngoing && (
+                              <span className="today-live-tag">
+                                <span className="pulse-dot" /> LIVE NOW
+                              </span>
+                            )}
                           </div>
-                          <div className="faculty-load-info">
-                            <p className="faculty-load-name">{f.name}</p>
-                            <p className="faculty-load-rank">{f.title || "Faculty Member"}</p>
+
+                          {/* Main Subject & Meta Column */}
+                          <div className="today-sched-main-col">
+                            <div className="today-sched-subject-row">
+                              <div
+                                className="today-sched-color-dot"
+                                style={{ backgroundColor: item.color || "var(--srcb-navy)" }}
+                              />
+                              <strong className="today-sched-code">
+                                {item.subjectCode || item.code || "Subject"}
+                              </strong>
+                              <span className="today-sched-dash">—</span>
+                              <span className="today-sched-name">
+                                {item.subject || item.subjectName || item.name || "Academic Subject"}
+                              </span>
+                            </div>
+
+                            <div className="today-sched-meta-row">
+                              <span className="today-meta-chip section">
+                                <GraduationCap size={12} />
+                                <span>{item.section || "Unassigned"}</span>
+                              </span>
+
+                              <span
+                                className={`today-meta-chip ${
+                                  isFacultyMissing ? "unassigned" : "faculty"
+                                }`}
+                              >
+                                <Users size={12} />
+                                <span>
+                                  {isFacultyMissing ? "Unassigned Faculty" : item.faculty}
+                                </span>
+                              </span>
+
+                              <span
+                                className={`today-meta-chip ${
+                                  isRoomMissing ? "unassigned" : "room"
+                                }`}
+                              >
+                                <LayoutGrid size={12} />
+                                <span>
+                                  {isRoomMissing
+                                    ? "Unassigned Room"
+                                    : `${item.room}${item.building ? ` (${item.building})` : ""}`}
+                                </span>
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Right Modality & View Column */}
+                          <div className="today-sched-right-col">
+                            <span className={`pill ${pillClass}`}>
+                              {mod}
+                            </span>
+                            <button
+                              type="button"
+                              className="secondary-button today-sched-view-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setViewingSchedule(item);
+                              }}
+                            >
+                              <Eye size={12} />
+                              <span>Details</span>
+                            </button>
                           </div>
                         </div>
-                        <div className="faculty-load-units">
-                          <span className={`faculty-units-badge ${isOverload ? "overload" : ""}`}>
-                            {units} / {maxUnits} Units
-                          </span>
-                          <div className="faculty-units-bar">
-                            <div
-                              className={`faculty-units-bar-fill ${isOverload ? "overload" : ""}`}
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </article>
-
-            {/* Class Schedules & Assignment Monitor Card with Category Filtering */}
-            <article className="card" style={{ display: "flex", flexDirection: "column" }}>
-              <div className="card__header" style={{ marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <BookOpen size={18} color="var(--srcb-navy)" />
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: "1rem", color: "var(--srcb-navy)" }}>
-                      Class Schedules & Assignment Monitor
-                    </h3>
-                    <span style={{ fontSize: "0.76rem", color: "var(--srcb-text-muted)" }}>
-                      {selectedProgram.shortLabel || selectedProgram.label} Timetable Scope
-                    </span>
+                      );
+                    })}
                   </div>
+                )}
+              </article>
+            </section>
+
+            {/* Secondary Aside: Immediate Attention (30% width) */}
+            <aside className="daily-ops-aside">
+              <article className="card attention-card">
+                <div className="attention-header">
+                  <AlertTriangle size={18} />
+                  <span>Immediate Attention</span>
+                  {dailyAttentionItems.length > 0 && (
+                    <span
+                      className="pill pill--danger"
+                      style={{ fontSize: "0.7rem", marginLeft: "auto" }}
+                    >
+                      {dailyAttentionItems.length} Urgent
+                    </span>
+                  )}
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span className="pill pill--royal" style={{ fontSize: "0.72rem", padding: "2px 8px" }}>
-                    Showing {filteredAssignments.length} {filteredAssignments.length === 1 ? "Schedule" : "Schedules"}
-                  </span>
+                <div className="attention-items-list">
+                  {dailyAttentionItems.length === 0 ? (
+                    <div className="attention-empty-state">
+                      <CheckCircle2 size={26} color="#10b981" />
+                      <p className="attention-empty-title">All Systems Nominal</p>
+                      <p className="attention-empty-desc">
+                        No active room collisions, unassigned venues, or immediate timetable conflicts for today.
+                      </p>
+                    </div>
+                  ) : (
+                    dailyAttentionItems.map((item, idx) => (
+                      <div
+                        key={idx}
+                        className="attention-item-box"
+                        onClick={() => navigate(item.path)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            navigate(item.path);
+                          }
+                        }}
+                      >
+                        <div className="attention-item-left">
+                          <p className="attention-item-title">{item.code}</p>
+                          <p className="attention-item-desc">{item.reason}</p>
+                        </div>
+                        <ChevronRight size={16} className="attention-item-chevron" />
+                      </div>
+                    ))
+                  )}
+                </div>
+              </article>
+
+              {/* Quick Operations Shortcuts Card */}
+              <article className="card" style={{ padding: "16px 18px" }}>
+                <div className="card__header" style={{ marginBottom: 12 }}>
+                  <h3 style={{ fontSize: "0.92rem", margin: 0, color: "var(--srcb-navy)" }}>
+                    Quick Operations Shortcuts
+                  </h3>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <button
                     type="button"
                     className="secondary-button"
-                    style={{ fontSize: "0.76rem", padding: "4px 8px" }}
-                    onClick={() => navigate("/schedules")}
-                    title="Open Full Schedules Workspace"
-                  >
-                    <CalendarRange size={13} />
-                    <span>Manage</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Schedule Category Filter Tabs: Year Level */}
-              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid var(--srcb-border)" }}>
-                <span style={{ fontSize: "0.76rem", fontWeight: 700, color: "var(--srcb-slate)", marginRight: 2 }}>
-                  Year Level:
-                </span>
-                {[
-                  { key: "all", label: "All Schedules" },
-                  { key: "1", label: "1st Year" },
-                  { key: "2", label: "2nd Year" },
-                  { key: "3", label: "3rd Year" },
-                  { key: "4", label: "4th Year" },
-                ].map((tab) => {
-                  const isActive = scheduleYearFilter === tab.key;
-                  return (
-                    <button
-                      key={tab.key}
-                      type="button"
-                      onClick={() => setScheduleYearFilter(tab.key)}
-                      style={{
-                        padding: "3px 10px",
-                        borderRadius: "9999px",
-                        fontSize: "0.76rem",
-                        fontWeight: isActive ? 700 : 500,
-                        background: isActive ? "var(--srcb-navy)" : "var(--srcb-surface-hover, rgba(0,0,0,0.05))",
-                        color: isActive ? "#ffffff" : "var(--srcb-text-muted)",
-                        border: `1px solid ${isActive ? "var(--srcb-navy)" : "var(--srcb-border)"}`,
-                        cursor: "pointer",
-                        transition: "all 0.15s ease",
-                      }}
-                    >
-                      {tab.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Secondary Filter Controls: Section, Modality, Day, Search */}
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-                {/* Section Dropdown */}
-                <select
-                  value={scheduleSectionFilter}
-                  onChange={(e) => setScheduleSectionFilter(e.target.value)}
-                  style={{
-                    padding: "4px 8px",
-                    borderRadius: 6,
-                    border: "1px solid var(--srcb-border)",
-                    fontSize: "0.78rem",
-                    background: "var(--srcb-surface-elevated, #ffffff)",
-                    color: "var(--srcb-text)",
-                  }}
-                  aria-label="Filter by Section"
-                >
-                  <option value="all">All Sections</option>
-                  {availableSectionsForProgram.map((sec) => (
-                    <option key={sec} value={sec}>
-                      Section: {sec}
-                    </option>
-                  ))}
-                </select>
-
-                {/* Modality Dropdown */}
-                <select
-                  value={scheduleModalityFilter}
-                  onChange={(e) => setScheduleModalityFilter(e.target.value)}
-                  style={{
-                    padding: "4px 8px",
-                    borderRadius: 6,
-                    border: "1px solid var(--srcb-border)",
-                    fontSize: "0.78rem",
-                    background: "var(--srcb-surface-elevated, #ffffff)",
-                    color: "var(--srcb-text)",
-                  }}
-                  aria-label="Filter by Modality"
-                >
-                  <option value="all">All Modalities</option>
-                  <option value="Face-to-Face">Face-to-Face</option>
-                  <option value="Online">Online</option>
-                  <option value="Hybrid">Hybrid</option>
-                </select>
-
-                {/* Day Dropdown */}
-                <select
-                  value={scheduleDayFilter}
-                  onChange={(e) => setScheduleDayFilter(e.target.value)}
-                  style={{
-                    padding: "4px 8px",
-                    borderRadius: 6,
-                    border: "1px solid var(--srcb-border)",
-                    fontSize: "0.78rem",
-                    background: "var(--srcb-surface-elevated, #ffffff)",
-                    color: "var(--srcb-text)",
-                  }}
-                  aria-label="Filter by Day"
-                >
-                  <option value="all">All Days</option>
-                  {AVAILABILITY_DAYS.map((d) => (
-                    <option key={d} value={d}>
-                      {d}
-                    </option>
-                  ))}
-                </select>
-
-                {/* Live Search Input */}
-                <div style={{ position: "relative", flex: 1, minWidth: 140 }}>
-                  <Search
-                    size={13}
-                    style={{ position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)", color: "var(--srcb-slate)" }}
-                  />
-                  <input
-                    placeholder="Search subject, instructor, room..."
-                    value={assignmentQuery}
-                    onChange={(e) => setAssignmentQuery(e.target.value)}
                     style={{
+                      justifyContent: "space-between",
                       width: "100%",
-                      padding: "4px 8px 4px 26px",
-                      borderRadius: 6,
-                      border: "1px solid var(--srcb-border)",
-                      fontSize: "0.78rem",
-                      background: "var(--srcb-surface-elevated, #ffffff)",
-                      color: "var(--srcb-text)",
+                      padding: "8px 12px",
+                      fontSize: "0.8rem",
                     }}
-                  />
-                </div>
-
-                {/* Reset Filters Button */}
-                {isScheduleFilterActive && (
+                    onClick={() => navigate("/schedules")}
+                  >
+                    <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <CalendarRange size={14} color="var(--srcb-navy)" />
+                      <span>Manage Timetables</span>
+                    </span>
+                    <ChevronRight size={13} />
+                  </button>
                   <button
                     type="button"
-                    onClick={handleResetScheduleFilters}
+                    className="secondary-button"
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 4,
-                      padding: "4px 8px",
-                      borderRadius: 6,
-                      border: "1px solid var(--srcb-border)",
-                      background: "var(--srcb-surface-hover, #f8fafc)",
-                      fontSize: "0.75rem",
-                      color: "var(--srcb-text-muted)",
-                      cursor: "pointer",
+                      justifyContent: "space-between",
+                      width: "100%",
+                      padding: "8px 12px",
+                      fontSize: "0.8rem",
                     }}
-                    title="Reset all filters"
+                    onClick={() => navigate("/rooms")}
                   >
-                    <RotateCcw size={12} />
-                    <span>Reset</span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <LayoutGrid size={14} color="var(--srcb-navy)" />
+                      <span>Room Availability</span>
+                    </span>
+                    <ChevronRight size={13} />
                   </button>
-                )}
-              </div>
-
-              {/* Data Table */}
-              <div className="table-wrap" style={{ maxHeight: "320px", overflowY: "auto" }}>
-                {filteredAssignments.length === 0 ? (
-                  <div style={{ padding: "28px 16px", textAlign: "center", background: "var(--srcb-surface-alt, #f8fafc)", borderRadius: 8 }}>
-                    <p style={{ margin: 0, fontWeight: 600, fontSize: "0.88rem", color: "var(--srcb-navy)" }}>
-                      No schedules match the selected category or filters.
-                    </p>
-                    {isScheduleFilterActive && (
-                      <button
-                        type="button"
-                        onClick={handleResetScheduleFilters}
-                        style={{
-                          marginTop: 8,
-                          padding: "4px 12px",
-                          borderRadius: 6,
-                          background: "var(--srcb-navy)",
-                          color: "#fff",
-                          border: "none",
-                          fontSize: "0.78rem",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Clear Filters
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Subject Code</th>
-                        <th>Section</th>
-                        <th>Faculty</th>
-                        <th>Room / Platform</th>
-                        <th>Schedule</th>
-                        <th>Modality</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredAssignments.map((row: any, idx: number) => {
-                        const mod = String(row.modality || "Face-to-Face");
-                        let pillClass = "pill--f2f";
-                        if (mod.toLowerCase().includes("online")) pillClass = "pill--online";
-                        else if (mod.toLowerCase().includes("hybrid")) pillClass = "pill--hybrid";
-                        else if (mod.toLowerCase().includes("conflict")) pillClass = "pill--conflict";
-
-                        return (
-                          <tr key={row.id || idx}>
-                            <td style={{ fontWeight: 700, color: "var(--srcb-navy)" }}>
-                              <div>{row.code || row.subjectCode || "Unspecified"}</div>
-                              {row.subject && (
-                                <div style={{ fontSize: "0.72rem", fontWeight: 400, color: "var(--srcb-text-muted)" }}>
-                                  {row.subject}
-                                </div>
-                              )}
-                            </td>
-                            <td>
-                              <span className="pill pill--slate" style={{ fontSize: "0.72rem", fontWeight: 600 }}>
-                                {row.section || "Unassigned"}
-                              </span>
-                            </td>
-                            <td style={{ color: !row.faculty || row.faculty.includes("Unassigned") ? "#94a3b8" : "inherit", fontStyle: !row.faculty || row.faculty.includes("Unassigned") ? "italic" : "normal" }}>
-                              {row.faculty || "Unassigned"}
-                            </td>
-                            <td>{row.room || "TBA"}</td>
-                            <td style={{ fontSize: "0.82rem", color: "var(--srcb-text-muted)", whiteSpace: "nowrap" }}>
-                              {row.day ? `${row.day} · ${row.time || row.schedule || "TBA"}` : (row.schedule || row.time || "TBA")}
-                            </td>
-                            <td>
-                              <span className={`pill ${pillClass}`}>
-                                {mod}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </article>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    style={{
+                      justifyContent: "space-between",
+                      width: "100%",
+                      padding: "8px 12px",
+                      fontSize: "0.8rem",
+                    }}
+                    onClick={() => navigate("/faculty")}
+                  >
+                    <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <Users size={14} color="var(--srcb-navy)" />
+                      <span>Faculty Directory</span>
+                    </span>
+                    <ChevronRight size={13} />
+                  </button>
+                </div>
+              </article>
+            </aside>
           </div>
 
           {/* Program Head: Dedicated My Teaching Schedule (Personal Instructor Timetable) */}

@@ -53,17 +53,17 @@ const PRESET_ACCOUNTS: PresetAccount[] = [
     icon: <Building2 size={16} />,
   },
   {
-    label: "Program Head",
-    email: "programhead@srcb.edu.ph",
+    label: "Program Head (BSIT)",
+    email: "ithead@srcb.edu.ph",
     pass: "@program123",
     role: "program_head",
     icon: <GraduationCap size={16} />,
   },
   {
-    label: "Faculty / Teacher",
-    email: "teacher@srcb.edu.ph",
-    pass: "@teacher123",
-    role: "teacher",
+    label: "Student / Read-Only",
+    email: "student@srcb.edu.ph",
+    pass: "@student123",
+    role: "student",
     icon: <Users size={16} />,
   },
 ];
@@ -385,32 +385,19 @@ export function DevFloatingTools() {
                 <button
                   type="button"
                   className={`dev-account-btn ${currentRole === "program_head" ? "active" : ""}`}
-                  onClick={() => handleRoleOverride("program_head")}
+                  onClick={() => handleRoleOverride("program_head", { program: "ITP" })}
                 >
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                    <GraduationCap size={15} /> Program Head
+                    <GraduationCap size={15} /> Program Head (BSIT / ITP)
                   </span>
                 </button>
                 <button
                   type="button"
-                  className={`dev-account-btn ${currentRole === "teacher" && currentTeacherStatus === "Full-Time" ? "active" : ""}`}
-                  onClick={() =>
-                    handleRoleOverride("teacher", { status: "Full-Time", teacherId: "T001" })
-                  }
+                  className={`dev-account-btn ${currentRole === "student" ? "active" : ""}`}
+                  onClick={() => handleRoleOverride("student")}
                 >
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                    <Users size={15} /> Faculty / Teacher (Full-Time)
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className={`dev-account-btn ${currentRole === "teacher" && currentTeacherStatus === "Part-Time" ? "active" : ""}`}
-                  onClick={() =>
-                    handleRoleOverride("teacher", { status: "Part-Time", teacherId: "FAC-003" })
-                  }
-                >
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                    <Clock size={15} /> Faculty / Teacher (Part-Time)
+                    <Users size={15} /> Student / Read-Only (Public Monitor)
                   </span>
                 </button>
               </div>

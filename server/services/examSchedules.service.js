@@ -2,6 +2,7 @@ const { query } = require('../utils/db');
 const { schedulesService } = require('./schedules.service');
 const { isGeneralEducationSubject } = require('./subjects.service');
 const { resolveUserProgramScope, isProgramMatch } = require('../utils/programScope');
+const { hasPrivilege } = require('./delegations.service');
 
 
 function normalizeTime(value) {
@@ -173,7 +174,7 @@ async function validateExamPayload({
     }
   }
 
-  // 3. Program Head authorization
+  // 3. Program Head authorization & Delegated Privileges
   if (user && String(user.role).toLowerCase() === 'program_head') {
     const scope = resolveUserProgramScope(user);
     const targetProg = String(program || '').toUpperCase().trim();
@@ -183,6 +184,14 @@ async function validateExamPayload({
       const err = new Error(`Unauthorized: Program Heads can only manage exam schedules within their assigned program (${scope.allowedProgramCodes.join(', ')}).`);
       err.statusCode = 403;
       err.code = 'UNAUTHORIZED_PROGRAM_ACCESS';
+      throw err;
+    }
+
+    const hasExamPrivilege = await hasPrivilege(user.id, 'MANAGE_EXAM_SCHEDULE', targetProg);
+    if (!hasExamPrivilege) {
+      const err = new Error('Exam schedule editing requires Admin authorization. Contact the Dean of Student Affairs.');
+      err.statusCode = 403;
+      err.code = 'DELEGATION_REQUIRED';
       throw err;
     }
 
@@ -635,6 +644,14 @@ async function deleteExamSchedule(id, user) {
       const err = new Error(`Unauthorized: Program Heads can only delete exam schedules within their assigned program (${scope.allowedProgramCodes.join(', ')}).`);
       err.statusCode = 403;
       err.code = 'UNAUTHORIZED_PROGRAM_ACCESS';
+      throw err;
+    }
+
+    const hasExamPrivilege = await hasPrivilege(user.id, 'MANAGE_EXAM_SCHEDULE', existing.program_code);
+    if (!hasExamPrivilege) {
+      const err = new Error('Exam schedule editing requires Admin authorization. Contact the Dean of Student Affairs.');
+      err.statusCode = 403;
+      err.code = 'DELEGATION_REQUIRED';
       throw err;
     }
   }

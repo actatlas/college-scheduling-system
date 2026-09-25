@@ -52,11 +52,10 @@ async function seedDemoAccounts() {
     `);
 
     // Ensure legacy BSA references are mapped to BAP
-    await conn.query(`UPDATE courses SET program_code = 'BAP' WHERE program_code = 'BSA'`);
-    await conn.query(`UPDATE subjects SET program_code = 'BAP' WHERE program_code = 'BSA'`);
-    await conn.query(`UPDATE program_majors SET program_code = 'BAP' WHERE program_code = 'BSA'`);
-    await conn.query(`UPDATE users SET program = 'BAP' WHERE program = 'BSA'`);
-    await conn.query(`DELETE FROM programs WHERE code = 'BSA'`);
+    try { await conn.query(`UPDATE subjects SET program_code = 'BAP' WHERE program_code = 'BSA'`); } catch {}
+    try { await conn.query(`UPDATE program_majors SET program_code = 'BAP' WHERE program_code = 'BSA'`); } catch {}
+    try { await conn.query(`UPDATE users SET program = 'BAP' WHERE program = 'BSA'`); } catch {}
+    try { await conn.query(`DELETE FROM programs WHERE code = 'BSA'`); } catch {}
 
     // 2. Ensure Academic Programs
     const programsList = [
@@ -92,11 +91,17 @@ async function seedDemoAccounts() {
       `, [code, name, pCode]);
     }
 
-    // 4. Create / Update Super Admin and Admin accounts
+    // 4. Create / Update Super Admin, Admin, and Student accounts
+    try {
+      await conn.query("ALTER TABLE users MODIFY COLUMN role VARCHAR(50) NOT NULL DEFAULT 'student'");
+    } catch (e) {
+      console.warn('Could not alter users.role column:', e.message);
+    }
+
     const superAdminPasswordHash = await bcrypt.hash('@superadmin123', 10);
     const adminPasswordHash = await bcrypt.hash('@admin123', 10);
     const progHeadPasswordHash = await bcrypt.hash('@program123', 10);
-    const teacherPasswordHash = await bcrypt.hash('@teacher123', 10);
+    const studentPasswordHash = await bcrypt.hash('@student123', 10);
 
     // Super Admin
     await conn.query(`
@@ -111,6 +116,13 @@ async function seedDemoAccounts() {
       VALUES (?, ?, ?, 'admin', 'Active', NULL)
       ON DUPLICATE KEY UPDATE name = VALUES(name), password_hash = VALUES(password_hash), role = 'admin', status = 'Active'
     `, ['System Administrator', 'admin@srcb.edu.ph', adminPasswordHash]);
+
+    // Student / Read-Only Account
+    await conn.query(`
+      INSERT INTO users (name, email, password_hash, role, status, program)
+      VALUES (?, ?, ?, 'student', 'Active', NULL)
+      ON DUPLICATE KEY UPDATE name = VALUES(name), password_hash = VALUES(password_hash), role = 'student', status = 'Active'
+    `, ['Collegiate Student Body', 'student@srcb.edu.ph', studentPasswordHash]);
 
     // 5. Create EXACTLY ONE Program Head per Program
     const programHeads = [
@@ -168,6 +180,41 @@ async function seedDemoAccounts() {
       }
     }
 
+    // 5b. Ensure Delegations Table & Default Permissions
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS delegations (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        user_id BIGINT UNSIGNED NOT NULL,
+        program_code VARCHAR(50) NOT NULL,
+        privilege_type VARCHAR(100) NOT NULL,
+        status ENUM('ACTIVE', 'REVOKED') NOT NULL DEFAULT 'ACTIVE',
+        granted_by BIGINT UNSIGNED DEFAULT NULL,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        UNIQUE KEY idx_user_privilege_prog (user_id, privilege_type, program_code),
+        KEY idx_delegations_user (user_id),
+        KEY idx_delegations_prog (program_code),
+        KEY idx_delegations_status (status)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    for (const ph of programHeads) {
+      const [uRows] = await conn.query('SELECT id FROM users WHERE email = ? LIMIT 1', [ph.email]);
+      if (uRows && uRows[0]) {
+        const uid = uRows[0].id;
+        const examStatus = ph.majorCode === 'BSIT' ? 'ACTIVE' : 'REVOKED';
+        await conn.query(`
+          INSERT INTO delegations (user_id, program_code, privilege_type, status, granted_by)
+          VALUES 
+            (?, ?, 'MANAGE_EXAM_SCHEDULE', ?, 2),
+            (?, ?, 'MANAGE_CLASS_SCHEDULE', 'ACTIVE', 2),
+            (?, ?, 'ROOM_REALLOCATION', 'ACTIVE', 2)
+          ON DUPLICATE KEY UPDATE status = VALUES(status)
+        `, [uid, ph.majorCode, examStatus, uid, ph.majorCode, uid, ph.majorCode]);
+      }
+    }
+
     // 6. Ensure Program Major ID lookups
     const [majorsRows] = await conn.query('SELECT id, code, program_code FROM program_majors');
     const majorMap = new Map();
@@ -175,7 +222,7 @@ async function seedDemoAccounts() {
       majorMap.set(m.code, m.id);
     }
 
-    // 7. Seed Teachers for Major and General Subjects
+    // 7. Seed Teachers as Directory Records (Strictly data entities, not active user logins)
     const teachersList = [
       // ITP / BSIT Teachers
       {
@@ -296,7 +343,7 @@ async function seedDemoAccounts() {
     for (const t of teachersList) {
       const pmId = t.majorCode ? majorMap.get(t.majorCode) || null : null;
 
-      // Insert/update in teachers table
+      // Insert/update in teachers directory table
       await conn.query(`
         INSERT INTO teachers (id, name, email, phone, status, program_major_id)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -307,18 +354,6 @@ async function seedDemoAccounts() {
           status = VALUES(status),
           program_major_id = VALUES(program_major_id)
       `, [t.id, t.name, t.email, t.phone, t.status, pmId]);
-
-      // Insert/update in users table
-      await conn.query(`
-        INSERT INTO users (name, email, password_hash, role, status, program)
-        VALUES (?, ?, ?, 'teacher', 'Active', ?)
-        ON DUPLICATE KEY UPDATE
-          name = VALUES(name),
-          password_hash = VALUES(password_hash),
-          role = 'teacher',
-          status = 'Active',
-          program = VALUES(program)
-      `, [t.name, t.email, teacherPasswordHash, t.userProgram]);
     }
 
     // 8. Assign Subjects to Dedicated Teachers
@@ -356,7 +391,27 @@ async function seedDemoAccounts() {
       `, [sub.instructorId, sub.programCode, sub.code]);
     }
 
+    // Re-link all remaining subjects to valid teachers according to program
+    await conn.query(`UPDATE subjects SET instructor_id = 'T-IT-001' WHERE program_code = 'ITP' AND (instructor_id IS NULL OR instructor_id NOT IN (SELECT id FROM teachers))`);
+    await conn.query(`UPDATE subjects SET instructor_id = 'T-BA-001' WHERE (program_code = 'BAP' OR program_code = 'BSA') AND (instructor_id IS NULL OR instructor_id NOT IN (SELECT id FROM teachers))`);
+    await conn.query(`UPDATE subjects SET instructor_id = 'T-CRIM-001' WHERE (program_code = 'CJEP' OR program_code = 'BSCRIM') AND (instructor_id IS NULL OR instructor_id NOT IN (SELECT id FROM teachers))`);
+    await conn.query(`UPDATE subjects SET instructor_id = 'T-HM-001' WHERE (program_code = 'HMP' OR program_code = 'BSHM') AND (instructor_id IS NULL OR instructor_id NOT IN (SELECT id FROM teachers))`);
+    await conn.query(`UPDATE subjects SET instructor_id = 'T-ED-001' WHERE (program_code = 'TEP' OR program_code = 'BSED' OR program_code = 'BEED' OR code LIKE 'EDUC%' OR code LIKE 'Educ%') AND (instructor_id IS NULL OR instructor_id NOT IN (SELECT id FROM teachers))`);
+    await conn.query(`UPDATE subjects SET instructor_id = 'T-GEN-001' WHERE (program_code = 'ALL' OR program_code = 'GEN' OR code LIKE 'GE%' OR code LIKE 'RS%' OR code LIKE 'PathFit%' OR code LIKE 'NSTP%' OR code LIKE 'M%' OR code LIKE 'C%' OR code LIKE 'S%' OR code LIKE 'B%') AND (instructor_id IS NULL OR instructor_id NOT IN (SELECT id FROM teachers))`);
+    await conn.query(`UPDATE subjects SET instructor_id = 'T-GEN-001' WHERE instructor_id IS NOT NULL AND instructor_id NOT IN (SELECT id FROM teachers)`);
+
     // 9. Teacher Availability (Monday to Friday 07:00:00 - 18:00:00)
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS teacher_availability (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        teacher_id VARCHAR(50) NOT NULL,
+        day_of_week VARCHAR(20) NOT NULL,
+        start_time TIME NOT NULL,
+        end_time TIME NOT NULL,
+        PRIMARY KEY (id),
+        KEY idx_teacher_avail_id (teacher_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
     await conn.query('TRUNCATE TABLE teacher_availability');
     const teachingDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
     for (const t of teachersList) {
@@ -394,12 +449,12 @@ async function seedDemoAccounts() {
       `, [targetTeacherId, proctorName, exam.id]);
     }
 
-    // 11. Clean Up Unnecessary / Duplicate User Accounts
+    // 11. Clean Up Unnecessary User Accounts (strictly active roles: super_admin, admin, program_head, student)
     const validEmails = new Set([
       'superadmin@srcb.edu.ph',
       'admin@srcb.edu.ph',
+      'student@srcb.edu.ph',
       ...programHeads.map((ph) => ph.email.toLowerCase()),
-      ...teachersList.map((t) => t.email.toLowerCase()),
     ]);
 
     const [allUsers] = await conn.query('SELECT id, email, role FROM users');
