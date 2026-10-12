@@ -13,7 +13,9 @@ import {
   UserX,
   CheckCircle2,
   Lock,
-  Copy,
+  Layers,
+  Globe,
+  Building2,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { StatCard } from "../components/common/StatCard";
@@ -63,7 +65,6 @@ export function DashboardPage() {
   const userName = window.localStorage.getItem("userName") || "User";
 
   const [schedules, setSchedules] = useState<ClassScheduleItem[]>([]);
-  const [allExamsList, setAllExamsList] = useState<any[]>([]);
   const [headTeachingSchedules, setHeadTeachingSchedules] = useState<ClassScheduleItem[]>([]);
   const [suspendedUsersList, setSuspendedUsersList] = useState<any[]>([]);
   const [viewingSchedule, setViewingSchedule] = useState<ClassScheduleItem | null>(null);
@@ -77,7 +78,6 @@ export function DashboardPage() {
     schedules: "0",
     conflicts: "0",
     users: "0",
-    exams: "0",
   });
 
   const loadDashboardData = async (isBackground = false) => {
@@ -85,7 +85,7 @@ export function DashboardPage() {
       setIsLoading(true);
     }
     try {
-      const [facRes, subRes, rmRes, secRes, schedRes, confRes, usrRes, exmRes]: any[] = await Promise.all([
+      const [facRes, subRes, rmRes, secRes, schedRes, confRes, usrRes]: any[] = await Promise.all([
         role === "super_admin" ? Promise.resolve({ data: { data: [] } }) : api.get("/faculty").catch(() => ({ data: { data: [] } })),
         role === "super_admin" ? Promise.resolve({ data: { data: [] } }) : api.get("/subjects").catch(() => ({ data: { data: [] } })),
         role === "super_admin" ? Promise.resolve({ data: { data: [] } }) : api.get("/rooms").catch(() => ({ data: { data: [] } })),
@@ -95,7 +95,6 @@ export function DashboardPage() {
         role === "super_admin"
           ? api.get("/users").catch(() => ({ data: { data: [] } }))
           : Promise.resolve({ data: { data: [] } }),
-        role === "super_admin" ? Promise.resolve({ data: { data: [] } }) : api.get("/exams").catch(() => ({ data: { data: [] } })),
       ]);
 
       const facs = facRes.data?.data || [];
@@ -105,10 +104,8 @@ export function DashboardPage() {
       const scheds = schedRes.data?.data || [];
       const confs = confRes.data?.data || [];
       const usrs = usrRes.data?.data || [];
-      const exms = exmRes.data?.data || [];
 
       setSubjectsList(subs);
-      setAllExamsList(exms);
 
       const suspended = usrs.filter(
         (u: any) => String(u.status || "").trim().toLowerCase() === "suspended"
@@ -123,7 +120,6 @@ export function DashboardPage() {
         schedules: String(scheds.length),
         conflicts: String(confs.length),
         users: String(usrs.length),
-        exams: String(exms.length),
       });
 
       const progScheds = scheds.filter(
@@ -205,12 +201,64 @@ export function DashboardPage() {
       return aMin - bMin;
     });
 
-  // Currently Ongoing Classes
+  // Group today's classes by time slot for stacked grouping
   const currentMinutesNow = now.getHours() * 60 + now.getMinutes();
   const ongoingClasses = todayClasses.filter((s: any) => {
     const { start, end } = getStartAndEndMinutes(s.time || s.schedule || "");
     return start <= currentMinutesNow && currentMinutesNow < end;
   });
+
+  const timeGroups = (() => {
+    const groups: {
+      time: string;
+      startMin: number;
+      isOngoing: boolean;
+      items: any[];
+      hasCollision: boolean;
+      collisionReason?: string;
+    }[] = [];
+
+    todayClasses.forEach((item: any) => {
+      const timeStr = (item.time || item.schedule || "TBA").trim();
+      const { start, end } = getStartAndEndMinutes(timeStr);
+      const isOngoing = start <= currentMinutesNow && currentMinutesNow < end;
+
+      let group = groups.find((g) => g.time.toLowerCase() === timeStr.toLowerCase());
+      if (!group) {
+        group = {
+          time: timeStr,
+          startMin: start,
+          isOngoing,
+          items: [],
+          hasCollision: false,
+        };
+        groups.push(group);
+      }
+      group.items.push(item);
+      if (isOngoing) group.isOngoing = true;
+    });
+
+    // Check room collision within each time group
+    groups.forEach((g) => {
+      if (g.items.length > 1) {
+        const seenRooms: { [room: string]: string[] } = {};
+        g.items.forEach((it) => {
+          const rm = (it.room || "").trim().toLowerCase();
+          if (rm && !rm.includes("tba") && !rm.includes("unassigned")) {
+            seenRooms[rm] = seenRooms[rm] || [];
+            seenRooms[rm].push(it.subjectCode || it.subject || "Subject");
+          }
+        });
+        const clashingRooms = Object.entries(seenRooms).filter(([_, list]) => list.length > 1);
+        if (clashingRooms.length > 0) {
+          g.hasCollision = true;
+          g.collisionReason = `Room Collision: ${clashingRooms.map(([r, s]) => `${r.toUpperCase()} (${s.join(", ")})`).join("; ")}`;
+        }
+      }
+    });
+
+    return groups.sort((a, b) => a.startMin - b.startMin);
+  })();
 
   // Room collisions among today's classes
   const roomCollisionItems: { code: string; reason: string; path: string }[] = [];
@@ -303,31 +351,6 @@ export function DashboardPage() {
     unassignedRoomClasses.length +
     unassignedFacultyClasses.length +
     Number(metrics.conflicts);
-
-  // Proactive Examination Period Status & Sequence Tracking (Prelim -> Midterm -> Semi-Final -> Final)
-  const examPeriodStatus = (() => {
-    const terms = ["Prelim", "Midterm", "Semi-Final", "Final"] as const;
-    const termStats = terms.map((term) => {
-      const examsForTerm = allExamsList.filter(
-        (e: any) => String(e.term || "").toLowerCase() === term.toLowerCase()
-      );
-      const isScheduled = examsForTerm.length > 0;
-      return {
-        term,
-        isScheduled,
-        count: examsForTerm.length,
-        firstDate: examsForTerm[0]?.examDate || null,
-      };
-    });
-
-    const nextUnscheduled = termStats.find((t) => !t.isScheduled);
-
-    return {
-      termStats,
-      nextUnscheduled: nextUnscheduled || null,
-      allScheduled: termStats.every((t) => t.isScheduled),
-    };
-  })();
 
   return (
     <motion.div
@@ -456,10 +479,10 @@ export function DashboardPage() {
         </>
       )}
 
-      {/* -------------------- ADMIN & PROGRAM HEAD VIEW (DAILY OPERATIONS MONITOR) -------------------- */}
+      {/* -------------------- ADMIN & PROGRAM HEAD VIEW (DAILY OPERATIONS FOCUS) -------------------- */}
       {(role === "admin" || role === "program_head") && (
         <>
-          {/* Hero / Header Summary with Dynamic Date Banner */}
+          {/* Hero Header with Date Banner */}
           <div className="daily-hero-banner">
             <div className="daily-hero-left">
               <button
@@ -492,8 +515,8 @@ export function DashboardPage() {
                 </h1>
                 <p>
                   {role === "program_head"
-                    ? `Assigned Program: ${selectedProgram.label} (${selectedProgram.key || "ITP"}) · Real-Time Daily Operations Focus`
-                    : `Active Program Focus: ${selectedProgram.label} (${selectedProgram.shortLabel || "Collegiate Scope"}) · Daily Timetable Operations`}
+                    ? `Assigned Program: ${selectedProgram.label} (${selectedProgram.key || "ITP"}) · Real-Time Daily Operations`
+                    : `Active Focus: ${selectedProgram.label} (${selectedProgram.shortLabel || "Collegiate Scope"}) · Daily Timetable Operations`}
                 </p>
               </div>
             </div>
@@ -583,9 +606,9 @@ export function DashboardPage() {
             </div>
           </div>
 
-          {/* Primary Area (70% width) vs Secondary Aside (30% width) */}
+          {/* Primary Main Area (Today's Schedule) vs Secondary Aside */}
           <div className="daily-ops-layout">
-            {/* Primary Area: Today's Schedule (70% width) */}
+            {/* Primary Main: Today's Schedule */}
             <section className="daily-ops-main">
               <article className="card daily-today-card">
                 <div className="card__header" style={{ marginBottom: 16 }}>
@@ -626,9 +649,9 @@ export function DashboardPage() {
                     <div className="today-empty-icon">
                       <CalendarCheck size={28} />
                     </div>
-                    <p className="today-empty-title">No classes scheduled for today</p>
+                    <p className="today-empty-title">No schedules for today.</p>
                     <p className="today-empty-desc">
-                      There are no class sessions scheduled for {selectedProgram.label} on {currentDayName}. You can view or add classes in the full schedules workspace.
+                      No classes scheduled for today on {currentDayName}. You can view, create, or manage classes in the full schedules workspace.
                     </p>
                     <button
                       type="button"
@@ -642,13 +665,168 @@ export function DashboardPage() {
                   </div>
                 ) : (
                   <div className="today-schedule-list">
-                    {todayClasses.map((item: any, idx: number) => {
-                      const isOngoing = ongoingClasses.some((og: any) => og.id === item.id);
+                    {timeGroups.map((group) => {
+                      const isStacked = group.items.length > 1;
+
+                      if (isStacked) {
+                        return (
+                          <div
+                            key={group.time}
+                            className={`today-time-group ${group.hasCollision ? "has-collision" : ""}`}
+                          >
+                            <div className="today-time-group-header">
+                              <div className="today-time-group-title">
+                                <div className="today-sched-time-badge">
+                                  <Clock size={14} />
+                                  <span>{group.time}</span>
+                                </div>
+                                {group.isOngoing && (
+                                  <span className="today-live-tag">
+                                    <span className="pulse-dot" /> LIVE NOW
+                                  </span>
+                                )}
+                                <span className="pill pill--royal" style={{ fontSize: "0.74rem" }}>
+                                  <Layers size={12} />
+                                  <span>{group.items.length} Concurrent Classes</span>
+                                </span>
+                              </div>
+
+                              {group.hasCollision && (
+                                <span className="pill pill--danger" style={{ fontSize: "0.72rem" }} title={group.collisionReason}>
+                                  <AlertTriangle size={12} /> {group.collisionReason || "Room Collision Detected"}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="today-time-group-items">
+                              {group.items.map((item: any, idx: number) => {
+                                const mod = String(item.modality || "Face-to-Face");
+                                const isOnline = mod.toLowerCase().includes("online");
+                                const isHybrid = mod.toLowerCase().includes("hybrid");
+                                const isF2F = !isOnline && !isHybrid;
+                                const pillModeClass = isOnline ? "pill--mode-online" : isHybrid ? "pill--mode-hybrid" : "pill--mode-f2f";
+
+                                const isFacultyMissing =
+                                  !item.faculty ||
+                                  item.faculty.trim() === "" ||
+                                  item.faculty.toLowerCase().includes("unassigned") ||
+                                  item.faculty.toLowerCase().includes("tba");
+
+                                const isRoomMissing =
+                                  !item.room ||
+                                  item.room.trim() === "" ||
+                                  item.room.toLowerCase().includes("tba") ||
+                                  item.room.toLowerCase().includes("unassigned");
+
+                                return (
+                                  <div
+                                    key={item.id || idx}
+                                    className="today-schedule-row"
+                                    onClick={() => setViewingSchedule(item)}
+                                    role="button"
+                                    tabIndex={0}
+                                    title="Click to view schedule details"
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter" || e.key === " ") {
+                                        setViewingSchedule(item);
+                                      }
+                                    }}
+                                  >
+                                    {/* Time / Slot Column */}
+                                    <div className="today-sched-time-col">
+                                      <div className="today-sched-time-badge">
+                                        <Clock size={13} />
+                                        <span>{item.time || item.schedule || group.time}</span>
+                                      </div>
+                                      {group.isOngoing && (
+                                        <span className="today-live-tag">
+                                          <span className="pulse-dot" /> LIVE NOW
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    {/* Subject, Section, Faculty, Room Columns */}
+                                    <div className="today-sched-main-col">
+                                      <div className="today-sched-subject-row">
+                                        <div
+                                          className="today-sched-color-dot"
+                                          style={{ backgroundColor: item.color || "var(--srcb-navy)" }}
+                                        />
+                                        <strong className="today-sched-code">
+                                          {item.subjectCode || item.code || "Subject"}
+                                        </strong>
+                                        <span className="today-sched-dash">—</span>
+                                        <span className="today-sched-name">
+                                          {item.subject || item.subjectName || item.name || "Academic Subject"}
+                                        </span>
+                                      </div>
+
+                                      <div className="today-sched-meta-row">
+                                        <span className="today-meta-chip section">
+                                          <GraduationCap size={12} />
+                                          <span>{item.section || "Unassigned"}</span>
+                                        </span>
+
+                                        <span
+                                          className={`today-meta-chip ${
+                                            isFacultyMissing ? "unassigned" : "faculty"
+                                          }`}
+                                        >
+                                          <Users size={12} />
+                                          <span>
+                                            {isFacultyMissing ? "Unassigned Faculty" : item.faculty}
+                                          </span>
+                                        </span>
+
+                                        <span
+                                          className={`today-meta-chip ${
+                                            isRoomMissing ? "unassigned" : "room"
+                                          }`}
+                                        >
+                                          <LayoutGrid size={12} />
+                                          <span>
+                                            {isRoomMissing
+                                              ? "Unassigned Room"
+                                              : item.room}
+                                          </span>
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {/* Right Modality & View Column */}
+                                    <div className="today-sched-right-col">
+                                      <span className={`pill ${pillModeClass}`}>
+                                        {isOnline ? <Globe size={11} /> : isF2F ? <Building2 size={11} /> : null}
+                                        <span>{mod}</span>
+                                      </span>
+                                      <button
+                                        type="button"
+                                        className="secondary-button today-sched-view-btn"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setViewingSchedule(item);
+                                        }}
+                                      >
+                                        <Eye size={12} />
+                                        <span>Details</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // Single schedule at this time slot
+                      const item = group.items[0];
+                      const isOngoing = group.isOngoing;
                       const mod = String(item.modality || "Face-to-Face");
-                      let pillClass = "pill--f2f";
-                      if (mod.toLowerCase().includes("online")) pillClass = "pill--online";
-                      else if (mod.toLowerCase().includes("hybrid")) pillClass = "pill--hybrid";
-                      else if (mod.toLowerCase().includes("conflict")) pillClass = "pill--conflict";
+                      const isOnline = mod.toLowerCase().includes("online");
+                      const isHybrid = mod.toLowerCase().includes("hybrid");
+                      const isF2F = !isOnline && !isHybrid;
+                      const pillModeClass = isOnline ? "pill--mode-online" : isHybrid ? "pill--mode-hybrid" : "pill--mode-f2f";
 
                       const isFacultyMissing =
                         !item.faculty ||
@@ -664,7 +842,7 @@ export function DashboardPage() {
 
                       return (
                         <div
-                          key={item.id || idx}
+                          key={item.id || group.time}
                           className={`today-schedule-row ${isOngoing ? "is-ongoing" : ""}`}
                           onClick={() => setViewingSchedule(item)}
                           role="button"
@@ -680,7 +858,7 @@ export function DashboardPage() {
                           <div className="today-sched-time-col">
                             <div className="today-sched-time-badge">
                               <Clock size={13} />
-                              <span>{item.time || item.schedule || "TBA"}</span>
+                              <span>{item.time || item.schedule || group.time}</span>
                             </div>
                             {isOngoing && (
                               <span className="today-live-tag">
@@ -731,7 +909,7 @@ export function DashboardPage() {
                                 <span>
                                   {isRoomMissing
                                     ? "Unassigned Room"
-                                    : `${item.room}${item.building ? ` (${item.building})` : ""}`}
+                                    : item.room}
                                 </span>
                               </span>
                             </div>
@@ -739,8 +917,9 @@ export function DashboardPage() {
 
                           {/* Right Modality & View Column */}
                           <div className="today-sched-right-col">
-                            <span className={`pill ${pillClass}`}>
-                              {mod}
+                            <span className={`pill ${pillModeClass}`}>
+                              {isOnline ? <Globe size={11} /> : isF2F ? <Building2 size={11} /> : null}
+                              <span>{mod}</span>
                             </span>
                             <button
                               type="button"
@@ -762,7 +941,7 @@ export function DashboardPage() {
               </article>
             </section>
 
-            {/* Secondary Aside: Immediate Attention (30% width) */}
+            {/* Secondary Aside: Immediate Attention */}
             <aside className="daily-ops-aside">
               <article className="card attention-card">
                 <div className="attention-header">
@@ -967,8 +1146,8 @@ export function DashboardPage() {
                             <span
                               className={`pill ${
                                 String(item.modality || "").toLowerCase().includes("online")
-                                  ? "pill--online"
-                                  : "pill--f2f"
+                                  ? "pill--mode-online"
+                                  : "pill--mode-f2f"
                               }`}
                               style={{ fontSize: "0.7rem" }}
                             >
@@ -1001,193 +1180,6 @@ export function DashboardPage() {
               </article>
             </div>
           )}
-
-          {/* Proactive Examination Period Status & Sequence Tracking Card */}
-          <div style={{ marginTop: 24 }}>
-            <article
-              className="card"
-              style={{
-                padding: "20px 24px",
-                border: "1px solid var(--srcb-border)",
-                boxShadow: "0 4px 12px rgba(15, 23, 42, 0.04)",
-              }}
-            >
-              <div className="card__header" style={{ marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ padding: 8, borderRadius: 8, background: "rgba(13, 84, 153, 0.1)", color: "var(--srcb-navy)" }}>
-                    <CalendarCheck size={20} />
-                  </div>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: "1.05rem", color: "var(--srcb-navy)", fontWeight: 700 }}>
-                      Examination Schedule Period Tracking
-                    </h3>
-                    <p style={{ margin: "2px 0 0", fontSize: "0.8rem", color: "var(--srcb-text-muted)" }}>
-                      Proactive examination period progression and scheduling status across academic terms
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="secondary-button"
-                  style={{ fontSize: "0.8rem", padding: "6px 12px" }}
-                  onClick={() => navigate("/exams")}
-                >
-                  <span>Open Exam Hub</span>
-                  <ChevronRight size={14} />
-                </button>
-              </div>
-
-              {/* 4 Term Indicators (Prelim, Midterm, Semi-Final, Final) */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
-                {examPeriodStatus.termStats.map((item) => {
-                  const isNext = examPeriodStatus.nextUnscheduled?.term === item.term;
-                  return (
-                    <div
-                      key={item.term}
-                      style={{
-                        padding: "14px 16px",
-                        borderRadius: 8,
-                        border: `1px solid ${
-                          item.isScheduled
-                            ? "rgba(16, 185, 129, 0.3)"
-                            : isNext
-                              ? "rgba(245, 158, 11, 0.4)"
-                              : "var(--srcb-border)"
-                        }`,
-                        background: item.isScheduled
-                          ? "rgba(16, 185, 129, 0.04)"
-                          : isNext
-                            ? "rgba(245, 158, 11, 0.05)"
-                            : "var(--srcb-surface)",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 6,
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span style={{ fontSize: "0.88rem", fontWeight: 700, color: "var(--srcb-navy)" }}>
-                          {item.term}
-                        </span>
-                        {item.isScheduled ? (
-                          <span
-                            style={{
-                              fontSize: "0.72rem",
-                              fontWeight: 700,
-                              color: "#059669",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 4,
-                              background: "rgba(16, 185, 129, 0.12)",
-                              padding: "2px 8px",
-                              borderRadius: 12,
-                            }}
-                          >
-                            <CheckCircle2 size={12} /> Scheduled
-                          </span>
-                        ) : isNext ? (
-                          <span
-                            style={{
-                              fontSize: "0.72rem",
-                              fontWeight: 700,
-                              color: "#d97706",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 4,
-                              background: "rgba(245, 158, 11, 0.12)",
-                              padding: "2px 8px",
-                              borderRadius: 12,
-                            }}
-                          >
-                            <AlertTriangle size={12} /> Schedule Not Set
-                          </span>
-                        ) : (
-                          <span
-                            style={{
-                              fontSize: "0.72rem",
-                              fontWeight: 600,
-                              color: "var(--srcb-text-muted)",
-                              background: "rgba(148, 163, 184, 0.1)",
-                              padding: "2px 8px",
-                              borderRadius: 12,
-                            }}
-                          >
-                            Upcoming
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: "0.78rem", color: "var(--srcb-text-muted)" }}>
-                        {item.isScheduled
-                          ? `${item.count} scheduled session${item.count > 1 ? "s" : ""}${item.firstDate ? ` • ${item.firstDate}` : ""}`
-                          : isNext
-                            ? "Pending proctor & room assignments"
-                            : "Scheduled in academic progression"}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Proactive Reminder Banner if Next Term is Not Scheduled */}
-              {examPeriodStatus.nextUnscheduled && (
-                <div
-                  style={{
-                    marginTop: 16,
-                    padding: "12px 16px",
-                    borderRadius: 8,
-                    background: "rgba(245, 158, 11, 0.08)",
-                    border: "1px solid rgba(245, 158, 11, 0.25)",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    gap: 12,
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <AlertTriangle size={18} style={{ color: "#d97706", flexShrink: 0 }} />
-                    <div>
-                      <strong style={{ fontSize: "0.85rem", color: "#b45309" }}>
-                        Action Reminder: {examPeriodStatus.nextUnscheduled.term} examination schedule has not been set yet.
-                      </strong>
-                      <div style={{ fontSize: "0.78rem", color: "var(--srcb-text)", marginTop: 2 }}>
-                        Please prepare examination dates, proctors, and multi-program room assignments for {examPeriodStatus.nextUnscheduled.term}.
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    <button
-                      type="button"
-                      className="action-button"
-                      style={{ fontSize: "0.8rem", padding: "6px 14px" }}
-                      onClick={() => navigate(`/exams?term=${examPeriodStatus.nextUnscheduled?.term}`)}
-                    >
-                      <CalendarRange size={14} />
-                      <span>Set {examPeriodStatus.nextUnscheduled.term} Schedule</span>
-                    </button>
-                    {examPeriodStatus.termStats.some((t) => t.isScheduled) && (
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        style={{ fontSize: "0.8rem", padding: "6px 14px", display: "flex", alignItems: "center", gap: 6 }}
-                        onClick={() =>
-                          navigate(
-                            `/exams?term=${examPeriodStatus.nextUnscheduled?.term}&copyFrom=${
-                              examPeriodStatus.termStats.find((t) => t.isScheduled)?.term || "Prelim"
-                            }`
-                          )
-                        }
-                      >
-                        <Copy size={14} />
-                        <span>
-                          Copy {examPeriodStatus.termStats.find((t) => t.isScheduled)?.term || "Prelim"} as Template
-                        </span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </article>
-          </div>
         </>
       )}
 
@@ -1281,4 +1273,3 @@ export function DashboardPage() {
     </motion.div>
   );
 }
-

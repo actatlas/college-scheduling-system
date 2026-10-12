@@ -170,6 +170,8 @@ export interface SectionItem {
   status?: string
 }
 
+export type ScheduleStatus = 'DRAFT' | 'FINALIZED' | 'PUBLISHED'
+
 export interface ClassScheduleItem {
   id: string
   day: string
@@ -196,7 +198,7 @@ export interface ClassScheduleItem {
   onlineLink?: string
   isMajor?: boolean
   color: string
-  status?: 'Confirmed' | 'Draft'
+  status?: ScheduleStatus | 'Confirmed' | 'Draft' | string
   isCombinedCohort?: boolean
 }
 

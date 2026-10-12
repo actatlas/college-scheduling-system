@@ -240,7 +240,7 @@ describe("SchedulesPage Institutional Class Durations", () => {
     expect(await screen.findByText(/Create Class Schedule - Step 1/i)).toBeInTheDocument();
 
     // Select major subject IT101 from SearchableSelect dropdown
-    const subjectTrigger = screen.getByRole("button", { name: /GE101 - Understanding the Self/i });
+    const subjectTrigger = document.getElementById("schedSubject")?.parentElement?.querySelector("button") as HTMLElement;
     fireEvent.click(subjectTrigger);
 
     const majorOption = await screen.findByRole("option", { name: /IT101 - Computer Programming 1/i });

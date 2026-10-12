@@ -1,5 +1,25 @@
 const { query } = require('../utils/db');
 const { resolveUserProgramScope, isProgramMatch } = require('../utils/programScope');
+const { logAction } = require('./systemLogs.service');
+const { notificationsService } = require('./notifications.service');
+const { dispatchScheduleToFaculty } = require('./facultyDispatch.service');
+
+let tableEnsured = false;
+async function ensureSchedulesTable() {
+  if (tableEnsured) return;
+  try {
+    await query("ALTER TABLE schedules ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'DRAFT'");
+  } catch {}
+  tableEnsured = true;
+}
+
+function normalizeScheduleStatus(status) {
+  if (!status) return 'DRAFT';
+  const str = String(status).trim().toUpperCase();
+  if (str === 'PUBLISHED' || str === 'CONFIRMED') return 'PUBLISHED';
+  if (str === 'FINALIZED') return 'FINALIZED';
+  return 'DRAFT';
+}
 
 const VALID_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -275,12 +295,11 @@ async function validateSchedulePayload({
     const hasAliasMatch = isGeneralEd || secAliases.some((sa) => subAliases.some((sb) => sa === sb || sa.includes(sb) || sb.includes(sa)));
 
     if (!hasAliasMatch && subProg && secCourse && subProg !== secCourse && !secCourse.includes(subProg) && !subProg.includes(secCourse)) {
-      const [courseMatch] = await query('SELECT code FROM courses WHERE code = ? AND program_code = ? LIMIT 1', [sectionRow.course_code, subjectRow.program_code]);
-      const [majorMatch] = await query('SELECT code FROM program_majors WHERE code = ? AND program_code = ? LIMIT 1', [sectionRow.course_code, subjectRow.program_code]);
+      const [majorMatch] = await query('SELECT code FROM program_majors WHERE code = ? AND program_code = ? LIMIT 1', [sectionRow.course_code || sectionRow.program_code, subjectRow.program_code]);
       const allMajors = await query('SELECT program_code, code FROM program_majors WHERE program_head_id IS NOT NULL OR code IS NOT NULL');
       const matchingFromAll = Array.isArray(allMajors) && allMajors.some((m) => String(m.code).toUpperCase() === secCourse && String(m.program_code).toUpperCase() === subProg);
-      if (!courseMatch && !majorMatch && !matchingFromAll) {
-        const err = new Error(`Subject "${subjectRow.code}" (${subProg}) is not part of the curriculum for section "${sectionRow.course_code} ${sectionRow.year_level}-${sectionRow.section_label}".`);
+      if (!majorMatch && !matchingFromAll) {
+        const err = new Error(`Subject "${subjectRow.code}" (${subProg}) is not part of the curriculum for section "${sectionRow.course_code || sectionRow.program_code} ${sectionRow.year_level}-${sectionRow.section_label}".`);
         err.statusCode = 400;
         err.code = 'INVALID_SUBJECT_SECTION_RELATIONSHIP';
         throw err;
@@ -368,10 +387,12 @@ async function validateSchedulePayload({
 }
 
 async function listSchedules({ user, department, facultyId, program } = {}) {
+  await ensureSchedulesTable();
   let sql = `SELECT sc.id, sc.day,
             sc.start_time,
             sc.end_time,
             sc.subject_code,
+            COALESCE(sc.status, 'DRAFT') AS status,
             COALESCE(sub.name, sc.subject_code) AS subject_name,
             sub.program_code,
             sub.lab_hours,
@@ -453,8 +474,8 @@ async function listSchedules({ user, department, facultyId, program } = {}) {
     const orConds = [];
     if (progCodes.length > 0) {
       const placeholders = progCodes.map(() => '?').join(',');
-      orConds.push(`(sub.program_code IN (${placeholders}) OR sec.course_code IN (SELECT code FROM courses WHERE program_code IN (${placeholders})) OR sec.course_code IN (${placeholders}))`);
-      params.push(...progCodes, ...progCodes, ...progCodes);
+      orConds.push(`(sub.program_code IN (${placeholders}) OR sec.program_code IN (${placeholders}) OR sec.course_code IN (${placeholders}) OR sec.major_id IN (SELECT id FROM program_majors WHERE program_code IN (${placeholders})))`);
+      params.push(...progCodes, ...progCodes, ...progCodes, ...progCodes);
     }
 
     const teacherId = user?.teacherId || null;
@@ -534,7 +555,7 @@ async function listSchedules({ user, department, facultyId, program } = {}) {
       academicYear: s.academic_year_name || '2026-2027',
       modality: resolvedModality,
       color: isOnlineModality ? '#059669' : (s.color || '#2563eb'),
-      status: 'Confirmed'
+      status: normalizeScheduleStatus(s.status),
     };
   });
 }
@@ -593,6 +614,7 @@ async function resolveScheduleFKs({ subjectCode, facultyId, faculty, roomNumber,
 }
 
 async function createSchedule(payload, user) {
+  await ensureSchedulesTable();
   if (user && String(user.role).toLowerCase() === 'teacher') {
     const err = new Error('Teachers have read-only access and cannot create schedules.');
     err.statusCode = 403;
@@ -615,6 +637,7 @@ async function createSchedule(payload, user) {
     room,
     room_number,
     color,
+    status,
   } = payload;
 
   const rawSubjectCode = subject_code || subjectCode;
@@ -661,10 +684,12 @@ async function createSchedule(payload, user) {
     ? color
     : getProgramColor(validated.subjectRow?.program_code || validated.sectionRow?.course_code || validSubjectCode);
 
+  const initialStatus = status ? normalizeScheduleStatus(status) : 'DRAFT';
+
   const res = await query(
-    `INSERT INTO schedules (day, start_time, end_time, subject_code, section_id, faculty_id, room_number, color)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [validated.day, validated.start, validated.end, validSubjectCode, validSectionId, validFacultyId, validRoomNumber, finalColor]
+    `INSERT INTO schedules (day, start_time, end_time, subject_code, section_id, faculty_id, room_number, color, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [validated.day, validated.start, validated.end, validSubjectCode, validSectionId, validFacultyId, validRoomNumber, finalColor, initialStatus]
   );
 
   const insertObj = Array.isArray(res) ? res[0] : res;
@@ -678,11 +703,13 @@ async function createSchedule(payload, user) {
     room: validRoomNumber || rawRoom || '',
     facultyId: validFacultyId || '',
     sectionId: validSectionId ? String(validSectionId) : '',
-    color: finalColor
+    color: finalColor,
+    status: initialStatus,
   };
 }
 
-async function updateSchedule(id, payload, user) {
+async function updateSchedule(id, payload, user, req = null) {
+  await ensureSchedulesTable();
   if (user && String(user.role).toLowerCase() === 'teacher') {
     const err = new Error('Teachers have read-only access and cannot update schedules.');
     err.statusCode = 403;
@@ -690,23 +717,24 @@ async function updateSchedule(id, payload, user) {
     throw err;
   }
 
+  const [schedRow] = await query(
+    `SELECT sc.id, sc.day, sc.start_time, sc.end_time, sc.subject_code, sc.faculty_id, sc.room_number, sc.status,
+            sub.program_code, sec.course_code
+     FROM schedules sc
+     LEFT JOIN subjects sub ON sub.code = sc.subject_code
+     LEFT JOIN sections sec ON sec.id = sc.section_id
+     WHERE sc.id = ? LIMIT 1`,
+    [id]
+  );
+
+  if (!schedRow) {
+    const err = new Error('Schedule not found');
+    err.statusCode = 404;
+    err.code = 'SCHEDULE_NOT_FOUND';
+    throw err;
+  }
+
   if (user && String(user.role).toLowerCase() === 'program_head') {
-    const [schedRow] = await query(
-      `SELECT sc.id, sub.program_code, sec.course_code
-       FROM schedules sc
-       LEFT JOIN subjects sub ON sub.code = sc.subject_code
-       LEFT JOIN sections sec ON sec.id = sc.section_id
-       WHERE sc.id = ? LIMIT 1`,
-      [id]
-    );
-
-    if (!schedRow) {
-      const err = new Error('Schedule not found');
-      err.statusCode = 404;
-      err.code = 'SCHEDULE_NOT_FOUND';
-      throw err;
-    }
-
     const scope = resolveUserProgramScope(user);
     const subProg = String(schedRow.program_code || '').toUpperCase();
     const secProg = String(schedRow.course_code || '').toUpperCase();
@@ -734,6 +762,8 @@ async function updateSchedule(id, payload, user) {
     room,
     room_number,
     color,
+    status,
+    notifyFaculty,
   } = payload;
 
   const rawSubjectCode = subject_code || subjectCode;
@@ -777,10 +807,34 @@ async function updateSchedule(id, payload, user) {
     is_combined_cohort: Boolean(payload.is_combined_cohort || payload.isCombinedCohort),
   });
 
+  const nextStatus = status ? normalizeScheduleStatus(status) : normalizeScheduleStatus(schedRow.status);
+
   await query(
-    `UPDATE schedules SET day = ?, start_time = ?, end_time = ?, subject_code = ?, section_id = ?, faculty_id = ?, room_number = ?, color = ? WHERE id = ?`,
-    [validated.day, validated.start, validated.end, validSubjectCode, validSectionId, validFacultyId, validRoomNumber, color || '#2563eb', id]
+    `UPDATE schedules SET day = ?, start_time = ?, end_time = ?, subject_code = ?, section_id = ?, faculty_id = ?, room_number = ?, color = ?, status = ? WHERE id = ?`,
+    [validated.day, validated.start, validated.end, validSubjectCode, validSectionId, validFacultyId, validRoomNumber, color || '#2563eb', nextStatus, id]
   );
+
+  // If already published schedule was modified:
+  // Identify affected faculty and send updated schedule notification if nextStatus is PUBLISHED
+  const wasPublished = normalizeScheduleStatus(schedRow.status) === 'PUBLISHED';
+  if (wasPublished && nextStatus === 'PUBLISHED' && (notifyFaculty || notifyFaculty !== false)) {
+    try {
+      const affectedFacultyIds = new Set();
+      if (schedRow.faculty_id) affectedFacultyIds.add(schedRow.faculty_id);
+      if (validFacultyId) affectedFacultyIds.add(validFacultyId);
+
+      for (const fId of affectedFacultyIds) {
+        await dispatchScheduleToFaculty({
+          teacherId: fId,
+          req,
+          isUpdated: true,
+          customNotes: `Updated Schedule Notification: The class assignment for ${validSubjectCode} has been modified (${validated.day} ${validated.start.slice(0, 5)}-${validated.end.slice(0, 5)}, Room: ${validRoomNumber || 'TBD'}).`,
+        });
+      }
+    } catch (e) {
+      // Gracefully continue
+    }
+  }
 
   return {
     id: String(id),
@@ -790,11 +844,252 @@ async function updateSchedule(id, payload, user) {
     room: validRoomNumber || rawRoom || '',
     facultyId: validFacultyId || '',
     sectionId: validSectionId ? String(validSectionId) : '',
-    color: color || '#2563eb'
+    color: color || '#2563eb',
+    status: nextStatus,
+  };
+}
+
+async function finalizeSchedule(id, user, req = null) {
+  await ensureSchedulesTable();
+  const userRole = String(user?.role || '').toLowerCase();
+  if (userRole === 'teacher') {
+    const err = new Error('Teachers are not authorized to finalize schedules.');
+    err.statusCode = 403;
+    err.code = 'UNAUTHORIZED_ROLE';
+    throw err;
+  }
+
+  const [sched] = await query(
+    `SELECT sc.*, sub.name AS subject_name, sub.program_code, sec.course_code
+     FROM schedules sc
+     LEFT JOIN subjects sub ON sub.code = sc.subject_code
+     LEFT JOIN sections sec ON sec.id = sc.section_id
+     WHERE sc.id = ? LIMIT 1`,
+    [id]
+  );
+
+  if (!sched) {
+    const err = new Error('Schedule not found');
+    err.statusCode = 404;
+    err.code = 'SCHEDULE_NOT_FOUND';
+    throw err;
+  }
+
+  if (userRole === 'program_head') {
+    const scope = resolveUserProgramScope(user);
+    const subProg = String(sched.program_code || '').toUpperCase();
+    const secProg = String(sched.course_code || '').toUpperCase();
+    const isAllowed = scope.allowedProgramCodes.some((code) => isProgramMatch(subProg, code) || isProgramMatch(secProg, code));
+    if (!isAllowed) {
+      const err = new Error(`Unauthorized: Program Heads can only finalize schedules within their assigned program (${scope.allowedProgramCodes.join(', ')}).`);
+      err.statusCode = 403;
+      err.code = 'UNAUTHORIZED_PROGRAM_ACCESS';
+      throw err;
+    }
+  }
+
+  // Check conflicts
+  const conflicts = await detectConflicts({ user });
+  const hasClash = conflicts.some((c) => c.severity === 'High' && c.id?.includes(`-${sched.id}`));
+  if (hasClash) {
+    const err = new Error('Cannot finalize schedule with active timetable collisions. Please resolve conflicts first.');
+    err.statusCode = 409;
+    err.code = 'UNRESOLVED_CONFLICTS';
+    throw err;
+  }
+
+  await query('UPDATE schedules SET status = "FINALIZED" WHERE id = ?', [id]);
+
+  await logAction({
+    req,
+    user,
+    module: 'Class Scheduling',
+    action: 'Finalized Class Schedule',
+    description: `Class schedule #${id} (${sched.subject_code} - ${sched.day} ${String(sched.start_time).slice(0, 5)}) marked as FINALIZED.`,
+    targetId: id,
+    targetType: 'Schedule',
+    status: 'Success',
+  });
+
+  return { id: String(id), status: 'FINALIZED', message: 'Schedule successfully finalized.' };
+}
+
+async function publishSchedule(id, { notifyFaculty = true, customNotes = '' } = {}, user, req = null) {
+  await ensureSchedulesTable();
+  const userRole = String(user?.role || '').toLowerCase();
+  if (userRole !== 'admin' && userRole !== 'super_admin' && userRole !== 'dsa') {
+    const err = new Error('Only Central Academic Administrators (Admin/DSA) can publish official schedules.');
+    err.statusCode = 403;
+    err.code = 'UNAUTHORIZED_ROLE';
+    throw err;
+  }
+
+  const [sched] = await query(
+    `SELECT sc.*, sub.name AS subject_name, sub.program_code, sec.course_code
+     FROM schedules sc
+     LEFT JOIN subjects sub ON sub.code = sc.subject_code
+     LEFT JOIN sections sec ON sec.id = sc.section_id
+     WHERE sc.id = ? LIMIT 1`,
+    [id]
+  );
+
+  if (!sched) {
+    const err = new Error('Schedule not found');
+    err.statusCode = 404;
+    err.code = 'SCHEDULE_NOT_FOUND';
+    throw err;
+  }
+
+  // Revalidate conflicts before publishing
+  const conflicts = await detectConflicts({ user });
+  const hasClash = conflicts.some((c) => c.severity === 'High' && c.id?.includes(`-${sched.id}`));
+  if (hasClash) {
+    const err = new Error('Cannot publish schedule with active timetable collisions. Please resolve conflicts first.');
+    err.statusCode = 409;
+    err.code = 'UNRESOLVED_CONFLICTS';
+    throw err;
+  }
+
+  await query('UPDATE schedules SET status = "PUBLISHED" WHERE id = ?', [id]);
+
+  let facultyDispatched = false;
+  if (notifyFaculty && sched.faculty_id) {
+    try {
+      await dispatchScheduleToFaculty({
+        teacherId: sched.faculty_id,
+        req,
+        customNotes: customNotes || 'Your official teaching schedule has been published.',
+      });
+      facultyDispatched = true;
+    } catch (e) {
+      // Log failure but proceed
+    }
+  }
+
+  // Dispatches role notification to Program Head
+  try {
+    const prog = sched.program_code || sched.course_code || 'ITP';
+    await notificationsService.createNotification({
+      type: 'schedule_update',
+      title: 'Schedule Published',
+      message: `Official schedule for ${sched.subject_code} (${sched.day} ${String(sched.start_time).slice(0, 5)}) has been published by Admin.`,
+      targetRole: 'program_head',
+      targetProgram: prog,
+    });
+  } catch {}
+
+  await logAction({
+    req,
+    user,
+    module: 'Class Scheduling',
+    action: 'Published Class Schedule',
+    description: `Official class schedule #${id} (${sched.subject_code}) published.${facultyDispatched ? ' Faculty notified via Gmail.' : ''}`,
+    targetId: id,
+    targetType: 'Schedule',
+    status: 'Success',
+    details: { facultyDispatched, notifyFaculty },
+  });
+
+  return { id: String(id), status: 'PUBLISHED', facultyDispatched, message: 'Schedule successfully published.' };
+}
+
+async function bulkUpdateScheduleStatus({ ids = [], program = null, status = 'FINALIZED', notifyFaculty = false, customNotes = '' }, user, req = null) {
+  await ensureSchedulesTable();
+  const userRole = String(user?.role || '').toLowerCase();
+  const normStatus = normalizeScheduleStatus(status);
+
+  if (normStatus === 'PUBLISHED' && userRole !== 'admin' && userRole !== 'super_admin' && userRole !== 'dsa') {
+    const err = new Error('Only Central Academic Administrators (Admin/DSA) can publish official schedules.');
+    err.statusCode = 403;
+    err.code = 'UNAUTHORIZED_ROLE';
+    throw err;
+  }
+
+  if (userRole === 'teacher') {
+    const err = new Error('Teachers are not authorized to update schedule status.');
+    err.statusCode = 403;
+    err.code = 'UNAUTHORIZED_ROLE';
+    throw err;
+  }
+
+  let targetIds = [];
+  if (Array.isArray(ids) && ids.length > 0) {
+    targetIds = ids.map(Number);
+  } else if (program) {
+    const rows = await query(
+      `SELECT sc.id FROM schedules sc
+       LEFT JOIN subjects sub ON sub.code = sc.subject_code
+       LEFT JOIN sections sec ON sec.id = sc.section_id
+       WHERE sub.program_code = ? OR sec.course_code = ?`,
+      [program, program]
+    );
+    targetIds = rows.map((r) => r.id);
+  } else {
+    const rows = await query('SELECT id FROM schedules');
+    targetIds = rows.map((r) => r.id);
+  }
+
+  if (userRole === 'program_head') {
+    const scope = resolveUserProgramScope(user);
+    const validRows = await query(
+      `SELECT sc.id, sub.program_code, sec.course_code FROM schedules sc
+       LEFT JOIN subjects sub ON sub.code = sc.subject_code
+       LEFT JOIN sections sec ON sec.id = sc.section_id
+       WHERE sc.id IN (${targetIds.map(() => '?').join(',') || '0'})`,
+      targetIds
+    );
+    targetIds = validRows
+      .filter((r) => scope.allowedProgramCodes.some((code) => isProgramMatch(r.program_code, code) || isProgramMatch(r.course_code, code)))
+      .map((r) => r.id);
+  }
+
+  if (targetIds.length === 0) {
+    return { updatedCount: 0, status: normStatus, message: 'No schedules matched the criteria.' };
+  }
+
+  const placeholders = targetIds.map(() => '?').join(',');
+  await query(`UPDATE schedules SET status = ? WHERE id IN (${placeholders})`, [normStatus, ...targetIds]);
+
+  let facultyNotifiedCount = 0;
+  if (normStatus === 'PUBLISHED' && notifyFaculty) {
+    const facRows = await query(
+      `SELECT DISTINCT sc.faculty_id FROM schedules sc WHERE sc.id IN (${placeholders}) AND sc.faculty_id IS NOT NULL`,
+      targetIds
+    );
+    for (const f of facRows) {
+      if (f.faculty_id) {
+        try {
+          await dispatchScheduleToFaculty({
+            teacherId: f.faculty_id,
+            req,
+            customNotes: customNotes || `Official academic schedules for AY 2026-2027 have been published.`,
+          });
+          facultyNotifiedCount += 1;
+        } catch {}
+      }
+    }
+  }
+
+  await logAction({
+    req,
+    user,
+    module: 'Class Scheduling',
+    action: `Bulk Updated Schedules to ${normStatus}`,
+    description: `Updated ${targetIds.length} schedules to status "${normStatus}".${facultyNotifiedCount > 0 ? ` Notified ${facultyNotifiedCount} faculty members.` : ''}`,
+    status: 'Success',
+    details: { count: targetIds.length, status: normStatus, facultyNotifiedCount },
+  });
+
+  return {
+    updatedCount: targetIds.length,
+    status: normStatus,
+    facultyNotifiedCount,
+    message: `Successfully updated ${targetIds.length} schedules to ${normStatus}.`,
   };
 }
 
 async function deleteSchedule(id, user) {
+  await ensureSchedulesTable();
   if (user && String(user.role).toLowerCase() === 'teacher') {
     const err = new Error('Teachers have read-only access and cannot delete schedules.');
     err.statusCode = 403;
@@ -1136,6 +1431,10 @@ const schedulesService = {
   createSchedule,
   deleteSchedule,
   updateSchedule,
+  finalizeSchedule,
+  publishSchedule,
+  bulkUpdateScheduleStatus,
+  normalizeScheduleStatus,
   validateSchedulePayload,
   getExpectedSubjectDuration,
   timesOverlap,

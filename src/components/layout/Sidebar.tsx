@@ -81,7 +81,10 @@ export function Sidebar({ isMobileOpen = false, onClose }: SidebarProps) {
     },
     {
       groupTitle: "Faculty Governance",
-      items: [{ to: "/faculty", label: "Faculty Directory", icon: Users }],
+      items: [
+        { to: "/faculty", label: "Faculty Directory", icon: Users },
+        { to: "/faculty-schedules", label: "Faculty Schedules", icon: CalendarCheck },
+      ],
     },
     {
       groupTitle: "Administration",
@@ -116,7 +119,10 @@ export function Sidebar({ isMobileOpen = false, onClose }: SidebarProps) {
     },
     {
       groupTitle: "Faculty Management",
-      items: [{ to: "/faculty", label: "Major Instructors", icon: Users }],
+      items: [
+        { to: "/faculty", label: "Major Instructors", icon: Users },
+        { to: "/faculty-schedules", label: "Faculty Loading", icon: CalendarCheck },
+      ],
     },
     {
       groupTitle: "Account",

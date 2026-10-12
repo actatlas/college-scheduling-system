@@ -134,6 +134,59 @@ async function listConflicts(req, res, next) {
   }
 }
 
-module.exports = { listSchedules, generateSchedules, listConflicts, createSchedule, deleteSchedule, updateSchedule };
+async function finalizeSchedule(req, res, next) {
+  try {
+    if (!['admin', 'super_admin', 'program_head', 'dsa'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Forbidden. Only Administrators and Program Heads can finalize schedules.', code: 'UNAUTHORIZED_ROLE' });
+    }
+    const id = req.params.id;
+    const result = await schedulesService.finalizeSchedule(id, req.user, req);
+    res.json({ data: result });
+  } catch (err) {
+    if (err?.statusCode) return res.status(err.statusCode).json({ error: err.message, code: err.code || 'VALIDATION_ERROR' });
+    next(err);
+  }
+}
+
+async function publishSchedule(req, res, next) {
+  try {
+    if (!['admin', 'super_admin', 'dsa'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Forbidden. Only Central Academic Administrators (Admin/DSA) can publish official schedules.', code: 'UNAUTHORIZED_ROLE' });
+    }
+    const id = req.params.id;
+    const payload = req.body || {};
+    const result = await schedulesService.publishSchedule(id, payload, req.user, req);
+    res.json({ data: result });
+  } catch (err) {
+    if (err?.statusCode) return res.status(err.statusCode).json({ error: err.message, code: err.code || 'VALIDATION_ERROR' });
+    next(err);
+  }
+}
+
+async function bulkUpdateScheduleStatus(req, res, next) {
+  try {
+    if (!['admin', 'super_admin', 'program_head', 'dsa'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Forbidden. Only Administrators and Program Heads can manage schedule statuses.', code: 'UNAUTHORIZED_ROLE' });
+    }
+    const payload = req.body || {};
+    const result = await schedulesService.bulkUpdateScheduleStatus(payload, req.user, req);
+    res.json({ data: result });
+  } catch (err) {
+    if (err?.statusCode) return res.status(err.statusCode).json({ error: err.message, code: err.code || 'VALIDATION_ERROR' });
+    next(err);
+  }
+}
+
+module.exports = {
+  listSchedules,
+  generateSchedules,
+  listConflicts,
+  createSchedule,
+  deleteSchedule,
+  updateSchedule,
+  finalizeSchedule,
+  publishSchedule,
+  bulkUpdateScheduleStatus,
+};
 
 

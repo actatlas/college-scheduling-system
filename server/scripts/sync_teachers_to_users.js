@@ -27,7 +27,6 @@ async function syncTeachersToUsers() {
 
     // 1. Reassign any subjects referencing placeholder dummy teachers (T-ED-001, etc.) to valid TEP faculty
     await conn.query(`UPDATE subjects SET instructor_id = 'T-ABEJ-G' WHERE instructor_id IN ('T-ED-001', 'T-ED-002', 'T-GEN-001', 'T-GEN-002')`);
-    await conn.query(`DELETE FROM teacher_availability WHERE teacher_id IN ('T-ED-001', 'T-ED-002', 'T-GEN-001', 'T-GEN-002')`);
     await conn.query(`DELETE FROM teachers WHERE id IN ('T-ED-001', 'T-ED-002', 'T-GEN-001', 'T-GEN-002')`);
     await conn.query(`DELETE FROM users WHERE email IN ('johndewey-educ@srcb.edu.ph', 'levvygotsky-educ@srcb.edu.ph', 'socrates-gen@srcb.edu.ph', 'rizal-gen@srcb.edu.ph')`);
 

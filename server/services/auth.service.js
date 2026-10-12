@@ -30,7 +30,6 @@ async function ensureCatalogSeed() {
   }
 
   try {
-    await query("UPDATE courses SET program_code = 'BAP' WHERE program_code = 'BSA'");
     await query("UPDATE subjects SET program_code = 'BAP' WHERE program_code = 'BSA'");
     await query("UPDATE program_majors SET program_code = 'BAP' WHERE program_code = 'BSA'");
     await query("UPDATE users SET program = 'BAP' WHERE program = 'BSA'");

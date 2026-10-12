@@ -548,6 +548,7 @@ export function SchedulesPage() {
   const currentUserName = localStorage.getItem("userName") || "";
   const currentTeacherId = localStorage.getItem("teacherId") || "";
   const canCreate = role === "super_admin" || role === "admin" || role === "program_head";
+  const isAdmin = role === "admin" || role === "super_admin" || role === "dsa";
 
   // Automated Faculty Gmail Dispatch Modal
   const [isGmailDispatchModalOpen, setIsGmailDispatchModalOpen] = useState(false);
@@ -1516,6 +1517,58 @@ export function SchedulesPage() {
     setModalStep(1);
     setIsOpen(true);
     toast.push(`Duplicating schedule for ${item.subjectCode} to ${targetDay}.`, "info");
+  };
+
+  const handleFinalizeSchedule = async (schedule: ClassScheduleItem) => {
+    try {
+      await api.post(`/schedules/${encodeURIComponent(schedule.id)}/finalize`);
+      toast.push(`${schedule.subjectCode} is marked as FINALIZED and ready to publish.`, "success");
+      fetchSchedules();
+    } catch (err: any) {
+      toast.push(err?.response?.data?.error || err.message || "Failed to finalize schedule", "error");
+    }
+  };
+
+  const handlePublishSchedule = async (schedule: ClassScheduleItem) => {
+    try {
+      await api.post(`/schedules/${encodeURIComponent(schedule.id)}/publish`, { notifyFaculty: true });
+      toast.push(`${schedule.subjectCode} is officially PUBLISHED and assigned faculty notified via Gmail.`, "success");
+      fetchSchedules();
+    } catch (err: any) {
+      toast.push(err?.response?.data?.error || err.message || "Failed to publish schedule", "error");
+    }
+  };
+
+  const handleBulkPublishProgram = async () => {
+    try {
+      const prog = matrixProgram !== "All" ? matrixProgram : (selectedProgram?.key || "BSIT");
+      const res = await api.post('/schedules/bulk-status', {
+        program: prog,
+        status: 'PUBLISHED',
+        notifyFaculty: true,
+      });
+      const count = res?.data?.data?.updatedCount ?? 0;
+      const facCount = res?.data?.data?.facultyNotifiedCount ?? 0;
+      toast.push(`Successfully published ${count} schedules for ${prog}.${facCount > 0 ? ` Notified ${facCount} faculty members.` : ''}`, "success");
+      fetchSchedules();
+    } catch (err: any) {
+      toast.push(err?.response?.data?.error || err.message || "Failed to publish program schedules", "error");
+    }
+  };
+
+  const handleBulkFinalizeProgram = async () => {
+    try {
+      const prog = matrixProgram !== "All" ? matrixProgram : (selectedProgram?.key || "BSIT");
+      const res = await api.post('/schedules/bulk-status', {
+        program: prog,
+        status: 'FINALIZED',
+      });
+      const count = res?.data?.data?.updatedCount ?? 0;
+      toast.push(`Successfully finalized ${count} schedules for ${prog}. Ready for publication.`, "success");
+      fetchSchedules();
+    } catch (err: any) {
+      toast.push(err?.response?.data?.error || err.message || "Failed to finalize program schedules", "error");
+    }
   };
 
   const executeDelete = async () => {
@@ -2497,6 +2550,31 @@ export function SchedulesPage() {
                           (Starts at 7:00 AM or 7:30 AM)
                         </span>
                       </div>
+
+                      {isAdmin && (
+                        <>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={handleBulkFinalizeProgram}
+                            style={{ padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: "0.82rem", color: "var(--srcb-navy)" }}
+                            title={`Finalize all schedules for ${matrixProgram !== 'All' ? matrixProgram : (selectedProgram?.key || 'Program')}`}
+                          >
+                            <ShieldCheck size={14} />
+                            <span>Finalize Program</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="action-button"
+                            onClick={handleBulkPublishProgram}
+                            style={{ padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: "0.82rem" }}
+                            title={`Publish official schedules and notify faculty for ${matrixProgram !== 'All' ? matrixProgram : (selectedProgram?.key || 'Program')}`}
+                          >
+                            <Send size={14} />
+                            <span>Publish Program</span>
+                          </button>
+                        </>
+                      )}
 
                       <button
                         type="button"
@@ -4521,6 +4599,8 @@ export function SchedulesPage() {
               (r.subjectCode && viewingSchedule?.subjectCode && r.subjectCode.toUpperCase() === viewingSchedule.subjectCode.toUpperCase() && (!r.currentDay || r.currentDay.toLowerCase() === viewingSchedule.day.toLowerCase()))
           )
         }
+        onFinalize={handleFinalizeSchedule}
+        onPublish={handlePublishSchedule}
         userRole={role}
       />
 

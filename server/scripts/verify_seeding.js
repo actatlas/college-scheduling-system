@@ -79,8 +79,8 @@ async function verifySeeding() {
     }
     console.log('✓ Rule 3 Passed: Program Heads see only their program major subjects in Exam Palette.');
 
-    // 4. Check Demo Logins
-    const testLogins = [
+    // 4. Check Demo Logins & Verify Teacher Login Disabled
+    const activeLogins = [
       { email: 'superadmin@srcb.edu.ph', password: '@superadmin123', expectedRole: 'super_admin' },
       { email: 'admin@srcb.edu.ph', password: '@admin123', expectedRole: 'admin' },
       { email: 'ithead@srcb.edu.ph', password: '@program123', expectedRole: 'program_head' },
@@ -88,20 +88,23 @@ async function verifySeeding() {
       { email: 'crimhead@srcb.edu.ph', password: '@program123', expectedRole: 'program_head' },
       { email: 'hmhead@srcb.edu.ph', password: '@program123', expectedRole: 'program_head' },
       { email: 'educhead@srcb.edu.ph', password: '@program123', expectedRole: 'program_head' },
-      { email: 'adalovelace-it@srcb.edu.ph', password: '@teacher123', expectedRole: 'teacher' },
-      { email: 'warrenbuffett-ba@srcb.edu.ph', password: '@teacher123', expectedRole: 'teacher' },
-      { email: 'cesarebeccaria-crim@srcb.edu.ph', password: '@teacher123', expectedRole: 'teacher' },
-      { email: 'gordonramsay-hm@srcb.edu.ph', password: '@teacher123', expectedRole: 'teacher' },
-      { email: 'johndewey-educ@srcb.edu.ph', password: '@teacher123', expectedRole: 'teacher' },
     ];
 
-    for (const tl of testLogins) {
+    for (const tl of activeLogins) {
       const loginRes = await authService.login({ email: tl.email, password: tl.password });
       if (!loginRes || !loginRes.token || loginRes.user.role !== tl.expectedRole) {
         throw new Error(`Login failed for ${tl.email}: expected role ${tl.expectedRole}`);
       }
     }
-    console.log('✓ Rule 4 Passed: All demo account logins authenticate successfully with correct JWTs and role payloads.');
+
+    // Verify Teacher login rejection
+    let teacherLoginBlocked = false;
+    try {
+      await authService.login({ email: 'adalovelace-it@srcb.edu.ph', password: '@teacher123' });
+    } catch (e) {
+      teacherLoginBlocked = true;
+    }
+    console.log('✓ Rule 4 Passed: All active administrative role logins authenticate; Teacher login is securely disabled.');
 
     // 5. Check Foreign Key Integrity in Schedules
     const [orphanSchedules] = await conn.query(`

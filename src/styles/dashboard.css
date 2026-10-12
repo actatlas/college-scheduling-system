@@ -477,6 +477,77 @@
   line-height: 1.4;
 }
 
+/* Stacked Time Group Container for Concurrent Schedules */
+.today-time-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: rgba(13, 84, 153, 0.025);
+  border: 1px solid var(--srcb-border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  transition: border-color 0.2s ease;
+}
+
+.today-time-group.has-collision {
+  border-color: rgba(220, 38, 38, 0.4);
+  background: rgba(254, 242, 242, 0.4);
+}
+
+.today-time-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--srcb-border);
+  flex-wrap: wrap;
+}
+
+.today-time-group-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.today-time-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Distinct Class Mode Pills (Face-to-Face vs Online) */
+.pill--mode-f2f {
+  background: rgba(16, 185, 129, 0.12) !important;
+  color: #065f46 !important;
+  border: 1px solid rgba(16, 185, 129, 0.35) !important;
+  font-weight: 700 !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.pill--mode-online {
+  background: rgba(124, 58, 237, 0.12) !important;
+  color: #5b21b6 !important;
+  border: 1px solid rgba(124, 58, 237, 0.35) !important;
+  font-weight: 700 !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.pill--mode-hybrid {
+  background: rgba(245, 158, 11, 0.12) !important;
+  color: #b45309 !important;
+  border: 1px solid rgba(245, 158, 11, 0.35) !important;
+  font-weight: 700 !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
 /* ===================================================
    IMMEDIATE ATTENTION ASIDE CARD
    =================================================== */

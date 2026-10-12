@@ -10,9 +10,9 @@ async function clearAcademicData() {
     await connection.query('SET FOREIGN_KEY_CHECKS = 0');
 
     const tablesToClear = [
+      'schedule_adjustment_requests',
       'schedules',
       'exam_schedules',
-      'teacher_availability',
       'notifications',
       'sections',
       'subjects',
@@ -41,10 +41,9 @@ async function clearAcademicData() {
     const allTables = [
       'users',
       'programs',
-      'courses',
+      'program_majors',
       'schedules',
       'exam_schedules',
-      'teacher_availability',
       'sections',
       'subjects',
       'teachers',

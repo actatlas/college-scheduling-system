@@ -392,28 +392,10 @@ async function seedDemoAccounts() {
     await conn.query(`UPDATE subjects SET instructor_id = 'T-GEN-001' WHERE (program_code = 'ALL' OR program_code = 'GEN' OR code LIKE 'GE%' OR code LIKE 'RS%' OR code LIKE 'PathFit%' OR code LIKE 'NSTP%' OR code LIKE 'M%' OR code LIKE 'C%' OR code LIKE 'S%' OR code LIKE 'B%') AND (instructor_id IS NULL OR instructor_id NOT IN (SELECT id FROM teachers))`);
     await conn.query(`UPDATE subjects SET instructor_id = 'T-GEN-001' WHERE instructor_id IS NOT NULL AND instructor_id NOT IN (SELECT id FROM teachers)`);
 
-    // 9. Teacher Availability (Monday to Friday 07:00:00 - 18:00:00)
-    await conn.query(`
-      CREATE TABLE IF NOT EXISTS teacher_availability (
-        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-        teacher_id VARCHAR(50) NOT NULL,
-        day_of_week VARCHAR(20) NOT NULL,
-        start_time TIME NOT NULL,
-        end_time TIME NOT NULL,
-        PRIMARY KEY (id),
-        KEY idx_teacher_avail_id (teacher_id)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-    `);
-    await conn.query('TRUNCATE TABLE teacher_availability');
-    const teachingDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-    for (const t of teachersList) {
-      for (const day of teachingDays) {
-        await conn.query(`
-          INSERT INTO teacher_availability (teacher_id, day_of_week, start_time, end_time)
-          VALUES (?, ?, '07:00:00', '18:00:00')
-        `, [t.id, day]);
-      }
-    }
+    // 9. Drop obsolete tables if present
+    await conn.query('DROP TABLE IF EXISTS teacher_availability');
+    await conn.query('DROP TABLE IF EXISTS courses');
+    await conn.query('DROP TABLE IF EXISTS buildings');
 
     // 10. Reassign Schedules & Exam Schedules to Matching Teacher IDs
     const subjectToTeacherMap = new Map();
@@ -470,7 +452,6 @@ async function seedDemoAccounts() {
 
     for (const t of teachersToDelete) {
       console.log(`Cleaning up unused teacher profile: ID ${t.id}, Name: ${t.name}`);
-      await conn.query('DELETE FROM teacher_availability WHERE teacher_id = ?', [t.id]);
       await conn.query('UPDATE sections SET adviser_id = NULL WHERE adviser_id = ?', [t.id]);
       await conn.query('DELETE FROM teachers WHERE id = ?', [t.id]);
     }

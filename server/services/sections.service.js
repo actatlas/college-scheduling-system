@@ -173,6 +173,7 @@ async function updateSection(id, payload = {}) {
 }
 
 async function deleteSection(id) {
+  await query('DELETE FROM schedules WHERE section_id = ?', [id]).catch(() => {});
   await query('DELETE FROM sections WHERE id = ?', [id]);
   return { success: true, id };
 }

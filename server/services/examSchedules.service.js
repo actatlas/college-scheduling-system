@@ -283,11 +283,10 @@ async function listExamSchedules({ user, program } = {}) {
             COALESCE(sub.name, es.subject_code) AS subject_name,
             es.section_names,
             es.room_number,
-            es.building,
             es.proctor_id,
             COALESCE(es.proctor_name, t.name, '') AS proctor_name,
             es.program_code,
-            es.color
+            es.class_mode
      FROM exam_schedules es
      LEFT JOIN subjects sub ON sub.code = es.subject_code
      LEFT JOIN teachers t ON t.id = es.proctor_id`;
@@ -468,9 +467,11 @@ async function createExamSchedule(payload, user) {
 
   const sectionNamesStr = JSON.stringify(Array.isArray(synchronizedSections) ? synchronizedSections : [synchronizedSections]);
 
+  const classMode = payload.classMode || payload.class_mode || (String(room || '').toLowerCase().includes('virtual') ? 'Online' : 'Face-to-Face');
+
   const res = await query(
-    `INSERT INTO exam_schedules (term, exam_date, start_time, end_time, subject_code, section_names, room_number, building, proctor_id, proctor_name, program_code, color)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO exam_schedules (term, exam_date, start_time, end_time, subject_code, section_names, room_number, proctor_id, proctor_name, program_code, class_mode)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       term,
       examDate || new Date().toISOString().split('T')[0],
@@ -479,11 +480,10 @@ async function createExamSchedule(payload, user) {
       subjectCode || 'IT101',
       sectionNamesStr,
       room || null,
-      building,
       finalProctorId,
       finalProctorName,
       program,
-      color,
+      classMode,
     ]
   );
 
@@ -585,6 +585,8 @@ async function updateExamSchedule(id, payload, user) {
 
   const sectionNamesStr = synchronizedSections ? JSON.stringify(synchronizedSections) : null;
 
+  const classMode = payload.classMode || payload.class_mode || (String(room || '').toLowerCase().includes('virtual') ? 'Online' : null);
+
   await query(
     `UPDATE exam_schedules
      SET term = COALESCE(?, term),
@@ -594,11 +596,10 @@ async function updateExamSchedule(id, payload, user) {
          subject_code = COALESCE(?, subject_code),
          section_names = COALESCE(?, section_names),
          room_number = COALESCE(?, room_number),
-         building = COALESCE(?, building),
          proctor_id = COALESCE(?, proctor_id),
          proctor_name = COALESCE(?, proctor_name),
          program_code = COALESCE(?, program_code),
-         color = COALESCE(?, color)
+         class_mode = COALESCE(?, class_mode)
      WHERE id = ?`,
     [
       term || null,
@@ -608,11 +609,10 @@ async function updateExamSchedule(id, payload, user) {
       subjectCode || null,
       sectionNamesStr,
       room || null,
-      building || null,
       finalProctorId,
       finalProctorName,
       program || null,
-      color || null,
+      classMode,
       id,
     ]
   );

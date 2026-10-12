@@ -15,6 +15,8 @@ import {
   ArrowRightLeft,
   Clock3,
   AlertCircle,
+  ShieldCheck,
+  Send,
 } from "lucide-react";
 import type { ClassScheduleItem, ScheduleAdjustmentRequest } from "../../types";
 import { getProgramTheme } from "../../utils/programColors";
@@ -26,6 +28,8 @@ interface ScheduleDetailsModalProps {
   onDuplicate?: (schedule: ClassScheduleItem) => void;
   onRequestAdjustment?: (schedule: ClassScheduleItem) => void;
   onReviewAdjustment?: (request: ScheduleAdjustmentRequest) => void;
+  onFinalize?: (schedule: ClassScheduleItem) => void;
+  onPublish?: (schedule: ClassScheduleItem) => void;
   adjustmentRequest?: ScheduleAdjustmentRequest | null;
   userRole?: string;
 }
@@ -37,6 +41,8 @@ export const ScheduleDetailsModal: React.FC<ScheduleDetailsModalProps> = ({
   onDuplicate,
   onRequestAdjustment,
   onReviewAdjustment,
+  onFinalize,
+  onPublish,
   adjustmentRequest,
   userRole,
 }) => {
@@ -215,10 +221,61 @@ export const ScheduleDetailsModal: React.FC<ScheduleDetailsModalProps> = ({
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <CheckCircle2 size={16} color={progTheme.primary} />
-            <span style={{ fontSize: "0.78rem", fontWeight: 700, color: progTheme.lightText }}>
-              Verified Allocation
-            </span>
+            {schedule.status === "PUBLISHED" || schedule.status === "Confirmed" ? (
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  padding: "3px 8px",
+                  borderRadius: 6,
+                  background: "rgba(16, 185, 129, 0.15)",
+                  color: "#059669",
+                  fontSize: "0.74rem",
+                  fontWeight: 800,
+                  border: "1px solid rgba(16, 185, 129, 0.3)",
+                }}
+              >
+                <CheckCircle2 size={13} />
+                PUBLISHED
+              </span>
+            ) : schedule.status === "FINALIZED" ? (
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  padding: "3px 8px",
+                  borderRadius: 6,
+                  background: "rgba(37, 99, 235, 0.15)",
+                  color: "#2563eb",
+                  fontSize: "0.74rem",
+                  fontWeight: 800,
+                  border: "1px solid rgba(37, 99, 235, 0.3)",
+                }}
+              >
+                <ShieldCheck size={13} />
+                FINALIZED
+              </span>
+            ) : (
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  padding: "3px 8px",
+                  borderRadius: 6,
+                  background: "rgba(245, 158, 11, 0.15)",
+                  color: "#d97706",
+                  fontSize: "0.74rem",
+                  fontWeight: 800,
+                  border: "1px solid rgba(245, 158, 11, 0.3)",
+                }}
+              >
+                <Clock3 size={13} />
+                DRAFT
+              </span>
+            )}
           </div>
         </div>
 
@@ -336,8 +393,8 @@ export const ScheduleDetailsModal: React.FC<ScheduleDetailsModalProps> = ({
         </div>
 
         {/* Action Footer */}
-        <div className="modal-actions" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ display: "flex", gap: 8 }}>
+        <div className="modal-actions" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {onDuplicate && (
               <button
                 type="button"
@@ -348,7 +405,38 @@ export const ScheduleDetailsModal: React.FC<ScheduleDetailsModalProps> = ({
                 }}
                 style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
               >
-                <Copy size={14} /> Duplicate Schedule
+                <Copy size={14} /> Duplicate
+              </button>
+            )}
+
+            {/* Admin Finalize & Publish Controls */}
+            {isAdmin && onFinalize && (schedule.status === "DRAFT" || !schedule.status) && (
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  onClose();
+                  onFinalize(schedule);
+                }}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--srcb-navy)", fontWeight: 700 }}
+                title="Mark this schedule as validated and ready for publication"
+              >
+                <ShieldCheck size={14} /> Finalize Schedule
+              </button>
+            )}
+
+            {isAdmin && onPublish && (schedule.status === "FINALIZED" || schedule.status === "DRAFT" || !schedule.status) && (
+              <button
+                type="button"
+                className="action-button"
+                onClick={() => {
+                  onClose();
+                  onPublish(schedule);
+                }}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                title="Publish official schedule and notify assigned faculty member"
+              >
+                <Send size={14} /> Publish Schedule
               </button>
             )}
 

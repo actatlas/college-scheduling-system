@@ -7,6 +7,9 @@ const {
   createSchedule,
   deleteSchedule,
   updateSchedule,
+  finalizeSchedule,
+  publishSchedule,
+  bulkUpdateScheduleStatus,
 } = require('../controllers/schedules.controller');
 
 const router = express.Router();
@@ -15,7 +18,14 @@ router.get('/', listSchedules);
 router.post('/generate', generateSchedules);
 router.get('/conflicts', listConflicts);
 
-// Allow creating and deleting individual schedule entries
+// Bulk status management
+router.post('/bulk-status', bulkUpdateScheduleStatus);
+
+// Individual schedule lifecycle management
+router.post('/:id/finalize', finalizeSchedule);
+router.post('/:id/publish', publishSchedule);
+
+// Allow creating, updating and deleting individual schedule entries
 router.post('/', createSchedule);
 router.delete('/:id', deleteSchedule);
 router.put('/:id', updateSchedule);

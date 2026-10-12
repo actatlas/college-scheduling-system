@@ -181,8 +181,8 @@ async function seedExams() {
 
     for (const ex of sampleExams) {
       await db.query(
-        `INSERT INTO exam_schedules (term, exam_date, start_time, end_time, subject_code, section_names, room_number, building, proctor_id, proctor_name, program_code, color)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO exam_schedules (term, exam_date, start_time, end_time, subject_code, section_names, room_number, proctor_id, proctor_name, program_code, class_mode)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           ex.term,
           ex.exam_date,
@@ -191,11 +191,10 @@ async function seedExams() {
           ex.subject_code,
           ex.section_names,
           ex.room_number,
-          ex.building,
           ex.proctor_id,
           ex.proctor_name,
           ex.program_code,
-          ex.color,
+          'Face-to-Face',
         ]
       );
     }

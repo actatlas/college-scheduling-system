@@ -13,8 +13,7 @@ async function cleanNonTepData() {
       DELETE sar FROM schedule_adjustment_requests sar
       LEFT JOIN schedules s ON s.id = sar.schedule_id
       LEFT JOIN sections sec ON sec.id = s.section_id
-      LEFT JOIN courses c ON c.code = sec.course_code
-      WHERE (c.program_code IS NOT NULL AND c.program_code != 'TEP')
+      WHERE (sec.program_code IS NOT NULL AND sec.program_code != 'TEP')
          OR (sar.requester_program IS NOT NULL AND sar.requester_program NOT IN ('TEP', 'BSED', 'BEED'))
     `);
     console.log(`1. Cleared non-TEP schedule adjustment requests: ${delReqs.affectedRows || 0}`);
@@ -30,11 +29,9 @@ async function cleanNonTepData() {
     const [delScheds] = await conn.query(`
       DELETE s FROM schedules s
       LEFT JOIN sections sec ON sec.id = s.section_id
-      LEFT JOIN courses c ON c.code = sec.course_code
       LEFT JOIN subjects sub ON sub.code = s.subject_code
       WHERE sec.id IS NULL
-         OR sec.course_code NOT IN ('BSED', 'BEED')
-         OR c.program_code != 'TEP'
+         OR (sec.program_code != 'TEP' AND sec.course_code NOT IN ('BSED', 'BEED'))
          OR sub.program_code NOT IN ('TEP', 'ALL')
     `);
     console.log(`3. Cleared non-TEP class schedules: ${delScheds.affectedRows || 0}`);
@@ -42,7 +39,7 @@ async function cleanNonTepData() {
     // 4. Clean Sections for non-TEP
     const [delSecs] = await conn.query(`
       DELETE FROM sections
-      WHERE course_code NOT IN ('BSED', 'BEED')
+      WHERE program_code != 'TEP' AND course_code NOT IN ('BSED', 'BEED')
     `);
     console.log(`4. Cleared non-TEP sections: ${delSecs.affectedRows || 0}`);
 
@@ -93,17 +90,11 @@ async function cleanNonTepData() {
       ON DUPLICATE KEY UPDATE name = VALUES(name), status = VALUES(status)
     `);
 
-    const [delAvail] = await conn.query(`
-      DELETE FROM teacher_availability
-      WHERE teacher_id NOT IN (${tepTeacherIds.map(() => '?').join(',')})
-    `, tepTeacherIds);
-    console.log(`9a. Cleared non-TEP teacher availability: ${delAvail.affectedRows || 0}`);
-
     const [delTeachers] = await conn.query(`
       DELETE FROM teachers
       WHERE id NOT IN (${tepTeacherIds.map(() => '?').join(',')})
     `, tepTeacherIds);
-    console.log(`9b. Cleared non-TEP teachers: ${delTeachers.affectedRows || 0}`);
+    console.log(`9. Cleared non-TEP teachers: ${delTeachers.affectedRows || 0}`);
 
     // 10. Clean non-TEP Users (Keep Super Admin, Admin, and TEP Program Head & TEP Teachers)
     const [delUsers] = await conn.query(`
@@ -156,9 +147,7 @@ async function cleanNonTepData() {
     console.log(`Program Majors (${majors.length} records):`);
     console.table(majors);
 
-    const [courses] = await conn.query('SELECT code, name, program_code, year_duration FROM courses');
-    console.log(`Courses (${courses.length} records):`);
-    console.table(courses);
+
 
     const [yearLevels] = await conn.query(`
       SELECT yl.id, pm.code as major_code, yl.year_level

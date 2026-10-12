@@ -60,6 +60,8 @@ async function updateRoom(number, { capacity, type, status, roomName }) {
 }
 
 async function deleteRoom(number) {
+  await query('DELETE FROM exam_schedules WHERE room_number = ?', [number]).catch(() => {});
+  await query('DELETE FROM schedules WHERE room_number = ?', [number]).catch(() => {});
   await query('DELETE FROM rooms WHERE number = ?', [number]);
 }
 

@@ -136,17 +136,6 @@ async function createFaculty(payload) {
     );
   }
 
-  if (email && email.trim()) {
-    const [existingUser] = await query('SELECT id FROM users WHERE email = ? LIMIT 1', [email.trim()]);
-    if (!existingUser) {
-      const passwordHash = await bcrypt.hash('@teacher123', 10);
-      await query(
-        'INSERT INTO users (name, email, password_hash, role, faculty_id) VALUES (?, ?, ?, ?, ?)',
-        [name, email.trim(), passwordHash, 'teacher', id]
-      );
-    }
-  }
-
   return { id, name, department, email, phone, status: fType, facultyType: fType, position: fPos, employeeNumber: empNum };
 }
 
@@ -244,8 +233,11 @@ async function deleteFaculty(id) {
     throw err;
   }
 
+  await query('DELETE FROM exam_schedules WHERE proctor_id = ?', [id]).catch(() => {});
+  await query('DELETE FROM schedules WHERE faculty_id = ?', [id]).catch(() => {});
+
   if (teacher.email) {
-    await query('DELETE FROM users WHERE email = ?', [teacher.email]);
+    await query('DELETE FROM users WHERE email = ?', [teacher.email]).catch(() => {});
   }
 
   await query('DELETE FROM teachers WHERE id = ?', [id]);
