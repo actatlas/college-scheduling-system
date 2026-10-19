@@ -73,8 +73,8 @@ async function createSchedule(req, res, next) {
 
 async function deleteSchedule(req, res, next) {
   try {
-    if (!['admin', 'super_admin', 'program_head'].includes(req.user?.role)) {
-      return res.status(403).json({ error: 'Forbidden. Only Administrators and Program Heads can delete schedules.', code: 'UNAUTHORIZED_ROLE' });
+    if (!['admin', 'super_admin', 'program_head', 'dean'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Forbidden. Only Administrators, Deans, and Program Heads can delete schedules.', code: 'UNAUTHORIZED_ROLE' });
     }
     const id = req.params.id;
     await schedulesService.deleteSchedule(id, req.user);
@@ -91,6 +91,33 @@ async function deleteSchedule(req, res, next) {
     });
 
     res.status(204).end();
+  } catch (err) {
+    if (err?.statusCode) return res.status(err.statusCode).json({ error: err.message, code: err.code || 'VALIDATION_ERROR' });
+    next(err);
+  }
+}
+
+async function bulkDeleteSchedules(req, res, next) {
+  try {
+    if (!['admin', 'super_admin', 'program_head', 'dean'].includes(req.user?.role)) {
+      return res.status(403).json({ error: 'Forbidden. Only Administrators, Deans, and Program Heads can delete schedules.', code: 'UNAUTHORIZED_ROLE' });
+    }
+    const ids = req.body?.ids || req.body?.scheduleIds;
+    const result = await schedulesService.bulkDeleteSchedules(ids, req.user);
+
+    await logAction({
+      req,
+      user: req.user,
+      module: 'Class Scheduling',
+      action: 'Bulk Deleted Class Schedules',
+      description: `Bulk deleted ${result.deletedCount} class schedule(s) (#${(result.deletedIds || []).join(', #')}).`,
+      targetId: (result.deletedIds || []).join(','),
+      targetType: 'Schedule',
+      status: 'Success',
+      details: { deletedCount: result.deletedCount, deletedIds: result.deletedIds },
+    });
+
+    res.json({ data: result });
   } catch (err) {
     if (err?.statusCode) return res.status(err.statusCode).json({ error: err.message, code: err.code || 'VALIDATION_ERROR' });
     next(err);
@@ -183,6 +210,7 @@ module.exports = {
   listConflicts,
   createSchedule,
   deleteSchedule,
+  bulkDeleteSchedules,
   updateSchedule,
   finalizeSchedule,
   publishSchedule,

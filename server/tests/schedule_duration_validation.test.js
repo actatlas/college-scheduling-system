@@ -15,6 +15,7 @@ describe('Schedule Duration & Room Logic Validation', () => {
   beforeEach(() => {
     mockSubjects = [
       { code: 'GE101', name: 'Understanding the Self', units: 3, lecture_hours: 1.5, lab_hours: 0, program_code: 'ALL', instructor_id: 'T001' },
+      { code: 'GE EL 2', name: 'FO LA', units: 3, lecture_hours: 2, lab_hours: 0, program_code: 'BAP', subject_type: 'Minor', instructor_id: 'T001' },
       { code: 'IT101', name: 'Computer Programming 1', units: 3, lecture_hours: 2, lab_hours: 3, program_code: 'ITP', instructor_id: 'T001' },
       { code: 'CS102', name: 'Data Structures (Lec Only)', units: 3, lecture_hours: 2, lab_hours: 0, program_code: 'ITP', instructor_id: 'T002' },
       { code: 'HM301', name: 'Culinary Arts Special Lab', units: 4, lecture_hours: 1, lab_hours: 4, program_code: 'HMP', instructor_id: 'T003' },
@@ -111,6 +112,39 @@ describe('Schedule Duration & Room Logic Validation', () => {
           start_time: '08:00 AM',
           end_time: '10:00 AM', // 2h instead of 1.5h
           subject_code: 'GE101',
+          section_id: 1,
+          faculty_id: 'T001',
+          room_number: 'COL-101',
+          classMode: 'Lecture',
+        })
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        code: 'INVALID_CLASS_DURATION',
+      });
+    });
+
+    it('enforces 1.5h for GE EL 2 even though lecture_hours is 2 in DB', async () => {
+      // Must accept 1.5h
+      const result = await schedulesService.createSchedule({
+        day: 'Monday',
+        start_time: '07:30 AM',
+        end_time: '09:00 AM',
+        subject_code: 'GE EL 2',
+        section_id: 1,
+        faculty_id: 'T001',
+        room_number: 'COL-101',
+        classMode: 'Lecture',
+      });
+      expect(result).toBeDefined();
+      expect(result.time).toBe('07:30-09:00');
+
+      // Must reject 2h
+      await expect(
+        schedulesService.createSchedule({
+          day: 'Monday',
+          start_time: '07:30 AM',
+          end_time: '09:30 AM', // 2h
+          subject_code: 'GE EL 2',
           section_id: 1,
           faculty_id: 'T001',
           room_number: 'COL-101',

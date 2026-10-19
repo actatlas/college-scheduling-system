@@ -243,5 +243,36 @@ async function deleteFaculty(id) {
   await query('DELETE FROM teachers WHERE id = ?', [id]);
 }
 
-const facultyService = { listFaculty, createFaculty, updateFaculty, deleteFaculty };
+async function bulkDeleteFaculty(ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return { deletedCount: 0 };
+  let count = 0;
+  for (const id of ids) {
+    try {
+      await deleteFaculty(id);
+      count++;
+    } catch (e) {
+      // Continue deleting other records if one was not found
+    }
+  }
+  return { deletedCount: count };
+}
+
+async function bulkRemoveFaculty(ids, action = 'deactivate') {
+  if (!Array.isArray(ids) || ids.length === 0) return { updatedCount: 0 };
+  let count = 0;
+  for (const id of ids) {
+    try {
+      if (action === 'deactivate') {
+        await query('UPDATE teachers SET status = ? WHERE id = ?', ['Inactive', id]);
+      } else {
+        await query('UPDATE teachers SET status = ?, program_major_id = NULL WHERE id = ?', ['Inactive', id]);
+      }
+      count++;
+    } catch (e) {}
+  }
+  return { updatedCount: count };
+}
+
+const facultyService = { listFaculty, createFaculty, updateFaculty, deleteFaculty, bulkDeleteFaculty, bulkRemoveFaculty };
 module.exports = { facultyService };
+

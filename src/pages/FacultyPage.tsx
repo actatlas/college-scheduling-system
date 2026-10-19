@@ -33,10 +33,18 @@ import {
   Phone,
   Hash,
   Loader2,
+  ShieldCheck,
+  FileText,
+  Clock3,
+  XCircle,
+  UserX,
+  AlertTriangle,
+  Eye,
 } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
 import { formatSystemId } from "../utils/idFormatter";
-import type { FacultyMember } from "../types";
+import type { FacultyMember, ScheduleAdjustmentRequest, RoomItem } from "../types";
+import { AdminAdjustmentReviewModal } from "../components/schedule/AdminAdjustmentReviewModal";
 
 export function FacultyPage() {
   const [faculty, setFaculty] = useState<FacultyMember[]>([]);
@@ -94,10 +102,27 @@ export function FacultyPage() {
 
   const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
   const isSuperAdmin = role === "super_admin";
-  const isAdmin = isSuperAdmin || role === "admin";
-  const canEdit = isSuperAdmin;
-  const canDelete = isSuperAdmin;
+  const isAdmin = isSuperAdmin || role === "admin" || role === "dsa" || role === "dean";
+  const isDean = isAdmin;
+  const canEdit = isSuperAdmin || isAdmin;
+  const canDelete = isSuperAdmin || isAdmin;
   const isProgramHead = role === "program_head";
+
+  const [activeTab, setActiveTab] = useState<"roster" | "requests">(() => {
+    const t = searchParams.get("tab") || searchParams.get("view");
+    return t === "requests" ? "requests" : "roster";
+  });
+  const [adjustmentRequests, setAdjustmentRequests] = useState<ScheduleAdjustmentRequest[]>([]);
+  const [requestToReview, setRequestToReview] = useState<ScheduleAdjustmentRequest | null>(null);
+  const [requestStatusFilter, setRequestStatusFilter] = useState<"all" | "Pending" | "Approved" | "Rejected">("all");
+  const [requestActionFilter, setRequestActionFilter] = useState<string>("all");
+  const [requestProgramFilter, setRequestProgramFilter] = useState<string>("all");
+  const [requestSearchQuery, setRequestSearchQuery] = useState<string>("");
+  const [roomsList, setRoomsList] = useState<RoomItem[]>([]);
+
+  // Bulk Faculty Action States
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [bulkActionChoice, setBulkActionChoice] = useState<"delete" | "remove">("delete");
 
   const handleDispatchFacultyGmail = async (f: FacultyMember) => {
     try {
@@ -141,13 +166,88 @@ export function FacultyPage() {
     }
   };
 
+  const fetchAdjustmentRequests = async () => {
+    try {
+      const res = await api.get("/schedule-adjustment-requests");
+      const list = Array.isArray(res?.data?.data)
+        ? res.data.data
+        : Array.isArray(res?.data)
+        ? res.data
+        : Array.isArray(res)
+        ? res
+        : [];
+      setAdjustmentRequests(list);
+    } catch {
+      setAdjustmentRequests([]);
+    }
+  };
+
+  const fetchRooms = async () => {
+    try {
+      const res = await api.get("/rooms");
+      setRoomsList(Array.isArray(res?.data?.data) ? res.data.data : Array.isArray(res?.data) ? res.data : []);
+    } catch {
+      setRoomsList([]);
+    }
+  };
+
   useEffect(() => {
     fetchFaculty();
+    fetchAdjustmentRequests();
+    fetchRooms();
   }, []);
+
+  useEffect(() => {
+    const reqId = searchParams.get("requestId");
+    if (reqId) {
+      api
+        .get(`/schedule-adjustment-requests/${reqId}`)
+        .then((res: any) => {
+          if (res.data?.data) {
+            setRequestToReview(res.data.data);
+            setActiveTab("requests");
+          }
+        })
+        .catch(() => {});
+    }
+  }, [searchParams]);
+
+  const filteredRequests = useMemo(() => {
+    return adjustmentRequests.filter((r) => {
+      if (requestStatusFilter !== "all" && String(r.status || "").toLowerCase() !== requestStatusFilter.toLowerCase()) {
+        return false;
+      }
+      if (requestActionFilter !== "all" && String(r.requestedAction || "SCHEDULE_ADJUSTMENT").toUpperCase() !== requestActionFilter.toUpperCase()) {
+        return false;
+      }
+      if (requestProgramFilter !== "all" && !matchesProgram(r.requesterProgram || r.programCode || r.programId)) {
+        return false;
+      }
+      if (requestSearchQuery.trim()) {
+        const q = requestSearchQuery.toLowerCase();
+        const match =
+          String(r.id).includes(q) ||
+          (r.requesterName || "").toLowerCase().includes(q) ||
+          (r.requesterProgram || "").toLowerCase().includes(q) ||
+          (r.subjectCode || "").toLowerCase().includes(q) ||
+          (r.subjectName || "").toLowerCase().includes(q) ||
+          (r.sectionName || "").toLowerCase().includes(q) ||
+          (r.reason || "").toLowerCase().includes(q) ||
+          (r.adminRemarks || "").toLowerCase().includes(q) ||
+          (r.adminResponse || "").toLowerCase().includes(q);
+        if (!match) return false;
+      }
+      return true;
+    });
+  }, [adjustmentRequests, requestStatusFilter, requestActionFilter, requestProgramFilter, requestSearchQuery, matchesProgram]);
+
+  const pendingRequestsCount = useMemo(() => {
+    return adjustmentRequests.filter((r) => String(r.status || "").toLowerCase() === "pending").length;
+  }, [adjustmentRequests]);
 
   const handleEdit = (f: FacultyMember) => {
     if (!canEdit) {
-      toast.push("Forbidden. Administrators cannot edit teacher profiles.", "error");
+      toast.push("Forbidden. Only the Dean or Super Administrator can edit teacher profiles.", "error");
       return;
     }
     setEditingFaculty(f);
@@ -174,7 +274,7 @@ export function FacultyPage() {
 
   const handleOpenAdd = () => {
     if (!canEdit) {
-      toast.push("Forbidden. Only the Super Administrator can register new faculty.", "error");
+      toast.push("Forbidden. Only the Dean or Super Administrator can register new teachers.", "error");
       return;
     }
     setEditingFaculty(null);
@@ -184,14 +284,16 @@ export function FacultyPage() {
     setFirstNameError(null);
     setLastNameError(null);
     setPhoneError(null);
+    const nextNum = faculty.length + 1;
+    const padded = nextNum < 10 ? `00${nextNum}` : nextNum < 100 ? `0${nextNum}` : `${nextNum}`;
     setForm({
-      id: `FAC-00${faculty.length + 1}`,
-      department: "Information Technology",
+      id: `FAC-${padded}`,
+      department: selectedProgram?.label || "Information Technology Program",
       email: "",
       status: "Full-Time",
       maxLoadHours: 24,
       availability: "Monday-Friday: 08:00-17:00",
-      programs: ["BSIT"],
+      programs: [selectedProgram?.key || "BSIT"],
     });
     setIsOpen(true);
   };
@@ -229,7 +331,7 @@ export function FacultyPage() {
   const executeDelete = async () => {
     if (!facultyToDelete) return;
     if (!canDelete) {
-      toast.push("Forbidden. Only the Super Administrator can delete faculty members.", "error");
+      toast.push("Forbidden. Only administrators can delete faculty members.", "error");
       setFacultyToDelete(null);
       return;
     }
@@ -252,6 +354,55 @@ export function FacultyPage() {
     } finally {
       setLoading(false);
       setFacultyToDelete(null);
+    }
+  };
+
+  const executeBulkFacultyAction = async () => {
+    if (selectedIds.size === 0) return;
+    if (!canDelete) {
+      toast.push("Forbidden. Only administrators can delete or remove faculty members.", "error");
+      setIsBulkModalOpen(false);
+      return;
+    }
+    setLoading(true);
+    const ids = Array.from(selectedIds);
+    try {
+      if (bulkActionChoice === "delete") {
+        try {
+          await api.post("/faculty/bulk-delete", { ids });
+        } catch {
+          await Promise.all(ids.map((id) => api.delete(`/faculty/${encodeURIComponent(id)}`)));
+        }
+        toast.push(`Successfully deleted ${ids.length} faculty member${ids.length > 1 ? "s" : ""}`, "success");
+        addNotification({
+          title: "Faculty Members Deleted",
+          message: `${ids.length} faculty profiles were permanently deleted from the directory.`,
+          type: "warning",
+          link: "/faculty",
+          targetRole: "admin,program_head",
+        });
+      } else {
+        try {
+          await api.post("/faculty/bulk-remove", { ids, action: "deactivate" });
+        } catch {
+          await Promise.all(ids.map((id) => api.put(`/faculty/${encodeURIComponent(id)}`, { status: "Inactive" })));
+        }
+        toast.push(`Successfully removed ${ids.length} faculty member${ids.length > 1 ? "s" : ""} from active roster`, "success");
+        addNotification({
+          title: "Faculty Members Deactivated",
+          message: `${ids.length} faculty members have been removed from the active teaching roster.`,
+          type: "info",
+          link: "/faculty",
+          targetRole: "admin,program_head",
+        });
+      }
+      setSelectedIds(new Set());
+      fetchFaculty();
+    } catch (err: any) {
+      toast.push(err?.response?.data?.error || `Failed to ${bulkActionChoice} selected faculty members`, "error");
+    } finally {
+      setLoading(false);
+      setIsBulkModalOpen(false);
     }
   };
 
@@ -300,7 +451,7 @@ export function FacultyPage() {
     const fullName = `${firstName.trim()} ${lastName.trim()}`;
 
     if (!canEdit) {
-      toast.push("Forbidden. Administrators cannot edit teacher profiles.", "error");
+      toast.push("Forbidden. Only the Dean or Super Administrator can register or edit teacher profiles.", "error");
       return;
     }
 
@@ -314,9 +465,9 @@ export function FacultyPage() {
 
       if (editingFaculty) {
         await api.put(`/faculty/${encodeURIComponent(editingFaculty.id)}`, payload);
-        toast.push("Faculty profile updated successfully", "success");
+        toast.push("Teacher profile updated successfully", "success");
         addNotification({
-          title: "Faculty Profile Updated",
+          title: "Teacher Profile Updated",
           message: `Faculty record for ${fullName} (${form.department}) updated.`,
           type: "success",
           link: "/faculty",
@@ -326,9 +477,9 @@ export function FacultyPage() {
         });
       } else {
         await api.post("/faculty", payload);
-        toast.push("Faculty member added successfully", "success");
+        toast.push("Teacher registered successfully", "success");
         addNotification({
-          title: "New Faculty Registered",
+          title: "New Teacher Registered",
           message: `${fullName} registered to ${form.department} faculty roster.`,
           type: "success",
           link: "/faculty",
@@ -552,16 +703,168 @@ export function FacultyPage() {
               className="user-mgmt-primary-btn"
               type="button"
               onClick={handleOpenAdd}
-              aria-label="Add new faculty member"
+              aria-label="Add new teacher"
+              data-testid="add-teacher-btn"
             >
               <Plus size={16} />
-              <span>Add Faculty</span>
+              <span>Add Teacher</span>
             </button>
           ) : undefined
         }
       />
 
-      {/* Main Faculty Roster Data Table Card */}
+      {/* Pending Schedule Adjustment / Permission Requests Banner for Admin */}
+      {pendingRequestsCount > 0 && isAdmin && (
+        <div
+          data-testid="admin-adjustment-requests-banner"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "12px 16px",
+            marginBottom: 16,
+            background: "rgba(245, 158, 11, 0.08)",
+            border: "1px solid rgba(245, 158, 11, 0.3)",
+            borderRadius: 8,
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Clock size={18} color="#d97706" />
+            <div>
+              <div style={{ fontWeight: 700, color: "var(--srcb-text)" }}>
+                {`${pendingRequestsCount} Schedule Adjustment Request(s)`}
+              </div>
+              <div style={{ fontSize: "0.82rem", color: "var(--srcb-text-muted)" }}>
+                Program Heads have submitted schedule adjustment or timetable permission requests.
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              data-testid="review-requests-banner-btn"
+              className="action-button"
+              style={{ padding: "6px 14px", fontSize: "0.82rem" }}
+              onClick={() => {
+                const firstPending = adjustmentRequests.find((r) => String(r.status || "").toLowerCase() === "pending") || adjustmentRequests[0] || null;
+                if (firstPending) {
+                  setRequestToReview(firstPending);
+                }
+                setActiveTab("requests");
+              }}
+            >
+              Review Requests
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* View Segmented Tabs: Faculty Roster vs Permission Requests */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+        <div className="sched-view-tabs" style={{ background: "var(--srcb-surface)", padding: 4, borderRadius: 8, border: "1px solid var(--srcb-border)", display: "inline-flex", gap: 4 }}>
+          <button
+            type="button"
+            data-testid="faculty-roster-tab-btn"
+            className={`sched-view-tab-btn ${activeTab === "roster" ? "is-active" : ""}`}
+            onClick={() => {
+              setActiveTab("roster");
+              setSearchParams((prev) => {
+                const next = new URLSearchParams(prev);
+                next.delete("tab");
+                return next;
+              });
+            }}
+            style={{
+              padding: "6px 14px",
+              borderRadius: 6,
+              border: "none",
+              background: activeTab === "roster" ? "var(--srcb-navy, #002855)" : "transparent",
+              color: activeTab === "roster" ? "#ffffff" : "var(--srcb-text)",
+              fontWeight: 700,
+              fontSize: "0.82rem",
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <Users size={14} />
+            <span>Faculty Roster</span>
+            <span
+              style={{
+                padding: "1px 6px",
+                borderRadius: 999,
+                fontSize: "0.72rem",
+                background: activeTab === "roster" ? "rgba(255,255,255,0.2)" : "rgba(148, 163, 184, 0.2)",
+                color: activeTab === "roster" ? "#ffffff" : "var(--srcb-text-muted)",
+              }}
+            >
+              {faculty.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            data-testid="permission-requests-tab-btn"
+            className={`sched-view-tab-btn ${activeTab === "requests" ? "is-active" : ""}`}
+            onClick={() => {
+              setActiveTab("requests");
+              setSearchParams((prev) => {
+                const next = new URLSearchParams(prev);
+                next.set("tab", "requests");
+                return next;
+              });
+            }}
+            style={{
+              padding: "6px 14px",
+              borderRadius: 6,
+              border: "none",
+              background: activeTab === "requests" ? "var(--srcb-navy, #002855)" : "transparent",
+              color: activeTab === "requests" ? "#ffffff" : "var(--srcb-text)",
+              fontWeight: 700,
+              fontSize: "0.82rem",
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <ShieldCheck size={14} />
+            <span>Permission Requests</span>
+            {pendingRequestsCount > 0 ? (
+              <span
+                style={{
+                  padding: "1px 7px",
+                  borderRadius: 999,
+                  fontSize: "0.72rem",
+                  background: "#fef3c7",
+                  color: "#92400e",
+                  fontWeight: 800,
+                }}
+              >
+                {pendingRequestsCount}
+              </span>
+            ) : (
+              <span
+                style={{
+                  padding: "1px 6px",
+                  borderRadius: 999,
+                  fontSize: "0.72rem",
+                  background: activeTab === "requests" ? "rgba(255,255,255,0.2)" : "rgba(148, 163, 184, 0.2)",
+                  color: activeTab === "requests" ? "#ffffff" : "var(--srcb-text-muted)",
+                }}
+              >
+                {adjustmentRequests.length}
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* TAB 1: Main Faculty Roster Data Table Card */}
+      {activeTab === "roster" && (
       <section className="user-mgmt-card">
         {/* Controls Toolbar (Search, Filter, Export, Add Faculty) */}
         <div className="user-mgmt-toolbar">
@@ -717,7 +1020,86 @@ export function FacultyPage() {
                 <strong>{selectedIds.size}</strong> of {filteredFaculty.length} instructor{selectedIds.size > 1 ? "s" : ""} selected
               </span>
             </div>
-            <div className="bulk-bar-actions">
+            <div className="bulk-bar-actions" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {/* Direct selection if user wants to delete or remove them */}
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.15)", padding: "2px 8px", borderRadius: 6 }}>
+                <span style={{ fontSize: "0.78rem", fontWeight: 600 }}>Action:</span>
+                <select
+                  data-testid="bulk-action-select"
+                  value={bulkActionChoice}
+                  onChange={(e) => setBulkActionChoice(e.target.value as "delete" | "remove")}
+                  style={{
+                    padding: "3px 8px",
+                    borderRadius: 4,
+                    border: "1px solid rgba(255,255,255,0.4)",
+                    background: "var(--srcb-surface, #ffffff)",
+                    color: "var(--srcb-text, #0f172a)",
+                    fontSize: "0.78rem",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                  aria-label="Select bulk action to apply"
+                >
+                  <option value="delete">Delete Permanently</option>
+                  <option value="remove">Remove from Active Roster</option>
+                </select>
+                <button
+                  type="button"
+                  data-testid="apply-bulk-faculty-action-btn"
+                  className="bulk-action-btn"
+                  style={{
+                    padding: "4px 10px",
+                    background: bulkActionChoice === "delete" ? "#dc2626" : "#d97706",
+                    borderColor: "transparent",
+                    color: "#ffffff",
+                    fontWeight: 700,
+                  }}
+                  onClick={() => setIsBulkModalOpen(true)}
+                >
+                  <span>Apply</span>
+                </button>
+              </div>
+
+              {canDelete && (
+                <>
+                  <button
+                    type="button"
+                    data-testid="bulk-delete-faculty-btn"
+                    className="bulk-action-btn bulk-action-btn--danger"
+                    onClick={() => {
+                      setBulkActionChoice("delete");
+                      setIsBulkModalOpen(true);
+                    }}
+                    style={{
+                      background: "rgba(239, 68, 68, 0.2)",
+                      borderColor: "#f87171",
+                      color: "#ffffff",
+                    }}
+                  >
+                    <Trash2 size={14} />
+                    <span>Delete Selected ({selectedIds.size})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    data-testid="bulk-remove-faculty-btn"
+                    className="bulk-action-btn"
+                    onClick={() => {
+                      setBulkActionChoice("remove");
+                      setIsBulkModalOpen(true);
+                    }}
+                    style={{
+                      background: "rgba(245, 158, 11, 0.2)",
+                      borderColor: "#fbbf24",
+                      color: "#ffffff",
+                    }}
+                  >
+                    <UserX size={14} />
+                    <span>Remove from Roster ({selectedIds.size})</span>
+                  </button>
+                </>
+              )}
+
               <button
                 type="button"
                 className="bulk-action-btn"
@@ -776,7 +1158,7 @@ export function FacultyPage() {
                             ? "Try adjusting your search criteria, employment status, or department filters."
                             : isProgramHead
                               ? `No faculty members found for ${selectedProgram.label}.`
-                              : "No registered faculty exist yet. Click 'Add Faculty' above to register the first instructor."}
+                              : "No registered faculty exist yet. Click 'Add Teacher' above to register the first instructor."}
                         </p>
                         {(query || statusFilter !== "all" || deptFilter !== "all") && (
                           <button
@@ -801,6 +1183,7 @@ export function FacultyPage() {
                         <td className="user-mgmt-checkbox-cell">
                           <input
                             type="checkbox"
+                            data-testid={`checkbox-faculty-${f.id}`}
                             className="custom-table-checkbox"
                             checked={isSelected}
                             onChange={() => handleToggleSelectRow(f.id)}
@@ -1057,15 +1440,361 @@ export function FacultyPage() {
           </div>
         </div>
       </section>
+      )}
+
+      {/* TAB 2: Program Head Permission Requests Governance View */}
+      {activeTab === "requests" && (
+        <section className="card" style={{ padding: "20px 24px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Header Title */}
+            <div>
+              <h4 style={{ margin: 0, fontSize: "1.05rem", color: "var(--srcb-text)", fontWeight: 700 }}>
+                Program Head Academic Permission Requests ({filteredRequests.length})
+              </h4>
+              <p className="muted" style={{ margin: "2px 0 0", fontSize: "0.84rem" }}>
+                Centralized faculty directory governance for academic scheduling requests (Create, Modify, Delete, and Time Adjustment).
+              </p>
+            </div>
+
+            {/* Metric Stats Grid */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+              <div
+                style={{
+                  background: "var(--srcb-surface-alt, #f8fafc)",
+                  border: "1px solid var(--srcb-border)",
+                  borderRadius: 8,
+                  padding: "12px 14px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: "0.76rem", color: "var(--srcb-text-muted)", fontWeight: 600 }}>Total Requests</div>
+                  <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "var(--srcb-navy)" }}>{adjustmentRequests.length}</div>
+                </div>
+                <div style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(13, 84, 153, 0.1)", color: "var(--srcb-navy)", display: "grid", placeItems: "center" }}>
+                  <FileText size={18} />
+                </div>
+              </div>
+
+              <div
+                style={{
+                  background: "rgba(245, 158, 11, 0.06)",
+                  border: "1px solid rgba(245, 158, 11, 0.25)",
+                  borderRadius: 8,
+                  padding: "12px 14px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: "0.76rem", color: "#b45309", fontWeight: 600 }}>Pending Review</div>
+                  <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "#b45309" }}>{pendingRequestsCount}</div>
+                </div>
+                <div style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(245, 158, 11, 0.15)", color: "#d97706", display: "grid", placeItems: "center" }}>
+                  <Clock3 size={18} />
+                </div>
+              </div>
+
+              <div
+                style={{
+                  background: "rgba(16, 185, 129, 0.06)",
+                  border: "1px solid rgba(16, 185, 129, 0.25)",
+                  borderRadius: 8,
+                  padding: "12px 14px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: "0.76rem", color: "#047857", fontWeight: 600 }}>Approved / Granted</div>
+                  <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "#047857" }}>
+                    {adjustmentRequests.filter((r) => String(r.status || "").toLowerCase() === "approved").length}
+                  </div>
+                </div>
+                <div style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(16, 185, 129, 0.15)", color: "#059669", display: "grid", placeItems: "center" }}>
+                  <CheckCircle2 size={18} />
+                </div>
+              </div>
+
+              <div
+                style={{
+                  background: "rgba(239, 68, 68, 0.06)",
+                  border: "1px solid rgba(239, 68, 68, 0.25)",
+                  borderRadius: 8,
+                  padding: "12px 14px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: "0.76rem", color: "#b91c1c", fontWeight: 600 }}>Rejected</div>
+                  <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "#b91c1c" }}>
+                    {adjustmentRequests.filter((r) => String(r.status || "").toLowerCase() === "rejected").length}
+                  </div>
+                </div>
+                <div style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(239, 68, 68, 0.15)", color: "#dc2626", display: "grid", placeItems: "center" }}>
+                  <XCircle size={18} />
+                </div>
+              </div>
+            </div>
+
+            {/* Filter Controls Toolbar */}
+            <div
+              style={{
+                background: "var(--srcb-surface-alt, #f8fafc)",
+                padding: "10px 14px",
+                borderRadius: 8,
+                border: "1px solid var(--srcb-border)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                flexWrap: "wrap",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                {/* Status Filter Tabs */}
+                <div style={{ display: "flex", gap: 4, background: "var(--srcb-surface)", padding: 2, borderRadius: 6, border: "1px solid var(--srcb-border)" }}>
+                  {(["all", "Pending", "Approved", "Rejected"] as const).map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => setRequestStatusFilter(st)}
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: 4,
+                        border: "none",
+                        background: requestStatusFilter === st ? "var(--srcb-navy)" : "transparent",
+                        color: requestStatusFilter === st ? "#ffffff" : "var(--srcb-text-muted)",
+                        fontSize: "0.78rem",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {st === "all" ? "All" : st}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Action Type Filter */}
+                <select
+                  value={requestActionFilter}
+                  onChange={(e) => setRequestActionFilter(e.target.value)}
+                  style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", color: "var(--srcb-text)", fontSize: "0.82rem", fontWeight: 600 }}
+                >
+                  <option value="all">All Requested Actions</option>
+                  <option value="CREATE_SCHEDULE">CREATE_SCHEDULE</option>
+                  <option value="MODIFY_SCHEDULE">MODIFY_SCHEDULE</option>
+                  <option value="DELETE_SCHEDULE">DELETE_SCHEDULE</option>
+                  <option value="SCHEDULE_ADJUSTMENT">SCHEDULE_ADJUSTMENT</option>
+                </select>
+
+                {/* Program Filter for Admins */}
+                {role !== "program_head" && (
+                  <select
+                    value={requestProgramFilter}
+                    onChange={(e) => setRequestProgramFilter(e.target.value)}
+                    style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", color: "var(--srcb-text)", fontSize: "0.82rem", fontWeight: 600 }}
+                  >
+                    <option value="all">All Programs</option>
+                    <option value="ITP">ITP (BSIT)</option>
+                    <option value="BAP">BAP (BSBA)</option>
+                    <option value="CJEP">CJEP (BSCRIM)</option>
+                    <option value="HMP">HMP (BSHM)</option>
+                    <option value="TEP">TEP (BSED/BEED)</option>
+                  </select>
+                )}
+              </div>
+
+              {/* Search Filter */}
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+                  <Search size={14} style={{ position: "absolute", left: 8, color: "var(--srcb-text-muted)" }} />
+                  <input
+                    type="text"
+                    value={requestSearchQuery}
+                    onChange={(e) => setRequestSearchQuery(e.target.value)}
+                    placeholder="Search requests by ID, subject, program head..."
+                    className="input-base"
+                    style={{ padding: "5px 10px 5px 28px", fontSize: "0.82rem", width: 240 }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Permission Requests Data Table */}
+            {filteredRequests.length === 0 ? (
+              <div className="card" style={{ textAlign: "center", padding: "40px 20px" }}>
+                <ShieldCheck size={38} color="#94a3b8" style={{ margin: "0 auto 10px" }} />
+                <h3 style={{ margin: 0, color: "var(--srcb-text)" }}>No Permission Requests Found</h3>
+                <p className="muted" style={{ margin: "4px 0 0", fontSize: "0.86rem" }}>
+                  {requestStatusFilter !== "all" || requestActionFilter !== "all" || requestSearchQuery
+                    ? "No permission requests match your active filters."
+                    : "There are currently no permission requests recorded in the system."}
+                </p>
+              </div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table className="user-mgmt-table" style={{ width: "100%", minWidth: 850 }}>
+                  <thead>
+                    <tr>
+                      <th>REQUEST ID</th>
+                      <th>PROGRAM HEAD</th>
+                      <th>PROGRAM</th>
+                      <th>TARGET SUBJECT &amp; SECTION</th>
+                      <th>REQUESTED ACTION</th>
+                      <th>STATUS</th>
+                      <th>REQUESTED DATE</th>
+                      <th>ADMIN REMARKS</th>
+                      <th style={{ textAlign: "right" }}>ACTIONS</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredRequests.map((req) => {
+                      const isPending = req.status === "Pending" || String(req.status || "").toLowerCase() === "pending";
+                      const isApproved = req.status === "Approved" || String(req.status || "").toLowerCase() === "approved";
+                      const isRejected = req.status === "Rejected" || String(req.status || "").toLowerCase() === "rejected";
+                      const actionBadgeClass =
+                        req.requestedAction === "CREATE_SCHEDULE"
+                          ? "pill--emerald"
+                          : req.requestedAction === "MODIFY_SCHEDULE"
+                          ? "pill--blue"
+                          : req.requestedAction === "DELETE_SCHEDULE"
+                          ? "pill--rose"
+                          : "pill--amber";
+
+                      return (
+                        <tr key={req.id}>
+                          <td>
+                            <span style={{ fontWeight: 800, color: "var(--srcb-navy)", fontSize: "0.82rem" }}>
+                              #REQ-{String(req.id).padStart(3, "0")}
+                            </span>
+                          </td>
+                          <td>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <div
+                                style={{
+                                  width: 28,
+                                  height: 28,
+                                  borderRadius: "50%",
+                                  background: "rgba(13, 84, 153, 0.1)",
+                                  color: "var(--srcb-navy)",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  fontWeight: 700,
+                                  fontSize: "0.75rem",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {req.requesterName ? req.requesterName.charAt(0) : "P"}
+                              </div>
+                              <div>
+                                <div style={{ fontWeight: 700, color: "var(--srcb-text)", fontSize: "0.84rem" }}>
+                                  {req.requesterName}
+                                </div>
+                                <div style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)" }}>
+                                  Program Head
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <span className="pill pill--navy" style={{ fontWeight: 700, fontSize: "0.72rem" }}>
+                              {req.requesterProgram || req.programCode || req.programId || "ITP"}
+                            </span>
+                          </td>
+                          <td>
+                            <div>
+                              <div style={{ fontWeight: 700, color: "var(--srcb-navy)", fontSize: "0.84rem" }}>
+                                {req.subjectCode} – {req.subjectName}
+                              </div>
+                              <div style={{ fontSize: "0.74rem", color: "var(--srcb-text-muted)" }}>
+                                {req.sectionName || "Program Cohort"} {req.roomNumber ? `• Room ${req.roomNumber}` : ""}
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <span className={`pill ${actionBadgeClass}`} style={{ fontWeight: 700, fontSize: "0.7rem", padding: "2px 8px" }}>
+                              {req.requestedAction || "SCHEDULE_ADJUSTMENT"}
+                            </span>
+                          </td>
+                          <td>
+                            <span
+                              className={`pill ${
+                                isApproved
+                                  ? "pill--emerald"
+                                  : isRejected
+                                  ? "pill--rose"
+                                  : "pill--amber"
+                              }`}
+                              style={{ fontWeight: 800, fontSize: "0.72rem" }}
+                            >
+                              {req.status.toUpperCase()}
+                            </span>
+                          </td>
+                          <td>
+                            <span style={{ fontSize: "0.78rem", color: "var(--srcb-text-muted)" }}>
+                              {req.createdAt ? new Date(req.createdAt).toLocaleDateString() : "Today"}
+                            </span>
+                          </td>
+                          <td>
+                            <div style={{ fontSize: "0.76rem", color: req.adminRemarks || req.adminResponse ? "var(--srcb-text)" : "var(--srcb-text-muted)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={req.adminRemarks || req.adminResponse || "No remarks"}>
+                              {req.adminRemarks || req.adminResponse || "—"}
+                            </div>
+                            {req.reviewedByName && (
+                              <div style={{ fontSize: "0.68rem", color: "var(--srcb-text-muted)" }}>
+                                By: {req.reviewedByName}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ textAlign: "right" }}>
+                            {isPending && (role === "admin" || role === "super_admin" || role === "dsa") ? (
+                              <button
+                                type="button"
+                                className="action-button"
+                                onClick={() => setRequestToReview(req)}
+                                style={{ padding: "4px 10px", fontSize: "0.76rem", display: "inline-flex", alignItems: "center", gap: 4 }}
+                              >
+                                <ShieldCheck size={12} />
+                                <span>Review &amp; Decide</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                onClick={() => setRequestToReview(req)}
+                                style={{ padding: "4px 10px", fontSize: "0.76rem", display: "inline-flex", alignItems: "center", gap: 4 }}
+                              >
+                                <Eye size={12} />
+                                <span>View Details</span>
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* Add / Edit Faculty Modal */}
       <Modal
         isOpen={isOpen && canEdit}
         size="lg"
         icon={<UserCheck size={20} />}
-        title={editingFaculty ? "Edit Faculty Profile" : "Register Faculty Member"}
+        title={editingFaculty ? "Edit Teacher Profile" : "Register Teacher"}
         eyebrow="Faculty Directory"
-        description="Configure employee details, department, employment status, and weekly limits."
+        description="Configure teacher details, department, employment status, and weekly limits."
         onClose={() => {
           setIsOpen(false);
           setEditingFaculty(null);
@@ -1161,13 +1890,25 @@ export function FacultyPage() {
 
           <div className="field-group">
             <label htmlFor="facultyDept">
-              <Building2 size={13} /> Department
+              <Building2 size={13} /> Department / Academic Program
             </label>
             <input
               id="facultyDept"
               value={form.department}
               onChange={(e) => setForm({ ...form, department: e.target.value })}
+              placeholder="e.g. Information Technology Program"
+              list="faculty-dept-datalist"
             />
+            <datalist id="faculty-dept-datalist">
+              {departments.map((d) => (
+                <option key={d} value={d} />
+              ))}
+              <option value="Information Technology Program" />
+              <option value="Business Administration Program" />
+              <option value="Teacher Education Program" />
+              <option value="Criminal Justice Education Program" />
+              <option value="Hospitality Management Program" />
+            </datalist>
           </div>
 
           <div className="field-group">
@@ -1230,7 +1971,7 @@ export function FacultyPage() {
             onClick={handleSave}
           >
             {loading && <Loader2 size={16} className="animate-spin" />}
-            <span>{loading ? "Saving…" : editingFaculty ? "Update Profile" : "Register Faculty"}</span>
+            <span>{loading ? "Saving…" : editingFaculty ? "Update Profile" : "Register Teacher"}</span>
           </button>
         </div>
       </Modal>
@@ -1247,6 +1988,165 @@ export function FacultyPage() {
         loading={loading}
         onConfirm={executeDelete}
         onCancel={() => setFacultyToDelete(null)}
+      />
+
+      {/* Bulk Delete or Remove Faculties Modal */}
+      <Modal
+        isOpen={isBulkModalOpen}
+        onClose={() => setIsBulkModalOpen(false)}
+        title={bulkActionChoice === "delete" ? `Delete ${selectedIds.size} Faculty Members` : `Remove ${selectedIds.size} Faculty Members from Roster`}
+        description="Choose whether to permanently delete faculty records and unassign schedules, or remove/deactivate them from the active semester roster."
+        size="md"
+        footer={
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, width: "100%" }}>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => setIsBulkModalOpen(false)}
+              disabled={loading}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              data-testid="confirm-bulk-faculty-action-btn"
+              className={`action-button ${bulkActionChoice === "delete" ? "action-button--danger" : ""}`}
+              style={{
+                background: bulkActionChoice === "delete" ? "#dc2626" : "#d97706",
+                borderColor: bulkActionChoice === "delete" ? "#dc2626" : "#d97706",
+                color: "#ffffff",
+              }}
+              onClick={executeBulkFacultyAction}
+              disabled={loading}
+            >
+              {loading
+                ? "Processing..."
+                : bulkActionChoice === "delete"
+                ? `Permanently Delete ${selectedIds.size} Instructor${selectedIds.size > 1 ? "s" : ""}`
+                : `Remove ${selectedIds.size} Instructor${selectedIds.size > 1 ? "s" : ""} from Roster`}
+            </button>
+          </div>
+        }
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* Action Choice Radio Selection */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ fontWeight: 700, fontSize: "0.85rem", color: "var(--srcb-text)" }}>
+              Select Desired Action:
+            </label>
+
+            <label
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 10,
+                padding: "10px 12px",
+                borderRadius: 8,
+                border: `1.5px solid ${bulkActionChoice === "delete" ? "#dc2626" : "var(--srcb-border)"}`,
+                background: bulkActionChoice === "delete" ? "rgba(239, 68, 68, 0.05)" : "var(--srcb-surface)",
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="radio"
+                name="bulkActionChoiceRadio"
+                value="delete"
+                data-testid="radio-bulk-delete"
+                checked={bulkActionChoice === "delete"}
+                onChange={() => setBulkActionChoice("delete")}
+                style={{ marginTop: 3, accentColor: "#dc2626" }}
+              />
+              <div>
+                <div style={{ fontWeight: 700, color: "#dc2626", fontSize: "0.86rem" }}>
+                  Delete Permanently
+                </div>
+                <div style={{ fontSize: "0.78rem", color: "var(--srcb-text-muted)" }}>
+                  Completely removes instructor profiles and user accounts from the system. Assigned class and exam schedules will become unassigned.
+                </div>
+              </div>
+            </label>
+
+            <label
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 10,
+                padding: "10px 12px",
+                borderRadius: 8,
+                border: `1.5px solid ${bulkActionChoice === "remove" ? "#d97706" : "var(--srcb-border)"}`,
+                background: bulkActionChoice === "remove" ? "rgba(245, 158, 11, 0.05)" : "var(--srcb-surface)",
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="radio"
+                name="bulkActionChoiceRadio"
+                value="remove"
+                data-testid="radio-bulk-remove"
+                checked={bulkActionChoice === "remove"}
+                onChange={() => setBulkActionChoice("remove")}
+                style={{ marginTop: 3, accentColor: "#d97706" }}
+              />
+              <div>
+                <div style={{ fontWeight: 700, color: "#d97706", fontSize: "0.86rem" }}>
+                  Remove from Active Roster (Deactivate)
+                </div>
+                <div style={{ fontSize: "0.78rem", color: "var(--srcb-text-muted)" }}>
+                  Changes instructor status to Inactive so they are removed from timetable planning and faculty loading, but preserves historical records.
+                </div>
+              </div>
+            </label>
+          </div>
+
+          {/* Selected Faculties List Summary */}
+          <div>
+            <div style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--srcb-text-muted)", marginBottom: 6 }}>
+              Selected Faculty Members ({selectedIds.size}):
+            </div>
+            <div
+              style={{
+                maxHeight: 160,
+                overflowY: "auto",
+                background: "var(--srcb-surface-alt, #f8fafc)",
+                borderRadius: 6,
+                border: "1px solid var(--srcb-border)",
+                padding: "6px 10px",
+                fontSize: "0.8rem",
+              }}
+            >
+              {faculty
+                .filter((f) => selectedIds.has(f.id))
+                .map((f, idx, arr) => (
+                  <div
+                    key={f.id}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      padding: "4px 0",
+                      borderBottom: idx < arr.length - 1 ? "1px dashed #e2e8f0" : "none",
+                    }}
+                  >
+                    <span>
+                      <strong>{f.name}</strong> ({f.id})
+                    </span>
+                    <span style={{ color: "var(--srcb-text-muted)" }}>{f.department || "No Department"}</span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Admin Schedule Adjustment Review Modal */}
+      <AdminAdjustmentReviewModal
+        isOpen={Boolean(requestToReview)}
+        onClose={() => setRequestToReview(null)}
+        request={requestToReview}
+        roomsList={roomsList}
+        onReviewed={() => {
+          fetchAdjustmentRequests();
+          fetchFaculty();
+        }}
       />
     </div>
   );

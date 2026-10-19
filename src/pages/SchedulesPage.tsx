@@ -13,6 +13,7 @@ import {
   CalendarDays,
   ListFilter,
   CalendarRange,
+  CalendarPlus,
   Edit2,
   Trash2,
   AlertTriangle,
@@ -46,6 +47,7 @@ import {
   FileText,
   Clock3,
   XCircle,
+  CheckSquare,
 } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
 import {
@@ -282,6 +284,25 @@ function isSubjectMatchingSection(sub: any, sec: any): boolean {
   return true;
 }
 
+function formatSectionDisplay(sec?: any): string {
+  if (!sec) return "";
+  const rawSec = String(sec.section || sec.section_label || sec.name || "").trim();
+  const rawCourse = String(sec.course || sec.course_code || sec.program || "").trim();
+  const rawYl = String(sec.yearLevel || sec.year_level || "").trim();
+  if (!rawSec) return "";
+  if (rawCourse && rawSec.toLowerCase().startsWith(rawCourse.toLowerCase())) {
+    return rawSec;
+  }
+  if (rawCourse && rawYl) {
+    return `${rawCourse} ${rawYl}-${rawSec}`;
+  }
+  if (rawCourse) {
+    return `${rawCourse} ${rawSec}`;
+  }
+  return rawSec;
+}
+
+
 interface DayTimelineBlock {
   key: string;
   startIdx: number;
@@ -371,6 +392,11 @@ interface StackedScheduleCellProps {
   onView: (item: ClassScheduleItem) => void;
   onAddAtSlot: (day: string, slotTime: string) => void;
   onOpenStackGroup?: (group: { day: string; slot: string; schedules: ClassScheduleItem[] }) => void;
+  onAssignPlotted?: (item: ClassScheduleItem) => void;
+  onRemovePlotted?: (id: string) => void;
+  isSelectMode?: boolean;
+  selectedScheduleIds?: Set<string>;
+  onToggleSelect?: (scheduleId: string) => void;
 }
 
 function getClusterConflicts(items: ClassScheduleItem[]) {
@@ -378,11 +404,12 @@ function getClusterConflicts(items: ClassScheduleItem[]) {
   const facultyMap: Record<string, ClassScheduleItem[]> = {};
 
   items.forEach((item) => {
-    if (item.room && item.room !== "TBA") {
+    if (item.isPlotted) return;
+    if (item.room && item.room !== "TBA" && item.room !== "TBD") {
       roomMap[item.room] = roomMap[item.room] || [];
       roomMap[item.room].push(item);
     }
-    if (item.faculty && item.faculty !== "TBA" && item.faculty !== "Unassigned") {
+    if (item.faculty && item.faculty !== "TBA" && item.faculty !== "TBD" && item.faculty !== "Unassigned") {
       facultyMap[item.faculty] = facultyMap[item.faculty] || [];
       facultyMap[item.faculty].push(item);
     }
@@ -406,16 +433,118 @@ function StackedScheduleCell({
   day,
   slot,
   slotIdx: _slotIdx,
-  rowSpan: _rowSpan,
+  rowSpan,
   schedules,
-  canCreate: _canCreate,
+  canCreate,
   onEdit: _onEdit,
   onDelete: _onDelete,
   onView: _onView,
-  onAddAtSlot: _onAddAtSlot,
+  onAddAtSlot,
   onOpenStackGroup,
+  onAssignPlotted,
+  onRemovePlotted,
+  isSelectMode,
+  selectedScheduleIds,
+  onToggleSelect,
 }: StackedScheduleCellProps) {
   if (!schedules || schedules.length === 0) return null;
+
+  // Single Plotted Time Slot Handling
+  if (schedules.length === 1 && schedules[0]?.isPlotted) {
+    const pItem = schedules[0];
+    return (
+      <div
+        data-testid="plotted-slot-card"
+        className="plotted-time-card"
+        onClick={(e) => {
+          e.stopPropagation();
+          onAssignPlotted?.(pItem);
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label={`Plotted time schedule on ${day} ${pItem.time}. Click to add subject and room.`}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onAssignPlotted?.(pItem);
+          }
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--srcb-royal, #2563eb)", fontWeight: 700, fontSize: "0.74rem" }}>
+            <Clock size={12} />
+            <span>{pItem.time}</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span className="plotted-time-badge">Plotted</span>
+            {canCreate && (
+              <button
+                type="button"
+                className="sched-card-quick-add-btn"
+                title={`Add another class to this slot (${day} ${pItem.time})`}
+                aria-label={`Add another class to this slot (${day} ${pItem.time})`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddAtSlot?.(day, pItem.time);
+                }}
+              >
+                <Plus size={10} />
+                <span>Add</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div style={{ fontSize: "0.68rem", color: "var(--srcb-text-muted, #64748b)", margin: "2px 0" }}>
+          Ready for Subject &amp; Room
+        </div>
+
+        <div style={{ display: "flex", gap: 4, alignItems: "center", marginTop: 2 }}>
+          <button
+            type="button"
+            className="action-button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onAssignPlotted?.(pItem);
+            }}
+            style={{
+              padding: "2px 6px",
+              fontSize: "0.68rem",
+              fontWeight: 700,
+              flex: 1,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 3,
+            }}
+          >
+            <Plus size={11} />
+            <span>Add Subject &amp; Room</span>
+          </button>
+          <button
+            type="button"
+            title="Remove plotted time slot"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemovePlotted?.(pItem.id);
+            }}
+            style={{
+              background: "transparent",
+              border: "1px solid var(--srcb-border)",
+              borderRadius: 4,
+              padding: "2px 4px",
+              color: "#94a3b8",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            <Trash2 size={11} />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const isSingle = schedules.length === 1;
   const timeStr = schedules[0]?.time || slot;
@@ -432,14 +561,139 @@ function StackedScheduleCell({
     pillLabel = `${schedules.length} CLASSES`;
   }
 
+  if (isSingle) {
+    const sItem = schedules[0];
+    const code = sItem?.subjectCode || "";
+    const progColor = progTheme.primary || sItem.color || "var(--srcb-royal, #2563eb)";
+    const modeBadge = sItem.classMode === "Laboratory" ? "LAB" : "LEC";
+    const isSelected = Boolean(selectedScheduleIds?.has(sItem.id));
+
+    return (
+      <div
+        data-testid="same-time-stack-card"
+        className={`same-time-cluster-cell-wrapper is-single-wrapper ${isSelected ? "is-selected-cell" : ""}`}
+        onClick={() => {
+          if (isSelectMode) {
+            onToggleSelect?.(sItem.id);
+          } else {
+            onOpenStackGroup?.({ day, slot: timeStr, schedules });
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label={`${pillLabel} scheduled on ${day} ${timeStr}. Click to view class details.`}
+        style={{
+          outline: isSelected ? "2.5px solid var(--srcb-royal, #2563eb)" : undefined,
+          borderRadius: 6,
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            if (isSelectMode) {
+              onToggleSelect?.(sItem.id);
+            } else {
+              onOpenStackGroup?.({ day, slot: timeStr, schedules });
+            }
+          }
+        }}
+      >
+        <div
+          className="same-time-cluster-card"
+          style={{ borderLeftColor: progColor }}
+        >
+          <div className="sched-card-top-row">
+            <div className="sched-card-code-badge" style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              {(isSelectMode || isSelected) && (
+                <input
+                  type="checkbox"
+                  data-testid={`cell-checkbox-${sItem.id}`}
+                  checked={isSelected}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    onToggleSelect?.(sItem.id);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ width: 14, height: 14, accentColor: "var(--srcb-royal, #2563eb)", cursor: "pointer", marginRight: 2 }}
+                />
+              )}
+              <BookOpen size={12} style={{ color: progColor, flexShrink: 0 }} />
+              <span className="cluster-pill-text">{pillLabel}</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span
+                className="sched-card-mode-pill"
+                style={{
+                  background: sItem.classMode === "Laboratory" ? "rgba(124, 58, 237, 0.12)" : "rgba(37, 99, 235, 0.12)",
+                  color: sItem.classMode === "Laboratory" ? "#7c3aed" : "var(--srcb-royal, #2563eb)",
+                }}
+              >
+                {modeBadge}
+              </span>
+              {canCreate && (
+                <button
+                  type="button"
+                  className="sched-card-quick-add-btn"
+                  title={`Add another class to this slot (${day} ${timeStr})`}
+                  aria-label={`Add another class to this slot (${day} ${timeStr})`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAddAtSlot?.(day, timeStr);
+                  }}
+                >
+                  <Plus size={10} />
+                  <span>Add</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {rowSpan >= 2 && sItem.subject && (
+            <div className="sched-card-title" title={sItem.subject}>
+              {sItem.subject}
+            </div>
+          )}
+
+          <div className="sched-card-meta-row">
+            {sItem.room && (
+              <span className="sched-card-chip sched-card-chip--room" title={`Classroom: ${sItem.room}`}>
+                <DoorOpen size={10} />
+                <span>{sItem.room}</span>
+              </span>
+            )}
+            {sItem.section && (
+              <span className="sched-card-chip sched-card-chip--sec" title={`Section: ${sItem.section}`}>
+                <Users size={10} />
+                <span>{sItem.section}</span>
+              </span>
+            )}
+            {rowSpan >= 3 && sItem.faculty && (
+              <span className="sched-card-chip sched-card-chip--fac" title={`Instructor: ${sItem.faculty}`}>
+                <UserCheck size={10} />
+                <span>{sItem.faculty}</span>
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Multiple schedules / concurrent classes or plotted items in this same time slot
+  const allSlotSelected = schedules.length > 0 && schedules.every((s) => selectedScheduleIds?.has(s.id));
+  const someSlotSelected = schedules.some((s) => selectedScheduleIds?.has(s.id));
+
   return (
     <div
       data-testid="same-time-stack-card"
-      className="same-time-cluster-cell-wrapper"
+      className={`same-time-cluster-cell-wrapper is-multi-wrapper ${someSlotSelected ? "is-selected-cell" : ""}`}
       onClick={() => onOpenStackGroup?.({ day, slot: timeStr, schedules })}
       role="button"
       tabIndex={0}
       aria-label={`${pillLabel} scheduled on ${day} ${timeStr}. Click to view class details.`}
+      style={{
+        outline: allSlotSelected ? "2.5px solid var(--srcb-royal, #2563eb)" : (someSlotSelected ? "1.5px dashed var(--srcb-royal, #2563eb)" : undefined),
+        borderRadius: 6,
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -447,23 +701,82 @@ function StackedScheduleCell({
         }
       }}
     >
-      <div
-        className={`same-time-cluster-pill ${conflicts.hasConflict ? "is-conflict-pill" : isSingle ? "is-single-pill" : ""}`}
-        style={isSingle && !conflicts.hasConflict ? { borderLeft: `3px solid ${progTheme.primary || "var(--srcb-royal, #2563eb)"}` } : undefined}
-      >
-        {conflicts.hasConflict ? (
-          <span className="cluster-pill-text">{pillLabel}</span>
-        ) : isSingle ? (
-          <>
-            <BookOpen size={12} className="cluster-pill-icon" style={{ color: progTheme.primary || "var(--srcb-royal, #2563eb)" }} />
-            <span className="cluster-pill-text">{pillLabel}</span>
-          </>
-        ) : (
-          <>
-            <Layers size={12} className="cluster-pill-icon" />
-            <span className="cluster-pill-text">{pillLabel}</span>
-          </>
-        )}
+      <div className="same-time-cluster-card multi-class-card">
+        <div className="sched-card-top-row">
+          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            {(isSelectMode || someSlotSelected) && (
+              <input
+                type="checkbox"
+                data-testid={`multi-slot-checkbox-${day}-${timeStr.replace(/\s+/g, "_")}`}
+                checked={allSlotSelected}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  schedules.forEach((s) => {
+                    if (allSlotSelected) {
+                      if (selectedScheduleIds?.has(s.id)) onToggleSelect?.(s.id);
+                    } else {
+                      if (!selectedScheduleIds?.has(s.id)) onToggleSelect?.(s.id);
+                    }
+                  });
+                }}
+                onClick={(e) => e.stopPropagation()}
+                style={{ width: 14, height: 14, accentColor: "var(--srcb-royal, #2563eb)", cursor: "pointer" }}
+                title={allSlotSelected ? "Deselect all classes in this slot" : "Select all classes in this slot"}
+              />
+            )}
+            <div
+              className={`same-time-cluster-pill ${conflicts.hasConflict ? "is-conflict-pill" : ""}`}
+            >
+              {conflicts.hasConflict ? (
+                <span className="cluster-pill-text">{pillLabel}</span>
+              ) : (
+                <>
+                  <Layers size={12} className="cluster-pill-icon" />
+                  <span className="cluster-pill-text">{pillLabel}</span>
+                </>
+              )}
+            </div>
+          </div>
+
+          {canCreate && (
+            <button
+              type="button"
+              className="sched-card-quick-add-btn"
+              title={`Add another class to this slot (${day} ${timeStr})`}
+              aria-label={`Add another class to this slot (${day} ${timeStr})`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddAtSlot?.(day, timeStr);
+              }}
+            >
+              <Plus size={10} />
+              <span>Add</span>
+            </button>
+          )}
+        </div>
+
+        {/* Informative Preview of the concurrent classes & plotted slots */}
+        <div className="same-time-cluster-preview-items">
+          {schedules.slice(0, rowSpan >= 2 ? 3 : 2).map((item, idx) => (
+            <div key={item.id || idx} className="same-time-preview-row">
+              <span
+                className="preview-indicator"
+                style={{ background: item.isPlotted ? "#4f46e5" : (item.color || "var(--srcb-royal, #2563eb)") }}
+              />
+              <span className="preview-code">
+                {item.isPlotted ? "PLOTTED" : (item.subjectCode || "Class")}
+              </span>
+              <span className="preview-meta">
+                {item.isPlotted ? "Awaiting Subject" : (item.section ? item.section : (item.room || ""))}
+              </span>
+            </div>
+          ))}
+          {schedules.length > (rowSpan >= 2 ? 3 : 2) && (
+            <div className="preview-more-count">
+              +{schedules.length - (rowSpan >= 2 ? 3 : 2)} more
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -524,13 +837,17 @@ export function SchedulesPage() {
   const [selectedFacultyFilter, setSelectedFacultyFilter] = useState<string>("All");
   const [durationFilter, setDurationFilter] = useState<string>("All");
   const [isOpen, setIsOpen] = useState(false);
-  const [modalStep, setModalStep] = useState<1 | 2>(1);
+  const [modalStep, setModalStep] = useState<1 | 2 | 3>(1);
   const [editingSchedule, setEditingSchedule] = useState<ClassScheduleItem | null>(null);
   const [viewingSchedule, setViewingSchedule] = useState<ClassScheduleItem | null>(null);
   const [scheduleToAdjust, setScheduleToAdjust] = useState<ClassScheduleItem | null>(null);
   const [requestToReview, setRequestToReview] = useState<ScheduleAdjustmentRequest | null>(null);
   const [adjustmentRequests, setAdjustmentRequests] = useState<ScheduleAdjustmentRequest[]>([]);
   const [scheduleToDelete, setScheduleToDelete] = useState<ClassScheduleItem | null>(null);
+  const [schedulesToBulkDelete, setSchedulesToBulkDelete] = useState<ClassScheduleItem[]>([]);
+  const [selectedScheduleIds, setSelectedScheduleIds] = useState<Set<string>>(new Set());
+  const [selectedInDrawerIds, setSelectedInDrawerIds] = useState<Set<string>>(new Set());
+  const [isSelectMode, setIsSelectMode] = useState<boolean>(false);
   const [activeStackGroup, setActiveStackGroup] = useState<{ day: string; slot: string; schedules: ClassScheduleItem[] } | null>(null);
   const [expandedStackItemId, setExpandedStackItemId] = useState<string | null>(null);
   const [isDraggingGrid, setIsDraggingGrid] = useState(false);
@@ -547,8 +864,33 @@ export function SchedulesPage() {
   const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
   const currentUserName = localStorage.getItem("userName") || "";
   const currentTeacherId = localStorage.getItem("teacherId") || "";
-  const canCreate = role === "super_admin" || role === "admin" || role === "program_head";
+  const canCreate = role === "super_admin" || role === "admin" || role === "program_head" || role === "dean";
   const isAdmin = role === "admin" || role === "super_admin" || role === "dsa";
+  const isDeanOrAdmin = role === "admin" || role === "super_admin" || role === "dean";
+
+  // Plotted Time Slots (Dean plots all time schedules first, then adds subjects and rooms)
+  const [plottedSlots, setPlottedSlots] = useState<{ id: string; day: string; time: string; program?: string; durationMinutes?: number; createdAt?: number }[]>(() => {
+    try {
+      const saved = localStorage.getItem(`srcb_plotted_time_slots_${selectedProgram?.key || 'ALL'}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [editingPlottedSlotId, setEditingPlottedSlotId] = useState<string | null>(null);
+  const [isBatchPlotterOpen, setIsBatchPlotterOpen] = useState(false);
+  const [batchPlotDays, setBatchPlotDays] = useState<string[]>(["Monday", "Thursday"]);
+  const [batchPlotTimes, setBatchPlotTimes] = useState<string[]>([
+    "07:30 AM - 09:30 AM",
+    "09:30 AM - 11:30 AM",
+  ]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(`srcb_plotted_time_slots_${selectedProgram?.key || 'ALL'}`, JSON.stringify(plottedSlots));
+    } catch { }
+  }, [plottedSlots, selectedProgram?.key]);
 
   // Automated Faculty Gmail Dispatch Modal
   const [isGmailDispatchModalOpen, setIsGmailDispatchModalOpen] = useState(false);
@@ -787,9 +1129,14 @@ export function SchedulesPage() {
         const isSubMajor = Boolean(sub?.isMajor) && !isGeneralSubject(sub);
         const defSubMode: "Lecture" | "Laboratory" = isSubMajor && Number(sub?.labHours || 0) > 0 ? "Laboratory" : "Lecture";
         const duration = getExpectedSubjectDuration(sub, defSubMode);
-        const [startSlot] = slot.split("-").map((t) => t.trim());
+        const [startSlot, endSlot] = slot.split("-").map((t) => t.trim());
+        const hasValidSlot = Boolean(
+          startSlot &&
+          endSlot &&
+          parseTimeToMinutes(endSlot) > parseTimeToMinutes(startSlot)
+        );
         const calculatedEnd = calculateEndTimeFromStart(startSlot || "07:00 AM", duration);
-        const finalSlotTime = startSlot && calculatedEnd ? `${startSlot} - ${calculatedEnd}` : slot;
+        const finalSlotTime = hasValidSlot ? slot : (startSlot && calculatedEnd ? `${startSlot} - ${calculatedEnd}` : slot);
 
         setEditingSchedule(null);
         setForm({
@@ -832,10 +1179,10 @@ export function SchedulesPage() {
       const list = Array.isArray(res?.data?.data)
         ? res.data.data
         : Array.isArray(res?.data)
-        ? res.data
-        : Array.isArray(res)
-        ? res
-        : [];
+          ? res.data
+          : Array.isArray(res)
+            ? res
+            : [];
       setAdjustmentRequests(list);
     } catch {
       setAdjustmentRequests([]);
@@ -848,10 +1195,10 @@ export function SchedulesPage() {
       const list = Array.isArray(res?.data?.data)
         ? res.data.data
         : Array.isArray(res?.data)
-        ? res.data
-        : Array.isArray(res)
-        ? res
-        : [];
+          ? res.data
+          : Array.isArray(res)
+            ? res
+            : [];
       setScheduleItems(list);
     } catch {
       setScheduleItems([]);
@@ -882,7 +1229,7 @@ export function SchedulesPage() {
             setRequestToReview(res.data.data);
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     }
   }, [searchParams]);
 
@@ -1068,8 +1415,7 @@ export function SchedulesPage() {
           const sSec = s.section || '';
           const isSameSection =
             sSec.toLowerCase().trim() === sec.section.toLowerCase().trim() ||
-            (secLabel && sSec.toLowerCase().trim() === secLabel.toLowerCase().trim()) ||
-            sSec.toLowerCase().includes(sec.section.toLowerCase().trim());
+            (secLabel && sSec.toLowerCase().trim() === secLabel.toLowerCase().trim());
           if (!isSameSection) return false;
           return isTimeOverlapping(s.time, form.time);
         });
@@ -1155,11 +1501,7 @@ export function SchedulesPage() {
   const sectionOptionsForStep2: SearchableOption[] = useMemo(() => {
     const baseList = availableSectionsForSlot.length > 0 ? availableSectionsForSlot : availableSections.length > 0 ? availableSections : sectionsList;
     return baseList.map((sec, idx) => {
-      const secLabel = sec.section
-        ? sec.course
-          ? `${sec.course} ${sec.yearLevel || ""}-${sec.section}`.trim()
-          : sec.section
-        : `Section ${idx + 1}`;
+      const secLabel = formatSectionDisplay(sec) || `Section ${idx + 1}`;
       const studentCount = sec.students || 30;
       return {
         value: secLabel,
@@ -1217,9 +1559,69 @@ export function SchedulesPage() {
     });
   }, [roomsList, pairedClassMode]);
 
+  const parsedDurationMinutes = useMemo(() => {
+    if (!form.time || !form.time.includes("-")) return 90;
+    const [startStr, endStr] = form.time.split("-").map((s) => s.trim());
+    if (!startStr || !endStr) return 90;
+    const sMin = parseTimeToMinutes(startStr);
+    const eMin = parseTimeToMinutes(endStr);
+    return !isNaN(sMin) && !isNaN(eMin) && eMin > sMin ? eMin - sMin : 90;
+  }, [form.time]);
+
+  const validEndPoints = useMemo(() => {
+    const startStr = form.time.split("-")[0]?.trim() || "07:00 AM";
+    const startMin = parseTimeToMinutes(startStr);
+    return TIME_POINTS.filter((tp) => parseTimeToMinutes(tp) > startMin);
+  }, [form.time]);
+
+  const handleStartTimeChange = (newStart: string) => {
+    const [currentStart, currentEnd] = form.time.split("-").map((t) => t.trim());
+    let duration = 90;
+    if (currentStart && currentEnd) {
+      const diff = parseTimeToMinutes(currentEnd) - parseTimeToMinutes(currentStart);
+      if (!isNaN(diff) && diff > 0) duration = diff;
+    }
+    const newEnd = calculateEndTimeFromStart(newStart, duration);
+    setForm((prev) => ({
+      ...prev,
+      time: `${newStart} - ${newEnd}`,
+    }));
+  };
+
+  const handleEndTimeChange = (newEnd: string) => {
+    const startPart = form.time.split("-")[0]?.trim() || "07:00 AM";
+    const startMin = parseTimeToMinutes(startPart);
+    const endMin = parseTimeToMinutes(newEnd);
+    if (endMin <= startMin) return;
+    const duration = endMin - startMin;
+    const newMode: "Lecture" | "Laboratory" = duration >= 180 ? "Laboratory" : "Lecture";
+
+    setForm((prev) => ({
+      ...prev,
+      time: `${startPart} - ${newEnd}`,
+      classMode: prev.isMajor ? newMode : prev.classMode,
+    }));
+  };
+
+  const handleQuickDuration = (durationMinutes: number) => {
+    const startPart = form.time.split("-")[0]?.trim() || "07:00 AM";
+    const newEnd = calculateEndTimeFromStart(startPart, durationMinutes);
+    const newMode: "Lecture" | "Laboratory" = durationMinutes >= 180 ? "Laboratory" : "Lecture";
+
+    setForm((prev) => ({
+      ...prev,
+      time: `${startPart} - ${newEnd}`,
+      classMode: prev.isMajor ? newMode : prev.classMode,
+    }));
+  };
+
   const isStep1ResourcesAvailable = useMemo(() => {
-    return Boolean(form.subjectCode && form.day && form.time);
-  }, [form.subjectCode, form.day, form.time]);
+    return Boolean(form.day && form.time);
+  }, [form.day, form.time]);
+
+  const isStep2ResourcesAvailable = useMemo(() => {
+    return Boolean(form.day && form.time && form.subjectCode && form.section);
+  }, [form.day, form.time, form.subjectCode, form.section]);
 
   const selectedFacultyMember = useMemo(() => {
     return (
@@ -1229,17 +1631,45 @@ export function SchedulesPage() {
     );
   }, [form.facultyId, form.faculty, availableFaculty]);
 
-  const handleContinueToStep2 = () => {
-    if (!form.subjectCode) {
-      toast.push("Please select an Academic Subject to continue", "error");
-      return;
-    }
+  const handleConfirmTimeAndNext = () => {
     if (!form.day || !form.time) {
       toast.push("Please select Teaching Day and Time Slot to continue", "error");
       return;
     }
 
-    // Adapt / validate faculty selection for the new slot
+    // If subject is unset, pick candidate matching selected program or first subject
+    if (!form.subjectCode && subjectsList.length > 0) {
+      const candidateSub = subjectsList.find((s) => !form.program || s.program === form.program || s.program === "ALL") || subjectsList[0];
+      if (candidateSub) {
+        handleSubjectChange(candidateSub.code);
+      }
+    }
+
+    // Default section if unset
+    if (!form.section && availableSectionsForSlot.length > 0) {
+      const s = availableSectionsForSlot[0];
+      const sVal = s.course ? `${s.course} ${s.yearLevel || ''}-${s.section}`.trim() : s.section;
+      setForm((prev) => ({ ...prev, section: sVal }));
+    }
+
+    setModalStep(2);
+  };
+
+  const handleContinueToStep2 = () => {
+    handleConfirmTimeAndNext();
+  };
+
+  const handleContinueToStep3 = () => {
+    if (!form.subjectCode) {
+      toast.push("Please select an Academic Subject to continue", "error");
+      return;
+    }
+    if (!form.section) {
+      toast.push("Please select a Student Section to continue", "error");
+      return;
+    }
+
+    // Adapt / validate faculty selection for the confirmed slot
     const isCurrentFacultyOccupied = scheduleItems.some((s) => {
       if (editingSchedule && String(s.id) === String(editingSchedule.id)) return false;
       if (s.day.toLowerCase() !== form.day.toLowerCase()) return false;
@@ -1249,7 +1679,7 @@ export function SchedulesPage() {
     });
 
     const facCandidates = availableFacultyForSlot.length > 0 ? availableFacultyForSlot : availableFaculty.length > 0 ? availableFaculty : facultyList;
-    if (isCurrentFacultyOccupied || !facCandidates.some((f) => f.id === form.facultyId || f.name === form.faculty)) {
+    if (isCurrentFacultyOccupied || !form.facultyId || !facCandidates.some((f) => f.id === form.facultyId || f.name === form.faculty)) {
       const firstFac = availableFacultyForSlot[0] || facCandidates[0];
       if (firstFac) {
         setForm((prev) => ({ ...prev, facultyId: firstFac.id, faculty: firstFac.name }));
@@ -1258,7 +1688,7 @@ export function SchedulesPage() {
       }
     }
 
-    // Adapt / validate room selection for the new slot
+    // Adapt / validate room selection for the confirmed slot
     if (form.modality === "Face-to-Face") {
       const isCurrentRoomOccupied = scheduleItems.some((s) => {
         if (editingSchedule && String(s.id) === String(editingSchedule.id)) return false;
@@ -1268,7 +1698,7 @@ export function SchedulesPage() {
       });
 
       const roomCandidates = availableRoomsForSlot.length > 0 ? availableRoomsForSlot : availableRoomsForBuilding.length > 0 ? availableRoomsForBuilding : roomsList;
-      if (isCurrentRoomOccupied || !roomCandidates.some((r) => r.number === form.room)) {
+      if (isCurrentRoomOccupied || !form.room || !roomCandidates.some((r) => r.number === form.room)) {
         const firstRoom = availableRoomsForSlot[0] || roomCandidates[0];
         if (firstRoom) {
           setForm((prev) => ({ ...prev, room: firstRoom.number, building: (firstRoom.building as BuildingType) || prev.building }));
@@ -1278,30 +1708,7 @@ export function SchedulesPage() {
       }
     }
 
-    // Adapt / validate section selection for the new slot & subject
-    const isCurrentSectionOccupied = scheduleItems.some((s) => {
-      if (editingSchedule && String(s.id) === String(editingSchedule.id)) return false;
-      if (s.day.toLowerCase() !== form.day.toLowerCase()) return false;
-      const sSec = s.section || '';
-      const isMatch = form.section && (
-        sSec.toLowerCase().trim() === form.section.toLowerCase().trim() ||
-        sSec.toLowerCase().includes(form.section.toLowerCase().trim())
-      );
-      return isMatch && isTimeOverlapping(s.time, form.time);
-    });
-
-    const secCandidates = availableSectionsForSlot.length > 0 ? availableSectionsForSlot : availableSections.length > 0 ? availableSections : sectionsList;
-    if (isCurrentSectionOccupied || !secCandidates.some((s) => s.section === form.section || (s.course && `${s.course} ${s.yearLevel || ''}-${s.section}`.trim() === form.section))) {
-      const firstSec = availableSectionsForSlot[0] || secCandidates[0];
-      if (firstSec) {
-        const secVal = firstSec.course ? `${firstSec.course} ${firstSec.yearLevel || ''}-${firstSec.section}`.trim() : firstSec.section;
-        setForm((prev) => ({ ...prev, section: secVal }));
-      } else {
-        setForm((prev) => ({ ...prev, section: "" }));
-      }
-    }
-
-    setModalStep(2);
+    setModalStep(3);
   };
 
   const handleScheduleUnscheduledSubject = (sub: any) => {
@@ -1342,15 +1749,118 @@ export function SchedulesPage() {
     if (!sub) return;
 
     const isMajor = Boolean(sub.isMajor) && !isGeneralSubject(sub);
-    const mode: "Lecture" | "Laboratory" = isMajor ? (form.classMode || "Lecture") : "Lecture";
-    const duration = getExpectedSubjectDuration(sub, mode);
-    const startPart = form.time.split("-")[0]?.trim() || "07:00 AM";
-    const endPart = calculateEndTimeFromStart(startPart, duration);
+    const [startPart, endPart] = form.time.split("-").map((t) => t.trim());
+    const hasScheduledTime = Boolean(
+      startPart &&
+      endPart &&
+      parseTimeToMinutes(endPart) > parseTimeToMinutes(startPart)
+    );
+    const currentDuration = hasScheduledTime
+      ? parseTimeToMinutes(endPart) - parseTimeToMinutes(startPart)
+      : 90;
+
+    let mode: "Lecture" | "Laboratory" = isMajor ? (form.classMode || "Lecture") : "Lecture";
+    if (isMajor) {
+      if (currentDuration >= 180) {
+        mode = "Laboratory";
+      } else {
+        mode = "Lecture";
+      }
+    }
+
+    // Follow the time on the scheduled time! Do NOT set time again!
+    let finalTime = form.time;
+    if (!hasScheduledTime) {
+      const duration = getExpectedSubjectDuration(sub, mode);
+      const finalStart = startPart || "07:00 AM";
+      const calculatedEnd = calculateEndTimeFromStart(finalStart, duration);
+      finalTime = `${finalStart} - ${calculatedEnd}`;
+    }
 
     let defPairedRoom = form.pairedRoom;
     if (isMajor && mode === "Lecture") {
       const labRoom = roomsList.find((r) => /lab/i.test(r.type || "") || /lab/i.test(r.number || ""));
       if (labRoom) defPairedRoom = labRoom.number;
+    }
+
+    // Helper to check if a faculty member has a conflict at this slot
+    const isFacOccupied = (facId?: string, facName?: string) => {
+      if (!facId && !facName) return false;
+      return scheduleItems.some((s) => {
+        if (editingSchedule && String(s.id) === String(editingSchedule.id)) return false;
+        if (s.day.toLowerCase() !== form.day.toLowerCase()) return false;
+        if (!isTimeOverlapping(s.time, finalTime)) return false;
+        return (facId && s.facultyId === facId) || (facName && s.faculty && s.faculty.toLowerCase().trim() === facName.toLowerCase().trim());
+      });
+    };
+
+    // Auto-pick available faculty for this time if unset or occupied
+    let defFacId = form.facultyId;
+    let defFacName = form.faculty;
+    if (sub.instructorId) {
+      const subFac = facultyList.find((f) => f.id === sub.instructorId);
+      if (subFac && !isFacOccupied(subFac.id, subFac.name)) {
+        defFacId = subFac.id;
+        defFacName = subFac.name;
+      }
+    }
+    if (!defFacId || isFacOccupied(defFacId, defFacName)) {
+      const freeFac = facultyList.find((f) => !isFacOccupied(f.id, f.name));
+      if (freeFac) {
+        defFacId = freeFac.id;
+        defFacName = freeFac.name;
+      } else if (availableFaculty.length > 0) {
+        defFacId = availableFaculty[0].id;
+        defFacName = availableFaculty[0].name;
+      }
+    }
+
+    // Helper to check if a room is occupied at this slot
+    const isRoomOccupied = (roomNum?: string) => {
+      if (!roomNum) return false;
+      return scheduleItems.some((s) => {
+        if (editingSchedule && String(s.id) === String(editingSchedule.id)) return false;
+        if (s.modality === "Online") return false;
+        if (s.day.toLowerCase() !== form.day.toLowerCase()) return false;
+        if (!isTimeOverlapping(s.time, finalTime)) return false;
+        return s.room && s.room.toLowerCase().trim() === roomNum.toLowerCase().trim();
+      });
+    };
+
+    // Auto-pick available room for this time if unset or occupied
+    let defRoom = form.room;
+    let defBuilding = form.building;
+    if (!defRoom || isRoomOccupied(defRoom)) {
+      const freeRoom = findAvailableRoomForSlot(form.day, finalTime, roomsList, scheduleItems, editingSchedule?.id);
+      if (freeRoom) {
+        defRoom = freeRoom.number;
+        defBuilding = (freeRoom.building as BuildingType) || defBuilding;
+      }
+    }
+
+    // Helper to check if a section is occupied at this slot
+    const isSecOccupied = (secVal?: string) => {
+      if (!secVal) return false;
+      return scheduleItems.some((s) => {
+        if (editingSchedule && String(s.id) === String(editingSchedule.id)) return false;
+        if (s.day.toLowerCase() !== form.day.toLowerCase()) return false;
+        if (!isTimeOverlapping(s.time, finalTime)) return false;
+        return s.section && s.section.toLowerCase().trim() === secVal.toLowerCase().trim();
+      });
+    };
+
+    // Auto-pick matching section if unset or occupied in this slot
+    let defSec = form.section;
+    if (!defSec || isSecOccupied(defSec)) {
+      const matchingSec = availableSections.find((sec) => {
+        if (!isSubjectMatchingSection(sub, sec)) return false;
+        const sLabel = formatSectionDisplay(sec);
+        return !isSecOccupied(sLabel) && !isSecOccupied(sec.section);
+      }) || availableSections.find((sec) => isSubjectMatchingSection(sub, sec)) || availableSections[0];
+
+      if (matchingSec) {
+        defSec = formatSectionDisplay(matchingSec);
+      }
     }
 
     setForm((prev) => ({
@@ -1359,17 +1869,18 @@ export function SchedulesPage() {
       subject: sub.name,
       isMajor,
       classMode: mode,
-      time: `${startPart} - ${endPart}`,
+      time: finalTime,
+      facultyId: defFacId || prev.facultyId,
+      faculty: defFacName || prev.faculty,
+      room: defRoom || prev.room,
+      building: defBuilding || prev.building,
+      section: defSec || prev.section,
       pairedRoom: defPairedRoom || prev.pairedRoom,
       program: sub.program || prev.program,
     }));
   };
 
   const handleClassModeChange = (mode: "Lecture" | "Laboratory") => {
-    const duration = getExpectedSubjectDuration(selectedSubjectObj, mode);
-    const startPart = form.time.split("-")[0]?.trim() || "07:00 AM";
-    const endPart = calculateEndTimeFromStart(startPart, duration);
-
     // Auto-pick paired room if opposite is lab
     const oppositeMode: "Lecture" | "Laboratory" = mode === "Lecture" ? "Laboratory" : "Lecture";
     let nextPairedRoom = form.pairedRoom;
@@ -1381,10 +1892,10 @@ export function SchedulesPage() {
       if (lecRoom) nextPairedRoom = lecRoom.number;
     }
 
+    // Follow the scheduled time! Do NOT set time again!
     setForm((prev) => ({
       ...prev,
       classMode: mode,
-      time: `${startPart} - ${endPart}`,
       pairedRoom: nextPairedRoom || prev.pairedRoom,
     }));
   };
@@ -1432,6 +1943,7 @@ export function SchedulesPage() {
         building: form.building,
         modality: form.modality,
         isCombinedCohort: form.isCombinedCohort,
+        isAuthorizedScheduler: isDeanOrAdmin,
       },
       scheduleItems,
       facultyList
@@ -1595,6 +2107,86 @@ export function SchedulesPage() {
     }
   };
 
+  const toggleScheduleSelection = (id: string) => {
+    setSelectedScheduleIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllVisibleSchedules = () => {
+    if (visibleSchedules.length === 0) return;
+    const allSelected = visibleSchedules.every((s) => selectedScheduleIds.has(s.id));
+    if (allSelected) {
+      setSelectedScheduleIds(new Set());
+    } else {
+      setSelectedScheduleIds(new Set(visibleSchedules.map((s) => s.id)));
+    }
+  };
+
+  const clearScheduleSelection = () => {
+    setSelectedScheduleIds(new Set());
+  };
+
+  const executeBulkDelete = async () => {
+    if (!canCreate || schedulesToBulkDelete.length === 0) return;
+    setLoading(true);
+    try {
+      const plottedItems = schedulesToBulkDelete.filter((s) => s.isPlotted || String(s.id).startsWith("plotted-"));
+      const realDbItems = schedulesToBulkDelete.filter((s) => !s.isPlotted && !String(s.id).startsWith("plotted-"));
+
+      // Remove plotted items from local state
+      plottedItems.forEach((p) => {
+        const cleanId = String(p.id).replace(/^plotted-/, "");
+        handleRemovePlottedSlot(cleanId);
+      });
+
+      if (realDbItems.length > 0) {
+        const ids = realDbItems.map((s) => s.id);
+        try {
+          await api.post("/schedules/bulk-delete", { ids });
+        } catch (_bulkErr: any) {
+          // Graceful fallback to sequential/parallel individual delete requests
+          await Promise.allSettled(ids.map((id) => api.delete(`/schedules/${encodeURIComponent(id)}`)));
+        }
+      }
+
+      toast.push(`Successfully removed ${schedulesToBulkDelete.length} class schedule${schedulesToBulkDelete.length > 1 ? "s" : ""}`, "success");
+      addNotification({
+        title: "Class Schedules Removed",
+        message: `Removed ${schedulesToBulkDelete.length} scheduled class blocks in bulk.`,
+        type: "warning",
+        link: "/schedules",
+        targetRole: "admin,program_head,teacher",
+      });
+
+      // Update activeStackGroup if currently open
+      if (activeStackGroup) {
+        const deletedIdSet = new Set(schedulesToBulkDelete.map((s) => s.id));
+        const remaining = activeStackGroup.schedules.filter((s) => !deletedIdSet.has(s.id));
+        if (remaining.length === 0) {
+          setActiveStackGroup(null);
+        } else {
+          setActiveStackGroup({
+            ...activeStackGroup,
+            schedules: remaining,
+          });
+        }
+      }
+
+      setSelectedScheduleIds(new Set());
+      setSelectedInDrawerIds(new Set());
+      fetchSchedules();
+    } catch (err: any) {
+      toast.push(err?.response?.data?.error || err.message || "Failed to remove schedules", "error");
+    } finally {
+      setLoading(false);
+      setSchedulesToBulkDelete([]);
+    }
+  };
+
   const handleSave = async (addAnother = false) => {
     if (!form.subjectCode || !form.section || !form.faculty) {
       toast.push("Please select Subject, Section, and Faculty", "error");
@@ -1604,14 +2196,13 @@ export function SchedulesPage() {
     const [sPart, ePart] = form.time.split("-").map((t) => t.trim());
     if (sPart && ePart) {
       const actMin = parseTimeToMinutes(ePart) - parseTimeToMinutes(sPart);
-      const expMin = getExpectedSubjectDuration(selectedSubjectObj, form.classMode);
-      if (actMin !== expMin && !isSrcbStandaloneDay(form.day)) {
-        toast.push(`Invalid schedule duration: ${form.subjectCode} (${form.classMode}) requires ${expMin / 60} hour(s) (${expMin} mins).`, "error");
+      if (actMin <= 0) {
+        toast.push("Invalid schedule duration: End time must be after start time.", "error");
         return;
       }
     }
 
-    if (!validationFeedback.valid && validationFeedback.errors.length > 0) {
+    if (!validationFeedback.valid && validationFeedback.errors.length > 0 && !isDeanOrAdmin) {
       toast.push(validationFeedback.errors[0], "error");
       return;
     }
@@ -1631,8 +2222,13 @@ export function SchedulesPage() {
           ? "Virtual Classroom"
           : (roomsList.find((r) => r.number === resolvedRoom)?.building as BuildingType) || form.building;
 
+      const targetSecObj =
+        sectionsList.find((s) => s.id === (form as any).sectionId || formatSectionDisplay(s) === form.section || s.section === form.section) ||
+        availableSections.find((s) => formatSectionDisplay(s) === form.section || s.section === form.section);
+      const resolvedSectionId = targetSecObj?.id || (form as any).sectionId || undefined;
+
       const [startPart, endPart] = form.time.split("-").map((t) => t.trim());
-      const payload: Omit<ClassScheduleItem, "id"> & { id?: string; start_time?: string; end_time?: string } = {
+      const payload: Omit<ClassScheduleItem, "id"> & { id?: string; start_time?: string; end_time?: string; followScheduledTime?: boolean; bypassDurationValidation?: boolean; sectionId?: string; section_id?: string } = {
         id: editingSchedule?.id,
         day: form.day,
         time: form.time,
@@ -1641,6 +2237,8 @@ export function SchedulesPage() {
         subjectCode: form.subjectCode,
         subject: form.subject,
         section: form.section,
+        sectionId: resolvedSectionId ? String(resolvedSectionId) : undefined,
+        section_id: resolvedSectionId ? String(resolvedSectionId) : undefined,
         faculty: form.faculty,
         facultyId: form.facultyId,
         room: resolvedRoom,
@@ -1658,6 +2256,8 @@ export function SchedulesPage() {
         status: "Confirmed",
         isCombinedCohort: form.isCombinedCohort,
         is_combined_cohort: form.isCombinedCohort,
+        followScheduledTime: true,
+        bypassDurationValidation: true,
       } as any;
 
       if (editingSchedule) {
@@ -1675,7 +2275,12 @@ export function SchedulesPage() {
       } else {
         await api.post("/schedules", payload);
 
-        // Automatic Paired-Day Schedule Creation (e.g., Monday Lecture 2h -> Thursday Lab 3h)
+        if (editingPlottedSlotId) {
+          setPlottedSlots((prev) => prev.filter((p) => p.id !== editingPlottedSlotId));
+          setEditingPlottedSlotId(null);
+        }
+
+        // Automatic Paired-Day Schedule Creation (e.g., Monday Lecture -> Thursday Lab)
         let pairedSaved = false;
         let pairedErrorMsg: string | null = null;
 
@@ -1695,6 +2300,8 @@ export function SchedulesPage() {
             end_time: pEndPart,
             room: resolvedPairedRoom,
             building: resolvedPairedBuilding,
+            followScheduledTime: true,
+            bypassDurationValidation: true,
           };
           try {
             await api.post("/schedules", pairedPayload);
@@ -1707,7 +2314,7 @@ export function SchedulesPage() {
 
         if (pairedSaved && pairedDay) {
           const detailMsg = form.isMajor
-            ? `${form.day} (${form.classMode === "Laboratory" ? "Lab 3h" : "Lecture 2h"}: ${form.time}) & ${pairedDay} (${pairedClassMode === "Laboratory" ? "Lab 3h" : "Lecture 2h"}: ${pairedTime})`
+            ? `${form.day} (${form.classMode}: ${form.time}) & ${pairedDay} (${pairedClassMode}: ${pairedTime})`
             : `${form.day} & ${pairedDay} (${form.time})`;
           toast.push(
             `Successfully scheduled: ${detailMsg}`,
@@ -1755,6 +2362,14 @@ export function SchedulesPage() {
         const nextDefRoom = nextFreeRoom?.number || roomsList[0]?.number || "COL-101";
         const nextDefBuilding = (nextFreeRoom?.building as BuildingType) || roomsList[0]?.building || "College Building";
 
+        const nextFreeSec = sectionsList.find((s) => {
+          const sLabel = formatSectionDisplay(s);
+          return !updatedList.some((sc) => sc.day.toLowerCase() === curDay.toLowerCase() && isTimeOverlapping(sc.time, curTime) && (sc.section === sLabel || sc.section === s.section));
+        });
+        const nextSecVal = nextFreeSec ? formatSectionDisplay(nextFreeSec) : "";
+
+        const nextFreeFac = facultyList.find((f) => !updatedList.some((s) => s.day.toLowerCase() === curDay.toLowerCase() && isTimeOverlapping(s.time, curTime) && (s.facultyId === f.id || s.faculty === f.name)));
+
         setForm((prev) => ({
           ...prev,
           day: curDay,
@@ -1763,11 +2378,11 @@ export function SchedulesPage() {
           subject: "",
           room: nextDefRoom,
           building: nextDefBuilding,
-          section: "",
-          facultyId: "",
-          faculty: "",
+          section: nextSecVal,
+          facultyId: nextFreeFac?.id || "",
+          faculty: nextFreeFac?.name || "",
         }));
-        setModalStep(1);
+        setModalStep(2);
       } else {
         setIsOpen(false);
         setEditingSchedule(null);
@@ -1896,11 +2511,168 @@ export function SchedulesPage() {
   const dayTimelineBlocks = useMemo(() => {
     const map = new Map<string, DayTimelineBlock[]>();
     for (const day of DAYS) {
-      const dayItems = visibleSchedules.filter((item) => item.day.toLowerCase() === day.toLowerCase());
-      map.set(day.toLowerCase(), buildDayTimelineBlocks(dayItems));
+      const dayOfficial = visibleSchedules.filter((item) => item.day.toLowerCase() === day.toLowerCase());
+
+      // Plotted Time Slots for this day (can coexist with official classes in the same time slot)
+      const dayPlottedItems: ClassScheduleItem[] = plottedSlots
+        .filter((ps) => ps.day.toLowerCase() === day.toLowerCase())
+        .map((ps) => ({
+          id: `plotted-${ps.id}`,
+          day: ps.day,
+          time: ps.time,
+          subjectCode: "PLOTTED",
+          subject: "Plotted Time Slot",
+          section: "Awaiting Assignment",
+          faculty: "TBD",
+          room: "TBD",
+          building: "College Building",
+          modality: "Face-to-Face" as ClassModality,
+          program: ps.program || selectedProgram.key || "BSIT",
+          color: "#4f46e5",
+          isPlotted: true,
+        }));
+
+      const combinedDayItems = [...dayOfficial, ...dayPlottedItems];
+      map.set(day.toLowerCase(), buildDayTimelineBlocks(combinedDayItems));
     }
     return map;
-  }, [visibleSchedules]);
+  }, [visibleSchedules, plottedSlots, selectedProgram.key]);
+
+  const handleAssignPlottedSlot = (item: ClassScheduleItem) => {
+    if (!canCreate) return;
+    setEditingSchedule(null);
+    const cleanId = item.id.replace(/^plotted-/, "");
+    setEditingPlottedSlotId(cleanId);
+
+    const firstSub = availableSubjects[0] || subjectsList[0];
+    const isMajor = Boolean(firstSub?.isMajor) && !isGeneralSubject(firstSub);
+    const mode = isMajor && Number(firstSub?.labHours || 0) > 0 ? "Laboratory" : "Lecture";
+
+    const defSec = sectionsList.find((sec) => isSubjectMatchingSection(firstSub, sec)) || sectionsList[0];
+    const defSecVal = defSec ? (defSec.course && defSec.section ? `${defSec.course} ${defSec.yearLevel || ''}-${defSec.section}`.trim() : defSec.section) : "BSIT 1-A";
+
+    const freeRoom = findAvailableRoomForSlot(item.day, item.time, roomsList, scheduleItems);
+    const defRoom = freeRoom?.number || roomsList[0]?.number || "COL-101";
+    const defBuilding = (freeRoom?.building as BuildingType) || roomsList[0]?.building || "College Building";
+
+    const defFac = facultyList.find((f) => {
+      if (firstSub?.instructorId && f.id === firstSub.instructorId) return true;
+      return !scheduleItems.some((s) => s.day.toLowerCase() === item.day.toLowerCase() && isTimeOverlapping(s.time, item.time) && (s.facultyId === f.id || s.faculty === f.name));
+    }) || facultyList[0];
+
+    setForm({
+      day: item.day,
+      time: item.time,
+      subjectCode: firstSub?.code || "",
+      subject: firstSub?.name || "",
+      section: defSecVal,
+      facultyId: defFac?.id || "",
+      faculty: defFac?.name || "",
+      room: defRoom,
+      pairedRoom: defRoom,
+      building: defBuilding as BuildingType,
+      pairedBuilding: defBuilding as BuildingType,
+      modality: "Face-to-Face",
+      onlineLink: "",
+      isMajor,
+      classMode: mode,
+      program: selectedProgram?.key || "BSIT",
+      isCombinedCohort: false,
+    });
+    setPairedEnabled(true);
+    setModalStep(2);
+    setIsOpen(true);
+  };
+
+  const handleRemovePlottedSlot = (id: string) => {
+    const cleanId = id.replace(/^plotted-/, "");
+    setPlottedSlots((prev) => prev.filter((p) => p.id !== cleanId));
+    toast.push("Plotted time slot removed from timetable", "info");
+  };
+
+  const handlePlotCurrentTimeSlot = () => {
+    if (!form.day || !form.time) {
+      toast.push("Please select Day and Time to plot", "error");
+      return;
+    }
+    const newId = `slot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const newSlot = {
+      id: newId,
+      day: form.day,
+      time: form.time,
+      program: selectedProgram.key || "BSIT",
+      durationMinutes: parsedDurationMinutes,
+      createdAt: Date.now(),
+    };
+    setPlottedSlots((prev) => [...prev, newSlot]);
+    setIsOpen(false);
+    toast.push(
+      `Plotted ${form.day} (${form.time}) onto the matrix! Click "+ Add Subject & Room" on the grid when you're ready to assign details.`,
+      "success"
+    );
+  };
+
+  const handlePlotNewSlotAt = (day: string, timeSlot: string) => {
+    if (!canCreate) return;
+    const newId = `slot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const [sStr, eStr] = timeSlot.split("-").map((p) => p.trim());
+    const dur = sStr && eStr ? parseTimeToMinutes(eStr) - parseTimeToMinutes(sStr) : 90;
+    const newSlot = {
+      id: newId,
+      day,
+      time: timeSlot,
+      program: selectedProgram.key || "BSIT",
+      durationMinutes: dur > 0 ? dur : 90,
+      createdAt: Date.now(),
+    };
+    setPlottedSlots((prev) => [...prev, newSlot]);
+    toast.push(`Plotted another time slot on ${day} (${timeSlot})!`, "success");
+  };
+
+  const handleBatchPlotTimeSchedules = () => {
+    if (batchPlotDays.length === 0) {
+      toast.push("Please select at least one day", "error");
+      return;
+    }
+    if (batchPlotTimes.length === 0) {
+      toast.push("Please select at least one time slot", "error");
+      return;
+    }
+
+    const newSlots: { id: string; day: string; time: string; program: string; durationMinutes: number; createdAt: number }[] = [];
+    for (const d of batchPlotDays) {
+      for (const t of batchPlotTimes) {
+        const alreadyPlottedInProgram = plottedSlots.some(
+          (ps) => ps.day.toLowerCase() === d.toLowerCase() && ps.time === t && ps.program === (selectedProgram.key || "BSIT")
+        );
+        if (!alreadyPlottedInProgram) {
+          const [sStr, eStr] = t.split("-").map((p) => p.trim());
+          const dur = sStr && eStr ? parseTimeToMinutes(eStr) - parseTimeToMinutes(sStr) : 90;
+          newSlots.push({
+            id: `batch-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            day: d,
+            time: t,
+            program: selectedProgram.key || "BSIT",
+            durationMinutes: dur > 0 ? dur : 90,
+            createdAt: Date.now(),
+          });
+        }
+      }
+    }
+
+    if (newSlots.length === 0) {
+      toast.push("All selected time schedules are already plotted or scheduled", "info");
+      setIsBatchPlotterOpen(false);
+      return;
+    }
+
+    setPlottedSlots((prev) => [...prev, ...newSlots]);
+    setIsBatchPlotterOpen(false);
+    toast.push(
+      `Successfully plotted ${newSlots.length} class time schedule(s) onto the timetable! Click "+ Add Subject & Room" to complete them.`,
+      "success"
+    );
+  };
 
   const handleOpenAddAtSlot = (day: string, timeSlot: string) => {
     if (!canCreate) return;
@@ -1917,17 +2689,22 @@ export function SchedulesPage() {
     }) || facultyList.find((f) => !scheduleItems.some((s) => s.day.toLowerCase() === day.toLowerCase() && isTimeOverlapping(s.time, timeSlot) && (s.facultyId === f.id || s.faculty === f.name))) || facultyList[0];
 
     const defSec = sectionsList.find((s) => {
-      const sLabel = s.course ? `${s.course} ${s.yearLevel || ''}-${s.section}`.trim() : s.section;
+      const sLabel = formatSectionDisplay(s);
       return !scheduleItems.some((sc) => sc.day.toLowerCase() === day.toLowerCase() && isTimeOverlapping(sc.time, timeSlot) && (sc.section === sLabel || sc.section === s.section));
     }) || sectionsList[0];
-    const defSecVal = defSec ? (defSec.course && defSec.section ? `${defSec.course} ${defSec.yearLevel || ''}-${defSec.section}`.trim() : defSec.section) : "BSIT 1-A";
+    const defSecVal = defSec ? formatSectionDisplay(defSec) : "BSIT 1-A";
 
     const isFirstMajor = Boolean(firstSub?.isMajor) && !isGeneralSubject(firstSub);
     const defMode: "Lecture" | "Laboratory" = isFirstMajor && Number(firstSub?.labHours || 0) > 0 ? "Laboratory" : "Lecture";
     const duration = getExpectedSubjectDuration(firstSub, defMode);
-    const [startSlot] = timeSlot.split("-").map((t) => t.trim());
+    const [startSlot, endSlot] = timeSlot.split("-").map((t) => t.trim());
+    const hasValidTimeSlot = Boolean(
+      startSlot &&
+      endSlot &&
+      parseTimeToMinutes(endSlot) > parseTimeToMinutes(startSlot)
+    );
     const calculatedEnd = calculateEndTimeFromStart(startSlot || "07:00 AM", duration);
-    const finalSlotTime = startSlot && calculatedEnd ? `${startSlot} - ${calculatedEnd}` : timeSlot;
+    const finalSlotTime = hasValidTimeSlot ? timeSlot : (startSlot && calculatedEnd ? `${startSlot} - ${calculatedEnd}` : timeSlot);
 
     setEditingSchedule(null);
     setForm({
@@ -1973,26 +2750,12 @@ export function SchedulesPage() {
             <span>Home</span> <span>/</span> <strong>Schedules</strong>
           </>
         }
-        helpText={
-          "Supports College, SHS, and JHS room assignments, paired lecture/laboratory scheduling, and instructor conflict prevention."
-        }
         actions={
           canCreate ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={() => handleOpenGmailDispatch()}
-                style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700 }}
-                title="Dispatch finalized teaching schedules to assigned faculty institutional Gmail accounts"
-              >
-                <Mail size={15} color="var(--srcb-navy)" />
-                <span>Notify Faculty (Gmail)</span>
-              </button>
-              <button
-                className="action-button"
-                type="button"
-                onClick={() => {
+            <button
+              className="action-button"
+              type="button"
+              onClick={() => {
                 setEditingSchedule(null);
                 const firstSec = availableSections[0] || sectionsList[0];
                 const defSecVal = firstSec ? (firstSec.course && firstSec.section ? `${firstSec.course} ${firstSec.yearLevel || ''}-${firstSec.section}`.trim() : firstSec.section) : "BSIT 1-A";
@@ -2035,81 +2798,31 @@ export function SchedulesPage() {
               <Plus size={16} />
               Schedule Class
             </button>
-          </div>
           ) : undefined
         }
       />
 
-      {/* Pending Schedule Adjustment / Permission Requests Banner for Admin */}
-      {pendingRequestsCount > 0 && (role === "admin" || role === "super_admin") && (
-        <div
-          data-testid="admin-adjustment-requests-banner"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "12px 16px",
-            marginBottom: 16,
-            background: "rgba(245, 158, 11, 0.08)",
-            border: "1px solid rgba(245, 158, 11, 0.3)",
-            borderRadius: 8,
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Clock size={18} color="#d97706" />
-            <div>
-              <div style={{ fontWeight: 700, color: "var(--srcb-text)" }}>
-                {`${pendingRequestsCount} Schedule Adjustment Request(s)`}
-              </div>
-              <div style={{ fontSize: "0.82rem", color: "var(--srcb-text-muted)" }}>
-                Program Heads have submitted schedule adjustment or timetable permission requests.
-              </div>
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              type="button"
-              data-testid="review-requests-banner-btn"
-              className="action-button"
-              style={{ padding: "6px 14px", fontSize: "0.82rem" }}
-              onClick={() => {
-                const firstPending = adjustmentRequests.find((r) => String(r.status || "").toLowerCase() === "pending") || adjustmentRequests[0] || null;
-                if (firstPending) {
-                  setRequestToReview(firstPending);
-                } else {
-                  setViewMode("requests");
-                }
-              }}
-            >
-              Review Requests
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Control Bar */}
       <section className="card">
-        <div className="card__header" style={{ flexWrap: "wrap", gap: 12 }}>
-          <div>
-            <p className="eyebrow">Class Timetable &amp; Governance</p>
-            <h3>
-              {viewMode === "unscheduled"
-                ? `Unscheduled Curriculum Subjects (${filteredUnscheduled.length})`
-                : viewMode === "requests"
-                ? `Program Head Permission Requests (${filteredRequests.length})`
-                : `Scheduled Classes (${visibleSchedules.length})`}
-            </h3>
-          </div>
+        <div className="card__header" style={{ display: "flex", flexDirection: "column", gap: 14, padding: "16px 20px" }}>
+          {/* Row 1: Header Title and Segmented View Switcher */}
+          <div className="sched-control-top-row" style={{ width: "100%" }}>
+            <div>
+              <p className="eyebrow" style={{ margin: 0 }}>Class Timetable &amp; Governance</p>
+              <h3 style={{ margin: "2px 0 0", fontSize: "1.15rem", fontWeight: 800 }}>
+                {viewMode === "unscheduled"
+                  ? `Unscheduled Curriculum Subjects (${filteredUnscheduled.length})`
+                  : `Scheduled Classes (${visibleSchedules.length})`}
+              </h3>
+            </div>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             {/* View Mode Switcher */}
-            <div style={{ display: "flex", background: "var(--srcb-surface-alt, #e2e8f0)", borderRadius: 8, padding: 2, border: "1px solid var(--srcb-border)", flexWrap: "wrap", gap: 2 }}>
+            <div className="sched-view-tabs">
               <Tooltip content="Weekly Timetable Grid">
                 <button
                   type="button"
                   aria-label="Weekly Timetable Grid View"
+                  className={`sched-view-tab-btn ${viewMode === "grid" ? "is-active" : ""}`}
                   onClick={() => {
                     setViewMode("grid");
                     setSearchParams((prev) => {
@@ -2119,20 +2832,9 @@ export function SchedulesPage() {
                       return next;
                     });
                   }}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 6,
-                    border: "none",
-                    background: viewMode === "grid" ? "var(--srcb-surface-elevated, #ffffff)" : "transparent",
-                    fontWeight: 600,
-                    fontSize: "0.85rem",
-                    cursor: "pointer",
-                    color: viewMode === "grid" ? "var(--srcb-navy, #0d5499)" : "var(--srcb-text-muted, #64748b)",
-                    boxShadow: viewMode === "grid" ? "var(--srcb-shadow-soft, 0 1px 3px rgba(0,0,0,0.1))" : "none",
-                  }}
                 >
-                  <CalendarDays size={14} style={{ display: "inline", marginRight: 4 }} />
-                  Weekly Grid
+                  <CalendarDays size={14} />
+                  <span>Weekly Grid</span>
                 </button>
               </Tooltip>
 
@@ -2140,6 +2842,7 @@ export function SchedulesPage() {
                 <button
                   type="button"
                   aria-label="List View of Class Sessions"
+                  className={`sched-view-tab-btn ${viewMode === "list" ? "is-active" : ""}`}
                   onClick={() => {
                     setViewMode("list");
                     setSearchParams((prev) => {
@@ -2148,20 +2851,9 @@ export function SchedulesPage() {
                       return next;
                     });
                   }}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 6,
-                    border: "none",
-                    background: viewMode === "list" ? "var(--srcb-surface-elevated, #ffffff)" : "transparent",
-                    fontWeight: 600,
-                    fontSize: "0.85rem",
-                    cursor: "pointer",
-                    color: viewMode === "list" ? "var(--srcb-navy, #0d5499)" : "var(--srcb-text-muted, #64748b)",
-                    boxShadow: viewMode === "list" ? "var(--srcb-shadow-soft, 0 1px 3px rgba(0,0,0,0.1))" : "none",
-                  }}
                 >
-                  <ListFilter size={14} style={{ display: "inline", marginRight: 4 }} />
-                  List View
+                  <ListFilter size={14} />
+                  <span>List View</span>
                 </button>
               </Tooltip>
 
@@ -2169,6 +2861,7 @@ export function SchedulesPage() {
                 <button
                   type="button"
                   aria-label="Unscheduled Curriculum Subjects"
+                  className={`sched-view-tab-btn ${viewMode === "unscheduled" ? "is-active" : ""}`}
                   onClick={() => {
                     setViewMode("unscheduled");
                     setSearchParams((prev) => {
@@ -2177,30 +2870,13 @@ export function SchedulesPage() {
                       return next;
                     });
                   }}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 6,
-                    border: "none",
-                    background: viewMode === "unscheduled" ? "var(--srcb-surface-elevated, #ffffff)" : "transparent",
-                    fontWeight: 600,
-                    fontSize: "0.85rem",
-                    cursor: "pointer",
-                    color: viewMode === "unscheduled" ? "var(--srcb-gold, #d97706)" : "var(--srcb-text-muted, #64748b)",
-                    boxShadow: viewMode === "unscheduled" ? "var(--srcb-shadow-soft, 0 1px 3px rgba(0,0,0,0.1))" : "none",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                  }}
                 >
                   <CalendarRange size={14} />
                   <span>Unscheduled</span>
                   <span
+                    className="sched-view-tab-badge"
                     style={{
-                      padding: "1px 6px",
-                      borderRadius: 10,
-                      fontSize: "0.72rem",
-                      fontWeight: 700,
-                      background: viewMode === "unscheduled" ? "var(--srcb-gold-soft, #fef3c7)" : "var(--srcb-surface-alt, rgba(148, 163, 184, 0.3))",
+                      background: viewMode === "unscheduled" ? "var(--srcb-gold-soft, #fef3c7)" : "rgba(148, 163, 184, 0.25)",
                       color: viewMode === "unscheduled" ? "var(--srcb-gold, #92400e)" : "var(--srcb-text-muted, #475569)",
                     }}
                   >
@@ -2208,71 +2884,16 @@ export function SchedulesPage() {
                   </span>
                 </button>
               </Tooltip>
-
-              <Tooltip content="Program Head Permission Requests & Governance">
-                <button
-                  type="button"
-                  aria-label="Program Head Permission Requests"
-                  onClick={() => {
-                    setViewMode("requests");
-                    setSearchParams((prev) => {
-                      const next = new URLSearchParams(prev);
-                      next.set("view", "requests");
-                      return next;
-                    });
-                  }}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 6,
-                    border: "none",
-                    background: viewMode === "requests" ? "var(--srcb-surface-elevated, #ffffff)" : "transparent",
-                    fontWeight: 600,
-                    fontSize: "0.85rem",
-                    cursor: "pointer",
-                    color: viewMode === "requests" ? "var(--srcb-navy, #0d5499)" : "var(--srcb-text-muted, #64748b)",
-                    boxShadow: viewMode === "requests" ? "var(--srcb-shadow-soft, 0 1px 3px rgba(0,0,0,0.1))" : "none",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                  }}
-                >
-                  <ShieldCheck size={14} />
-                  <span>Permission Requests</span>
-                  {pendingRequestsCount > 0 ? (
-                    <span
-                      style={{
-                        padding: "1px 6px",
-                        borderRadius: 10,
-                        fontSize: "0.72rem",
-                        fontWeight: 700,
-                        background: "var(--srcb-gold-soft, #fef3c7)",
-                        color: "var(--srcb-gold, #92400e)",
-                      }}
-                    >
-                      {pendingRequestsCount}
-                    </span>
-                  ) : (
-                    <span
-                      style={{
-                        padding: "1px 6px",
-                        borderRadius: 10,
-                        fontSize: "0.72rem",
-                        fontWeight: 700,
-                        background: "var(--srcb-surface-alt, rgba(148, 163, 184, 0.3))",
-                        color: "var(--srcb-text-muted, #475569)",
-                      }}
-                    >
-                      {adjustmentRequests.length}
-                    </span>
-                  )}
-                </button>
-              </Tooltip>
             </div>
+          </div>
 
-            {/* Multi-Perspective Matrix View Selector */}
-            <div style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--srcb-surface-alt, #f8fafc)", padding: "4px 8px", borderRadius: 8, border: "1px solid var(--srcb-border)", flexWrap: "wrap" }}>
-              <label style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--srcb-navy)" }}>
-                Perspective:
+          {/* Row 2: Unified Filters & Search Toolbar */}
+          <div className="sched-filter-toolbar" style={{ width: "100%", margin: 0 }}>
+            {/* Perspective Filter */}
+            <div className="sched-filter-item">
+              <label>
+                <Eye size={13} style={{ color: "var(--srcb-royal)" }} />
+                <span>Perspective:</span>
               </label>
               <select
                 value={perspectiveMode}
@@ -2280,49 +2901,67 @@ export function SchedulesPage() {
                   setPerspectiveMode(e.target.value as any);
                   setSelectedPerspectiveEntity("All");
                 }}
-                style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", color: "var(--srcb-text)", fontSize: "0.84rem", fontWeight: 600 }}
+                aria-label="Select Timetable Perspective"
               >
                 <option value="all">All Timetables</option>
-                <option value="program">By Academic Program (SRCB Matrix)</option>
-                <option value="section">By Section / Block</option>
-                <option value="faculty">By Faculty Member</option>
-                <option value="room">By Room / Facility</option>
+                <option value="program">By Program</option>
+                <option value="section">By Section</option>
+                <option value="faculty">By Faculty</option>
+                <option value="room">By Room</option>
               </select>
+            </div>
 
-              {perspectiveMode === "program" && (
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {/* Dynamic Perspective Sub-Filters */}
+            {perspectiveMode === "program" && (
+              <>
+                <div className="sched-filter-item">
+                  <label>
+                    <GraduationCap size={13} style={{ color: "var(--srcb-royal)" }} />
+                    <span>Program:</span>
+                  </label>
                   <select
                     value={matrixProgram}
                     onChange={(e) => setMatrixProgram(e.target.value)}
-                    style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", color: "var(--srcb-text)", fontSize: "0.84rem", fontWeight: 600 }}
+                    aria-label="Filter by Program"
                   >
-                    <option value="All">All Academic Programs</option>
-                    <option value="CJEP">Criminal Justice (BSCRIM / CJEP)</option>
-                    <option value="TEP">Teacher Education (TEP / BSED / BEED)</option>
-                    <option value="BSHM">Hospitality Management (BSHM)</option>
-                    <option value="BSBA">Business Administration (BSBA)</option>
-                    <option value="BSIT">Information Technology (BSIT / ITP)</option>
+                    <option value="All">All Programs</option>
+                    <option value="CJEP">CJEP (Criminology)</option>
+                    <option value="TEP">TEP (Education)</option>
+                    <option value="BSHM">BSHM (Hospitality)</option>
+                    <option value="BSBA">BSBA (Business)</option>
+                    <option value="BSIT">BSIT (Info Tech)</option>
                   </select>
+                </div>
 
+                <div className="sched-filter-item">
+                  <label>
+                    <span>Year:</span>
+                  </label>
                   <select
                     value={matrixYearLevel}
                     onChange={(e) => setMatrixYearLevel(e.target.value)}
-                    style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", color: "var(--srcb-text)", fontSize: "0.84rem", fontWeight: 600 }}
+                    aria-label="Filter by Year Level"
                   >
-                    <option value="All">All Year Levels</option>
+                    <option value="All">All Years</option>
                     <option value="1">1st Year</option>
                     <option value="2">2nd Year</option>
                     <option value="3">3rd Year</option>
                     <option value="4">4th Year</option>
                   </select>
                 </div>
-              )}
+              </>
+            )}
 
-              {perspectiveMode === "section" && (
+            {perspectiveMode === "section" && (
+              <div className="sched-filter-item">
+                <label>
+                  <Users size={13} style={{ color: "var(--srcb-royal)" }} />
+                  <span>Section:</span>
+                </label>
                 <select
                   value={selectedPerspectiveEntity}
                   onChange={(e) => setSelectedPerspectiveEntity(e.target.value)}
-                  style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", color: "var(--srcb-text)", fontSize: "0.84rem", maxWidth: 170 }}
+                  aria-label="Filter by Section"
                 >
                   <option value="All">All Sections</option>
                   {availableSections.map((sec) => {
@@ -2330,114 +2969,133 @@ export function SchedulesPage() {
                     return <option key={sec.id || label} value={label}>{label}</option>;
                   })}
                 </select>
-              )}
+              </div>
+            )}
 
-              {perspectiveMode === "faculty" && (
+            {perspectiveMode === "faculty" && (
+              <div className="sched-filter-item">
+                <label>
+                  <UserCheck size={13} style={{ color: "var(--srcb-royal)" }} />
+                  <span>Faculty:</span>
+                </label>
                 <select
                   value={selectedPerspectiveEntity}
                   onChange={(e) => setSelectedPerspectiveEntity(e.target.value)}
-                  style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", color: "var(--srcb-text)", fontSize: "0.84rem", maxWidth: 170 }}
+                  aria-label="Filter by Faculty Member"
                 >
                   <option value="All">All Instructors</option>
                   {availableFaculty.map((f) => (
                     <option key={f.id} value={f.name}>{f.name} ({f.status})</option>
                   ))}
                 </select>
-              )}
+              </div>
+            )}
 
-              {perspectiveMode === "room" && (
+            {perspectiveMode === "room" && (
+              <div className="sched-filter-item">
+                <label>
+                  <DoorOpen size={13} style={{ color: "var(--srcb-royal)" }} />
+                  <span>Room:</span>
+                </label>
                 <select
                   value={selectedPerspectiveEntity}
                   onChange={(e) => setSelectedPerspectiveEntity(e.target.value)}
-                  style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", color: "var(--srcb-text)", fontSize: "0.84rem", maxWidth: 170 }}
+                  aria-label="Filter by Room"
                 >
                   <option value="All">All Rooms & Labs</option>
                   {roomsList.map((r) => (
                     <option key={r.number} value={r.number}>{r.number} - {r.building}</option>
                   ))}
                 </select>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Day Filter */}
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.85rem", fontWeight: 600 }}>
-              Day:
+            <div className="sched-filter-item">
+              <label>
+                <Calendar size={13} style={{ color: "var(--srcb-royal)" }} />
+                <span>Day:</span>
+              </label>
               <select
                 value={selectedDayFilter}
                 onChange={(e) => setSelectedDayFilter(e.target.value)}
-                style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", color: "var(--srcb-text)" }}
+                aria-label="Filter by Day"
               >
-                <option value="All">All Days (Mon-Sat)</option>
+                <option value="All">All Days</option>
                 {DAYS.map((d) => (
                   <option key={d} value={d}>
                     {d}
                   </option>
                 ))}
               </select>
-            </label>
+            </div>
 
-            {/* Faculty / Teacher / Program Head Filter */}
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.85rem", fontWeight: 600 }}>
-              Instructor:
-              <select
-                value={selectedFacultyFilter}
-                onChange={(e) => setSelectedFacultyFilter(e.target.value)}
-                style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", color: "var(--srcb-text)", maxWidth: 190 }}
-              >
-                <option value="All">All Faculty Members</option>
-                {role === "program_head" && currentUserName && (
-                  <option value={currentTeacherId || currentUserName}>
-                    My Classes ({currentUserName})
-                  </option>
-                )}
-                {availableFaculty.map((f) => (
-                  <option key={f.id} value={f.name}>
-                    {f.name} ({f.department || "Faculty"})
-                  </option>
-                ))}
-              </select>
-            </label>
+            {/* Instructor Filter (hidden if perspective is faculty to avoid redundant selector) */}
+            {perspectiveMode !== "faculty" && (
+              <div className="sched-filter-item">
+                <label>
+                  <UserCheck size={13} style={{ color: "var(--srcb-royal)" }} />
+                  <span>Instructor:</span>
+                </label>
+                <select
+                  value={selectedFacultyFilter}
+                  onChange={(e) => setSelectedFacultyFilter(e.target.value)}
+                  aria-label="Filter by Instructor"
+                >
+                  <option value="All">All Faculty</option>
+                  {role === "program_head" && currentUserName && (
+                    <option value={currentTeacherId || currentUserName}>
+                      My Classes ({currentUserName})
+                    </option>
+                  )}
+                  {availableFaculty.map((f) => (
+                    <option key={f.id} value={f.name}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
-            {/* Academic Duration & Bell Shift Filter */}
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.85rem", fontWeight: 600 }}>
-              Class Duration:
+            {/* Class Duration Filter */}
+            <div className="sched-filter-item">
+              <label>
+                <Clock size={13} style={{ color: "var(--srcb-royal)" }} />
+                <span>Duration:</span>
+              </label>
               <select
                 value={durationFilter}
                 onChange={(e) => setDurationFilter(e.target.value)}
-                style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", color: "var(--srcb-text)", fontWeight: 500 }}
                 aria-label="Filter by class duration"
               >
-                <option value="All">All Class Durations</option>
-                <option value="Minor">1.5h Minor (1hr 30m)</option>
+                <option value="All">All Durations</option>
+                <option value="Minor">1.5h Minor</option>
                 <option value="MajorLec">2h Major Lecture</option>
                 <option value="MajorLab">3h Major Lab</option>
                 <option value="7am">7:00 AM Starts</option>
                 <option value="730am">7:30 AM Starts</option>
               </select>
-            </label>
+            </div>
 
             {/* Search Input */}
-            <div style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
-              <label className="topbar__search" aria-label="Search schedules" style={{ margin: 0, paddingRight: query ? 32 : 12 }}>
-                <Search size={16} />
-                <input
-                  value={query}
-                  onChange={(e) => handleQueryChange(e.target.value)}
-                  placeholder="Search subject, faculty, room, section..."
-                />
-              </label>
+            <div className="sched-search-box">
+              <Search size={14} style={{ color: "var(--srcb-text-muted)", flexShrink: 0 }} />
+              <input
+                value={query}
+                onChange={(e) => handleQueryChange(e.target.value)}
+                placeholder="Search classes, rooms, instructors..."
+                aria-label="Search schedules"
+              />
               {query && (
                 <button
                   type="button"
                   onClick={() => handleQueryChange("")}
                   style={{
-                    position: "absolute",
-                    right: 8,
                     background: "none",
                     border: "none",
                     color: "var(--srcb-text-muted, #94a3b8)",
                     cursor: "pointer",
-                    padding: 4,
+                    padding: 2,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -2445,7 +3103,7 @@ export function SchedulesPage() {
                   title="Clear search"
                   aria-label="Clear search"
                 >
-                  <X size={14} />
+                  <X size={13} />
                 </button>
               )}
             </div>
@@ -2469,124 +3127,37 @@ export function SchedulesPage() {
             {viewMode === "grid" && (
               <div className="timetable-workspace">
                 <div className="timetable-workspace-main">
-                  {/* Admin Pending Adjustment Requests Banner */}
-                  {(role === "admin" || role === "dsa") && adjustmentRequests.filter((r) => r.status === "Pending").length > 0 && (
+                  {/* Clean Minimal Guidelines & Quick Print Substrip */}
+                  <div className="sched-matrix-substrip">
                     <div
                       role="region"
-                      aria-label="Pending Schedule Adjustment Requests"
-                      style={{
-                        marginBottom: 12,
-                        padding: "10px 14px",
-                        background: "rgba(245, 158, 11, 0.1)",
-                        border: "1px solid rgba(245, 158, 11, 0.3)",
-                        borderLeft: "4px solid #f59e0b",
-                        borderRadius: 8,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        flexWrap: "wrap",
-                        gap: 10,
-                      }}
+                      aria-label="Institutional Class Duration Guidelines"
+                      className="sched-duration-guidelines"
                     >
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.85rem", color: "#b45309" }}>
-                        <ArrowRightLeft size={16} />
-                        <span>
-                          <strong>{adjustmentRequests.filter((r) => r.status === "Pending").length} Schedule Adjustment Request(s)</strong> pending review from Program Heads.
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        className="action-button"
-                        onClick={() => {
-                          const firstPending = adjustmentRequests.find((r) => r.status === "Pending");
-                          if (firstPending) setRequestToReview(firstPending);
-                        }}
-                        style={{ padding: "4px 12px", fontSize: "0.78rem" }}
-                      >
-                        Review Requests
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Institutional Timetable Matrix Banner */}
-                  <div className="timetable-matrix-institutional-banner">
-                    <div>
-                      <h3 className="timetable-matrix-banner-title">
-                        {perspectiveMode === "program" && matrixProgram !== "All"
-                          ? `${matrixProgram === "CJEP" ? "CRIMINAL JUSTICE EDUCATION PROGRAM" : matrixProgram === "TEP" ? "TEACHER EDUCATION PROGRAM" : matrixProgram === "BSHM" ? "HOSPITALITY MANAGEMENT PROGRAM" : matrixProgram === "BSBA" ? "BUSINESS ADMINISTRATION PROGRAM" : "INFORMATION TECHNOLOGY PROGRAM"} CLASS SCHEDULE ${matrixYearLevel !== "All" ? `FOR ${matrixYearLevel === "1" ? "1ST" : matrixYearLevel === "2" ? "2ND" : matrixYearLevel === "3" ? "3RD" : "4TH"} YEAR` : ""}`
-                          : perspectiveMode === "section" && selectedPerspectiveEntity !== "All"
-                          ? `CLASS SCHEDULE FOR SECTION ${selectedPerspectiveEntity.toUpperCase()}`
-                          : perspectiveMode === "faculty" && selectedPerspectiveEntity !== "All"
-                          ? `FACULTY TEACHING TIMETABLE • ${selectedPerspectiveEntity.toUpperCase()}`
-                          : perspectiveMode === "room" && selectedPerspectiveEntity !== "All"
-                          ? `ROOM UTILIZATION TIMETABLE • ${selectedPerspectiveEntity.toUpperCase()}`
-                          : "OFFICIAL INSTITUTIONAL CLASS TIMETABLE"}
-                        <span className="timetable-matrix-banner-semester">
-                          (1st Semester SY 2026-2027)
-                        </span>
-                      </h3>
-                      <div className="timetable-matrix-banner-sub">
-                        St. Rita's College of Balingasag • Multi-Track Matrix Timetable (Monday – Saturday, 7:00 AM – 9:00 PM)
-                      </div>
+                      <span className="pill pill--amber" style={{ fontSize: "0.62rem", padding: "1px 6px" }}>
+                        Minor: 1 hr 30 mins (1.5h)
+                      </span>
+                      <span className="pill pill--blue" style={{ fontSize: "0.62rem", padding: "1px 6px" }}>
+                        Major Lecture (2h)
+                      </span>
+                      <span className="pill pill--purple" style={{ fontSize: "0.62rem", padding: "1px 6px" }}>
+                        Major Lab (3h)
+                      </span>
+                      <span style={{ fontSize: "0.65rem", color: "var(--srcb-text-muted)" }}>
+                        (Starts at 7:00 AM or 7:30 AM)
+                      </span>
                     </div>
 
-                    <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                      {/* Institutional Class Durations Guidelines */}
-                      <div
-                        role="region"
-                        aria-label="Institutional Class Duration Guidelines"
-                        style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.74rem", fontWeight: 600, flexWrap: "wrap" }}
-                      >
-                        <span className="pill pill--amber" style={{ fontSize: "0.62rem", padding: "1px 6px" }}>
-                          Minor: 1 hr 30 mins (1.5h)
-                        </span>
-                        <span className="pill pill--blue" style={{ fontSize: "0.62rem", padding: "1px 6px" }}>
-                          Major Lecture (2h)
-                        </span>
-                        <span className="pill pill--purple" style={{ fontSize: "0.62rem", padding: "1px 6px" }}>
-                          Major Lab (3h)
-                        </span>
-                        <span style={{ fontSize: "0.65rem", color: "var(--srcb-text-muted)" }}>
-                          (Starts at 7:00 AM or 7:30 AM)
-                        </span>
-                      </div>
-
-                      {isAdmin && (
-                        <>
-                          <button
-                            type="button"
-                            className="secondary-button"
-                            onClick={handleBulkFinalizeProgram}
-                            style={{ padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: "0.82rem", color: "var(--srcb-navy)" }}
-                            title={`Finalize all schedules for ${matrixProgram !== 'All' ? matrixProgram : (selectedProgram?.key || 'Program')}`}
-                          >
-                            <ShieldCheck size={14} />
-                            <span>Finalize Program</span>
-                          </button>
-                          <button
-                            type="button"
-                            className="action-button"
-                            onClick={handleBulkPublishProgram}
-                            style={{ padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: "0.82rem" }}
-                            title={`Publish official schedules and notify faculty for ${matrixProgram !== 'All' ? matrixProgram : (selectedProgram?.key || 'Program')}`}
-                          >
-                            <Send size={14} />
-                            <span>Publish Program</span>
-                          </button>
-                        </>
-                      )}
-
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        onClick={() => window.print()}
-                        style={{ padding: "6px 14px", display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: "0.82rem" }}
-                        title="Print Timetable Matrix"
-                      >
-                        <Printer size={14} />
-                        <span>Print Timetable</span>
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => window.print()}
+                      style={{ padding: "4px 10px", display: "inline-flex", alignItems: "center", gap: 5, fontWeight: 600, fontSize: "0.76rem", height: 28 }}
+                      title="Print Timetable Matrix"
+                    >
+                      <Printer size={13} />
+                      <span>Print</span>
+                    </button>
                   </div>
 
                   <div className="timetable-calendar-scroll" style={{ overflowX: "auto" }}>
@@ -2694,10 +3265,10 @@ export function SchedulesPage() {
                                             {TIME_SLOTS[Math.max(dragStart.slotIdx, dragCurrent.slotIdx)].split("-")[1].trim()}
                                           </span>
                                         ) : canCreate ? (
-                                          <span style={{ fontSize: "0.72rem", opacity: 0.65 }}>+ Add Class</span>
-                                        ) : (
-                                          <span style={{ color: "#cbd5e1", fontSize: "0.75rem" }}>—</span>
-                                        )}
+                                          <span className="grid-cell-add-btn">
+                                            <Plus size={11} style={{ marginRight: 2 }} /> Add
+                                          </span>
+                                        ) : null}
                                       </div>
                                     </div>
                                   );
@@ -2739,7 +3310,15 @@ export function SchedulesPage() {
                                       onDelete={(item) => setScheduleToDelete(item)}
                                       onView={(item) => setViewingSchedule(item)}
                                       onAddAtSlot={handleOpenAddAtSlot}
-                                      onOpenStackGroup={(group) => setActiveStackGroup(group)}
+                                      onOpenStackGroup={(group) => {
+                                        setActiveStackGroup(group);
+                                        setSelectedInDrawerIds(new Set());
+                                      }}
+                                      onAssignPlotted={handleAssignPlottedSlot}
+                                      onRemovePlotted={handleRemovePlottedSlot}
+                                      isSelectMode={isSelectMode}
+                                      selectedScheduleIds={selectedScheduleIds}
+                                      onToggleSelect={toggleScheduleSelection}
                                     />
                                   </div>
                                 ))}
@@ -2751,6 +3330,60 @@ export function SchedulesPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* Grid View Floating Bulk Action Bar */}
+                {selectedScheduleIds.size > 0 && (
+                  <div
+                    className="user-mgmt-bulk-bar"
+                    role="region"
+                    aria-label="Bulk actions toolbar"
+                    data-testid="grid-bulk-bar"
+                    style={{
+                      position: "sticky",
+                      bottom: 16,
+                      zIndex: 50,
+                      marginTop: 16,
+                      boxShadow: "0 4px 18px rgba(15, 23, 42, 0.12)",
+                      background: "var(--srcb-surface-elevated, #ffffff)",
+                      border: "1px solid var(--srcb-border)",
+                    }}
+                  >
+                    <div className="bulk-bar-info">
+                      <CheckCircle2 size={16} color="var(--srcb-royal)" />
+                      <span>
+                        <strong>{selectedScheduleIds.size}</strong> class schedule{selectedScheduleIds.size > 1 ? "s" : ""} selected
+                      </span>
+                    </div>
+                    <div className="bulk-bar-actions">
+                      <button
+                        type="button"
+                        className="bulk-action-btn danger"
+                        data-testid="grid-bulk-delete-btn"
+                        onClick={() => {
+                          const toDelete = scheduleItems.filter((s) => selectedScheduleIds.has(s.id));
+                          setSchedulesToBulkDelete(toDelete);
+                        }}
+                        style={{
+                          background: "#fee2e2",
+                          color: "#dc2626",
+                          borderColor: "#fca5a5",
+                          fontWeight: 700,
+                        }}
+                      >
+                        <Trash2 size={14} />
+                        <span>Delete Selected ({selectedScheduleIds.size})</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="bulk-action-btn"
+                        onClick={() => setSelectedScheduleIds(new Set())}
+                      >
+                        <X size={14} />
+                        <span>Clear Selection</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -2779,152 +3412,237 @@ export function SchedulesPage() {
                     )}
                   </div>
                 ) : (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
-                    {visibleSchedules.map((item) => {
-                      const itemTheme = getProgramTheme(item);
-                      return (
-                        <div
-                          key={item.id}
-                          style={{
-                            background: item.modality === "Online" ? "rgba(52, 211, 153, 0.12)" : "var(--srcb-surface-elevated, #ffffff)",
-                            border: "1px solid var(--srcb-border)",
-                            borderLeft: `5px solid ${itemTheme.primary}`,
-                            borderRadius: 10,
-                            padding: "14px 16px",
-                            boxShadow: "0 2px 6px rgba(15, 23, 42, 0.05)",
-                            display: "flex",
-                            flexDirection: "column",
-                            justifyContent: "space-between",
-                            transition: "transform 150ms ease, box-shadow 150ms ease",
-                          }}
-                        >
-                          <div>
-                            {/* Card Header: Code & Modality */}
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                <span style={{ fontWeight: 800, fontSize: "0.95rem", color: "var(--srcb-navy)" }}>
-                                  {item.subjectCode}
-                                </span>
-                                <span
-                                  className="program-card-badge"
-                                  style={{
-                                    backgroundColor: itemTheme.badgeBg,
-                                    color: itemTheme.badgeText,
-                                  }}
-                                  title={`Program: ${itemTheme.name}`}
-                                >
-                                  {itemTheme.code}
-                                </span>
-                              </div>
-                              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                                {item.modality === "Online" && (
-                                  <span
-                                    className="pill pill--emerald"
-                                    style={{ fontSize: "0.7rem", padding: "2px 8px" }}
-                                  >
-                                    Online
+                  <>
+                    {canCreate && visibleSchedules.length > 0 && (
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "10px 16px",
+                          background: "var(--srcb-surface-alt, #f8fafc)",
+                          borderRadius: 8,
+                          border: "1px solid var(--srcb-border)",
+                          marginBottom: 16,
+                          flexWrap: "wrap",
+                          gap: 12,
+                        }}
+                      >
+                        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.85rem", fontWeight: 700, cursor: "pointer", margin: 0 }}>
+                          <input
+                            type="checkbox"
+                            data-testid="list-select-all-checkbox"
+                            checked={visibleSchedules.length > 0 && visibleSchedules.every((s) => selectedScheduleIds.has(s.id))}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedScheduleIds(new Set(visibleSchedules.map((s) => s.id)));
+                              } else {
+                                setSelectedScheduleIds(new Set());
+                              }
+                            }}
+                            style={{ width: 16, height: 16, accentColor: "var(--srcb-royal, #2563eb)", cursor: "pointer" }}
+                          />
+                          <span>Select All Visible Classes ({visibleSchedules.length})</span>
+                        </label>
+
+                        {selectedScheduleIds.size > 0 && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              data-testid="list-bulk-delete-btn"
+                              onClick={() => {
+                                const toDelete = scheduleItems.filter((s) => selectedScheduleIds.has(s.id));
+                                setSchedulesToBulkDelete(toDelete);
+                              }}
+                              style={{
+                                padding: "5px 14px",
+                                fontSize: "0.82rem",
+                                color: "#dc2626",
+                                borderColor: "#fca5a5",
+                                background: "#fff1f2",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 6,
+                                fontWeight: 700,
+                              }}
+                            >
+                              <Trash2 size={14} />
+                              <span>Delete Selected ({selectedScheduleIds.size})</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() => setSelectedScheduleIds(new Set())}
+                              style={{ padding: "5px 12px", fontSize: "0.82rem" }}
+                            >
+                              <X size={13} />
+                              <span>Clear Selection</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
+                      {visibleSchedules.map((item) => {
+                        const itemTheme = getProgramTheme(item);
+                        return (
+                          <div
+                            key={item.id}
+                            style={{
+                              background: item.modality === "Online" ? "rgba(52, 211, 153, 0.12)" : "var(--srcb-surface-elevated, #ffffff)",
+                              border: selectedScheduleIds.has(item.id) ? "1.5px solid var(--srcb-royal, #2563eb)" : "1px solid var(--srcb-border)",
+                              borderLeft: `5px solid ${itemTheme.primary}`,
+                              borderRadius: 10,
+                              padding: "14px 16px",
+                              boxShadow: selectedScheduleIds.has(item.id) ? "0 0 0 3px rgba(37, 99, 235, 0.15)" : "0 2px 6px rgba(15, 23, 42, 0.05)",
+                              display: "flex",
+                              flexDirection: "column",
+                              justifyContent: "space-between",
+                              transition: "transform 150ms ease, box-shadow 150ms ease",
+                            }}
+                          >
+                            <div>
+                              {/* Card Header: Code & Modality */}
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  {canCreate && (
+                                    <input
+                                      type="checkbox"
+                                      data-testid={`list-item-checkbox-${item.id}`}
+                                      checked={selectedScheduleIds.has(item.id)}
+                                      onChange={() => toggleScheduleSelection(item.id)}
+                                      onClick={(e) => e.stopPropagation()}
+                                      style={{ width: 16, height: 16, accentColor: "var(--srcb-royal, #2563eb)", cursor: "pointer", marginRight: 4 }}
+                                      aria-label={`Select schedule for ${item.subjectCode}`}
+                                    />
+                                  )}
+                                  <span style={{ fontWeight: 800, fontSize: "0.95rem", color: "var(--srcb-navy)" }}>
+                                    {item.subjectCode}
                                   </span>
-                                )}
-                                <span className={`pill ${item.isMajor ? "pill--royal" : "pill--slate"}`} style={{ fontSize: "0.7rem" }}>
-                                  {item.isMajor ? "Major" : "Gen Ed"}
-                                </span>
+                                  <span
+                                    className="program-card-badge"
+                                    style={{
+                                      backgroundColor: itemTheme.badgeBg,
+                                      color: itemTheme.badgeText,
+                                    }}
+                                    title={`Program: ${itemTheme.name}`}
+                                  >
+                                    {itemTheme.code}
+                                  </span>
+                                </div>
+                                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                  {item.modality === "Online" && (
+                                    <span
+                                      className="pill pill--emerald"
+                                      style={{ fontSize: "0.7rem", padding: "2px 8px" }}
+                                    >
+                                      Online
+                                    </span>
+                                  )}
+                                  <span className={`pill ${item.isMajor ? "pill--royal" : "pill--slate"}`} style={{ fontSize: "0.7rem" }}>
+                                    {item.isMajor ? "Major" : "Gen Ed"}
+                                  </span>
+                                </div>
                               </div>
+
+                              {/* Subject Name */}
+                              <h4 style={{ fontSize: "0.9rem", color: "var(--srcb-text)", margin: "0 0 8px 0", fontWeight: 600, lineHeight: 1.3 }}>
+                                {item.subject}
+                              </h4>
+
+                              {/* Metadata Grid */}
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 10px", fontSize: "0.8rem", color: "var(--srcb-text-muted)", background: "var(--srcb-surface-alt)", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--srcb-border)" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                  <Calendar size={12} style={{ flexShrink: 0 }} /> <strong style={{ color: "var(--srcb-text)" }}>Day:</strong> {item.day}
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                  <Clock size={12} style={{ flexShrink: 0 }} /> <strong style={{ color: "var(--srcb-text)" }}>Time:</strong> {item.time}
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                  <GraduationCap size={12} style={{ flexShrink: 0 }} /> <strong style={{ color: "var(--srcb-text)" }}>Section:</strong> {item.section}
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                  <DoorOpen size={12} style={{ flexShrink: 0 }} /> <strong style={{ color: "var(--srcb-text)" }}>Room:</strong> {item.room}
+                                </div>
+                              </div>
+
+                              <div style={{ marginTop: 8, fontSize: "0.82rem", color: "var(--srcb-navy)", fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}>
+                                <UserCheck size={13} style={{ flexShrink: 0 }} /> {item.faculty}
+                              </div>
+
+                              {item.modality === "Online" && item.onlineLink && (
+                                <div style={{ marginTop: 6 }}>
+                                  <a
+                                    href={item.onlineLink}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    style={{
+                                      fontSize: "0.76rem",
+                                      color: "#059669",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 4,
+                                      textDecoration: "underline",
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    <ExternalLink size={13} /> Open Virtual Meeting Link
+                                  </a>
+                                </div>
+                              )}
                             </div>
 
-                            {/* Subject Name */}
-                            <h4 style={{ fontSize: "0.9rem", color: "var(--srcb-text)", margin: "0 0 8px 0", fontWeight: 600, lineHeight: 1.3 }}>
-                              {item.subject}
-                            </h4>
-
-                            {/* Metadata Grid */}
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 10px", fontSize: "0.8rem", color: "var(--srcb-text-muted)", background: "var(--srcb-surface-alt)", padding: "8px 10px", borderRadius: 6, border: "1px solid var(--srcb-border)" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                                <Calendar size={12} style={{ flexShrink: 0 }} /> <strong style={{ color: "var(--srcb-text)" }}>Day:</strong> {item.day}
-                              </div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                                <Clock size={12} style={{ flexShrink: 0 }} /> <strong style={{ color: "var(--srcb-text)" }}>Time:</strong> {item.time}
-                              </div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                                <GraduationCap size={12} style={{ flexShrink: 0 }} /> <strong style={{ color: "var(--srcb-text)" }}>Section:</strong> {item.section}
-                              </div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                                <DoorOpen size={12} style={{ flexShrink: 0 }} /> <strong style={{ color: "var(--srcb-text)" }}>Room:</strong> {item.room}
-                              </div>
-                            </div>
-
-                            <div style={{ marginTop: 8, fontSize: "0.82rem", color: "var(--srcb-navy)", fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}>
-                              <UserCheck size={13} style={{ flexShrink: 0 }} /> {item.faculty}
-                            </div>
-
-                            {item.modality === "Online" && item.onlineLink && (
-                              <div style={{ marginTop: 6 }}>
-                                <a
-                                  href={item.onlineLink}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  style={{
-                                    fontSize: "0.76rem",
-                                    color: "#059669",
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: 4,
-                                    textDecoration: "underline",
-                                    fontWeight: 600,
-                                  }}
+                            {/* Card Actions */}
+                            {canCreate ? (
+                              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12, paddingTop: 8, borderTop: "1px solid var(--srcb-border-subtle, #f1f5f9)" }}>
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  onClick={() => handleDuplicate(item)}
+                                  aria-label={`Duplicate schedule for ${item.subjectCode}`}
+                                  style={{ padding: "5px 10px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: 4 }}
                                 >
-                                  <ExternalLink size={13} /> Open Virtual Meeting Link
-                                </a>
+                                  <Copy size={13} /> Duplicate
+                                </button>
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  onClick={() => handleEdit(item)}
+                                  aria-label={`Edit schedule for ${item.subjectCode}`}
+                                  style={{ padding: "5px 10px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: 4 }}
+                                >
+                                  <Edit2 size={13} /> Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  onClick={() => setScheduleToDelete(item)}
+                                  aria-label={`Remove schedule for ${item.subjectCode}`}
+                                  style={{ padding: "5px 10px", fontSize: "0.78rem", color: "#dc2626", borderColor: "#fca5a5", display: "inline-flex", alignItems: "center", gap: 4 }}
+                                >
+                                  <Trash2 size={13} /> Remove
+                                </button>
+                              </div>
+                            ) : (
+                              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12, paddingTop: 8, borderTop: "1px solid var(--srcb-border-subtle, #f1f5f9)" }}>
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  onClick={() => setViewingSchedule(item)}
+                                  style={{ padding: "5px 12px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: 5 }}
+                                >
+                                  <Eye size={13} /> View Details
+                                </button>
                               </div>
                             )}
                           </div>
-
-                          {/* Card Actions */}
-                          {canCreate ? (
-                            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12, paddingTop: 8, borderTop: "1px solid var(--srcb-border-subtle, #f1f5f9)" }}>
-                              <button
-                                type="button"
-                                className="secondary-button"
-                                onClick={() => handleDuplicate(item)}
-                                aria-label={`Duplicate schedule for ${item.subjectCode}`}
-                                style={{ padding: "5px 10px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: 4 }}
-                              >
-                                <Copy size={13} /> Duplicate
-                              </button>
-                              <button
-                                type="button"
-                                className="secondary-button"
-                                onClick={() => handleEdit(item)}
-                                aria-label={`Edit schedule for ${item.subjectCode}`}
-                                style={{ padding: "5px 10px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: 4 }}
-                              >
-                                <Edit2 size={13} /> Edit
-                              </button>
-                              <button
-                                type="button"
-                                className="secondary-button"
-                                onClick={() => setScheduleToDelete(item)}
-                                aria-label={`Remove schedule for ${item.subjectCode}`}
-                                style={{ padding: "5px 10px", fontSize: "0.78rem", color: "#dc2626", borderColor: "#fca5a5", display: "inline-flex", alignItems: "center", gap: 4 }}
-                              >
-                                <Trash2 size={13} /> Remove
-                              </button>
-                            </div>
-                          ) : (
-                            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12, paddingTop: 8, borderTop: "1px solid var(--srcb-border-subtle, #f1f5f9)" }}>
-                              <button
-                                type="button"
-                                className="secondary-button"
-                                onClick={() => setViewingSchedule(item)}
-                                style={{ padding: "5px 12px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: 5 }}
-                              >
-                                <Eye size={13} /> View Details
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  </>
                 )}
               </div>
             )}
@@ -3052,365 +3770,7 @@ export function SchedulesPage() {
             )}
 
             {/* Program Head Permission Requests Governance View */}
-            {viewMode === "requests" && (
-              <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 16 }}>
-                {/* Header Title & CTA */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-                  <div>
-                    <h4 style={{ margin: 0, fontSize: "1.05rem", color: "var(--srcb-text)", fontWeight: 700 }}>
-                      Program Head Academic Permission Requests ({filteredRequests.length})
-                    </h4>
-                    <p className="muted" style={{ margin: "2px 0 0", fontSize: "0.84rem" }}>
-                      Centralized administrative governance for scoped academic scheduling actions (Create, Modify, Delete, and Time Adjustment).
-                    </p>
-                  </div>
 
-                  {role === "program_head" && (
-                    <button
-                      type="button"
-                      className="action-button"
-                      onClick={() => {
-                        setSelectedPermissionSubject(null);
-                        setScheduleToAdjust(null);
-                        setIsDirectPermissionModalOpen(true);
-                      }}
-                      style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-                    >
-                      <Plus size={16} />
-                      <span>New Permission Request</span>
-                    </button>
-                  )}
-                </div>
-
-                {/* Summary Metric Stats Grid */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
-                  <div
-                    style={{
-                      background: "var(--srcb-surface-alt, #f8fafc)",
-                      border: "1px solid var(--srcb-border)",
-                      borderRadius: 8,
-                      padding: "12px 14px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontSize: "0.76rem", color: "var(--srcb-text-muted)", fontWeight: 600 }}>Total Requests</div>
-                      <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "var(--srcb-navy)" }}>{adjustmentRequests.length}</div>
-                    </div>
-                    <div style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(13, 84, 153, 0.1)", color: "var(--srcb-navy)", display: "grid", placeItems: "center" }}>
-                      <FileText size={18} />
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      background: "rgba(245, 158, 11, 0.06)",
-                      border: "1px solid rgba(245, 158, 11, 0.25)",
-                      borderRadius: 8,
-                      padding: "12px 14px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontSize: "0.76rem", color: "#b45309", fontWeight: 600 }}>Pending Review</div>
-                      <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "#b45309" }}>{pendingRequestsCount}</div>
-                    </div>
-                    <div style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(245, 158, 11, 0.15)", color: "#d97706", display: "grid", placeItems: "center" }}>
-                      <Clock3 size={18} />
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      background: "rgba(16, 185, 129, 0.06)",
-                      border: "1px solid rgba(16, 185, 129, 0.25)",
-                      borderRadius: 8,
-                      padding: "12px 14px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontSize: "0.76rem", color: "#047857", fontWeight: 600 }}>Approved / Granted</div>
-                      <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "#047857" }}>
-                        {adjustmentRequests.filter((r) => String(r.status || "").toLowerCase() === "approved").length}
-                      </div>
-                    </div>
-                    <div style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(16, 185, 129, 0.15)", color: "#059669", display: "grid", placeItems: "center" }}>
-                      <CheckCircle2 size={18} />
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      background: "rgba(239, 68, 68, 0.06)",
-                      border: "1px solid rgba(239, 68, 68, 0.25)",
-                      borderRadius: 8,
-                      padding: "12px 14px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontSize: "0.76rem", color: "#b91c1c", fontWeight: 600 }}>Rejected</div>
-                      <div style={{ fontSize: "1.35rem", fontWeight: 800, color: "#b91c1c" }}>
-                        {adjustmentRequests.filter((r) => String(r.status || "").toLowerCase() === "rejected").length}
-                      </div>
-                    </div>
-                    <div style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(239, 68, 68, 0.15)", color: "#dc2626", display: "grid", placeItems: "center" }}>
-                      <XCircle size={18} />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Filter Controls Toolbar */}
-                <div
-                  style={{
-                    background: "var(--srcb-surface-alt, #f8fafc)",
-                    padding: "10px 14px",
-                    borderRadius: 8,
-                    border: "1px solid var(--srcb-border)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                    {/* Status Filter Tabs */}
-                    <div style={{ display: "flex", gap: 4, background: "var(--srcb-surface)", padding: 2, borderRadius: 6, border: "1px solid var(--srcb-border)" }}>
-                      {(["all", "Pending", "Approved", "Rejected"] as const).map((st) => (
-                        <button
-                          key={st}
-                          type="button"
-                          onClick={() => setRequestStatusFilter(st)}
-                          style={{
-                            padding: "4px 10px",
-                            borderRadius: 4,
-                            border: "none",
-                            background: requestStatusFilter === st ? "var(--srcb-navy)" : "transparent",
-                            color: requestStatusFilter === st ? "#ffffff" : "var(--srcb-text-muted)",
-                            fontSize: "0.78rem",
-                            fontWeight: 700,
-                            cursor: "pointer",
-                          }}
-                        >
-                          {st === "all" ? "All" : st}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Action Type Filter */}
-                    <select
-                      value={requestActionFilter}
-                      onChange={(e) => setRequestActionFilter(e.target.value)}
-                      style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", color: "var(--srcb-text)", fontSize: "0.82rem", fontWeight: 600 }}
-                    >
-                      <option value="all">All Requested Actions</option>
-                      <option value="CREATE_SCHEDULE">CREATE_SCHEDULE</option>
-                      <option value="MODIFY_SCHEDULE">MODIFY_SCHEDULE</option>
-                      <option value="DELETE_SCHEDULE">DELETE_SCHEDULE</option>
-                      <option value="SCHEDULE_ADJUSTMENT">SCHEDULE_ADJUSTMENT</option>
-                    </select>
-
-                    {/* Program Filter for Admins */}
-                    {role !== "program_head" && (
-                      <select
-                        value={requestProgramFilter}
-                        onChange={(e) => setRequestProgramFilter(e.target.value)}
-                        style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid var(--srcb-border)", background: "var(--srcb-surface)", color: "var(--srcb-text)", fontSize: "0.82rem", fontWeight: 600 }}
-                      >
-                        <option value="all">All Programs</option>
-                        <option value="ITP">ITP (BSIT)</option>
-                        <option value="BAP">BAP (BSBA)</option>
-                        <option value="CJEP">CJEP (BSCRIM)</option>
-                        <option value="HMP">HMP (BSHM)</option>
-                        <option value="TEP">TEP (BSED/BEED)</option>
-                      </select>
-                    )}
-                  </div>
-
-                  {/* Search Filter */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <div style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
-                      <Search size={14} style={{ position: "absolute", left: 8, color: "var(--srcb-text-muted)" }} />
-                      <input
-                        type="text"
-                        value={requestSearchQuery}
-                        onChange={(e) => setRequestSearchQuery(e.target.value)}
-                        placeholder="Search requests by ID, subject, program head..."
-                        className="input-base"
-                        style={{ padding: "5px 10px 5px 28px", fontSize: "0.82rem", width: 240 }}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Permission Requests Data Table */}
-                {filteredRequests.length === 0 ? (
-                  <div className="card" style={{ textAlign: "center", padding: "40px 20px" }}>
-                    <ShieldCheck size={38} color="#94a3b8" style={{ margin: "0 auto 10px" }} />
-                    <h3 style={{ margin: 0, color: "var(--srcb-text)" }}>No Permission Requests Found</h3>
-                    <p className="muted" style={{ margin: "4px 0 0", fontSize: "0.86rem" }}>
-                      {requestStatusFilter !== "all" || requestActionFilter !== "all" || requestSearchQuery
-                        ? "No permission requests match your active filters."
-                        : "There are currently no permission requests recorded in the system."}
-                    </p>
-                  </div>
-                ) : (
-                  <div style={{ overflowX: "auto" }}>
-                    <table className="user-mgmt-table" style={{ width: "100%", minWidth: 850 }}>
-                      <thead>
-                        <tr>
-                          <th>REQUEST ID</th>
-                          <th>PROGRAM HEAD</th>
-                          <th>PROGRAM</th>
-                          <th>TARGET SUBJECT &amp; SECTION</th>
-                          <th>REQUESTED ACTION</th>
-                          <th>STATUS</th>
-                          <th>REQUESTED DATE</th>
-                          <th>ADMIN REMARKS</th>
-                          <th style={{ textAlign: "right" }}>ACTIONS</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredRequests.map((req) => {
-                          const isPending = req.status === "Pending" || String(req.status || "").toLowerCase() === "pending";
-                          const isApproved = req.status === "Approved" || String(req.status || "").toLowerCase() === "approved";
-                          const isRejected = req.status === "Rejected" || String(req.status || "").toLowerCase() === "rejected";
-                          const actionBadgeClass =
-                            req.requestedAction === "CREATE_SCHEDULE"
-                              ? "pill--emerald"
-                              : req.requestedAction === "MODIFY_SCHEDULE"
-                              ? "pill--blue"
-                              : req.requestedAction === "DELETE_SCHEDULE"
-                              ? "pill--rose"
-                              : "pill--amber";
-
-                          return (
-                            <tr key={req.id}>
-                              <td>
-                                <span style={{ fontWeight: 800, color: "var(--srcb-navy)", fontSize: "0.82rem" }}>
-                                  #REQ-{String(req.id).padStart(3, "0")}
-                                </span>
-                              </td>
-                              <td>
-                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                  <div
-                                    style={{
-                                      width: 28,
-                                      height: 28,
-                                      borderRadius: "50%",
-                                      background: "rgba(13, 84, 153, 0.1)",
-                                      color: "var(--srcb-navy)",
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      fontWeight: 700,
-                                      fontSize: "0.75rem",
-                                      flexShrink: 0,
-                                    }}
-                                  >
-                                    {req.requesterName ? req.requesterName.charAt(0) : "P"}
-                                  </div>
-                                  <div>
-                                    <div style={{ fontWeight: 700, color: "var(--srcb-text)", fontSize: "0.84rem" }}>
-                                      {req.requesterName}
-                                    </div>
-                                    <div style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)" }}>
-                                      Program Head
-                                    </div>
-                                  </div>
-                                </div>
-                              </td>
-                              <td>
-                                <span className="pill pill--navy" style={{ fontWeight: 700, fontSize: "0.72rem" }}>
-                                  {req.requesterProgram || req.programCode || req.programId || "ITP"}
-                                </span>
-                              </td>
-                              <td>
-                                <div>
-                                  <div style={{ fontWeight: 700, color: "var(--srcb-navy)", fontSize: "0.84rem" }}>
-                                    {req.subjectCode} – {req.subjectName}
-                                  </div>
-                                  <div style={{ fontSize: "0.74rem", color: "var(--srcb-text-muted)" }}>
-                                    {req.sectionName || "Program Cohort"} {req.roomNumber ? `• Room ${req.roomNumber}` : ""}
-                                  </div>
-                                </div>
-                              </td>
-                              <td>
-                                <span className={`pill ${actionBadgeClass}`} style={{ fontWeight: 700, fontSize: "0.7rem", padding: "2px 8px" }}>
-                                  {req.requestedAction || "SCHEDULE_ADJUSTMENT"}
-                                </span>
-                              </td>
-                              <td>
-                                <span
-                                  className={`pill ${
-                                    isApproved
-                                      ? "pill--emerald"
-                                      : isRejected
-                                      ? "pill--rose"
-                                      : "pill--amber"
-                                  }`}
-                                  style={{ fontWeight: 800, fontSize: "0.72rem" }}
-                                >
-                                  {req.status.toUpperCase()}
-                                </span>
-                              </td>
-                              <td>
-                                <span style={{ fontSize: "0.78rem", color: "var(--srcb-text-muted)" }}>
-                                  {req.createdAt ? new Date(req.createdAt).toLocaleDateString() : "Today"}
-                                </span>
-                              </td>
-                              <td>
-                                <div style={{ fontSize: "0.76rem", color: req.adminRemarks || req.adminResponse ? "var(--srcb-text)" : "var(--srcb-text-muted)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={req.adminRemarks || req.adminResponse || "No remarks"}>
-                                  {req.adminRemarks || req.adminResponse || "—"}
-                                </div>
-                                {req.reviewedByName && (
-                                  <div style={{ fontSize: "0.68rem", color: "var(--srcb-text-muted)" }}>
-                                    By: {req.reviewedByName}
-                                  </div>
-                                )}
-                              </td>
-                              <td style={{ textAlign: "right" }}>
-                                {isPending && (role === "admin" || role === "super_admin" || role === "dsa") ? (
-                                  <button
-                                    type="button"
-                                    className="action-button"
-                                    onClick={() => setRequestToReview(req)}
-                                    style={{ padding: "4px 10px", fontSize: "0.76rem", display: "inline-flex", alignItems: "center", gap: 4 }}
-                                  >
-                                    <ShieldCheck size={12} />
-                                    <span>Review &amp; Decide</span>
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className="secondary-button"
-                                    onClick={() => setRequestToReview(req)}
-                                    style={{ padding: "4px 10px", fontSize: "0.76rem", display: "inline-flex", alignItems: "center", gap: 4 }}
-                                  >
-                                    <Eye size={12} />
-                                    <span>View Details</span>
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            )}
           </>
         )}
       </section>
@@ -3420,303 +3780,135 @@ export function SchedulesPage() {
           =================================================== */}
       <Modal
         isOpen={isOpen && canCreate}
-        size="xl"
-        icon={<Calendar size={20} />}
+        size="lg"
+        icon={<Calendar size={18} />}
         eyebrow="Class Timetable"
         title={
           modalStep === 1
-            ? (editingSchedule ? "Edit Class Schedule - Step 1: Basic Information" : "Create Class Schedule - Step 1: Basic Information")
-            : (editingSchedule ? "Edit Class Schedule - Step 2: Resource Assignment" : "Create Class Schedule - Step 2: Resource Assignment")
+            ? (editingSchedule ? "Edit Class Schedule - Step 1: Set Class Time" : "Create Class Schedule - Step 1: Set Class Time")
+            : modalStep === 2
+              ? (editingSchedule ? "Edit Class Schedule - Step 2: Subject & Section" : "Create Class Schedule - Step 2: Subject & Section")
+              : (editingSchedule ? "Edit Class Schedule - Step 3: Instructor & Classroom" : "Create Class Schedule - Step 3: Instructor & Classroom")
         }
         description={
           modalStep === 1
-            ? "Define the academic subject, teaching day, and time slot."
-            : "Assign an available instructor, room, and student section for this schedule slot."
+            ? "Set the teaching day and time window for this class."
+            : modalStep === 2
+              ? "Select the curriculum subject and student section."
+              : "Assign the instructor and classroom for this class."
         }
         onClose={() => {
           setIsOpen(false);
           setEditingSchedule(null);
+          setEditingPlottedSlotId(null);
           setModalStep(1);
         }}
       >
-        {/* Modern Stepper Header */}
+        {/* Sleek Minimal Stepper */}
         <div className="sched-wizard-stepper">
           <button
             type="button"
-            className={`sched-step-btn ${modalStep === 1 ? "is-active" : "is-completed"}`}
+            className={`sched-step-btn ${modalStep === 1 ? "is-active" : modalStep > 1 ? "is-completed" : ""}`}
             onClick={() => setModalStep(1)}
           >
             <div className="sched-step-circle">
-              {modalStep > 1 ? <Check size={16} /> : <span>1</span>}
+              {modalStep > 1 ? <Check size={14} /> : <span>1</span>}
             </div>
             <div className="sched-step-info">
               <span className="sched-step-label">Step 1</span>
-              <span className="sched-step-title">Basic Information</span>
+              <span className="sched-step-title">Designate Time</span>
             </div>
           </button>
 
-          <div className={`sched-step-divider ${modalStep === 2 ? "is-active" : ""}`} />
+          <div className={`sched-step-divider ${modalStep >= 2 ? "is-active" : ""}`} />
 
           <button
             type="button"
-            className={`sched-step-btn ${modalStep === 2 ? "is-active" : ""}`}
+            className={`sched-step-btn ${modalStep === 2 ? "is-active" : modalStep > 2 ? "is-completed" : ""}`}
             onClick={() => {
               if (isStep1ResourcesAvailable) {
-                handleContinueToStep2();
+                setModalStep(2);
               }
             }}
             disabled={modalStep === 1 && !isStep1ResourcesAvailable}
-            title={!isStep1ResourcesAvailable ? "Please select Subject, Day, and Time first" : "Jump to Step 2"}
+            title={!isStep1ResourcesAvailable ? "Please select Day and Time first" : "Jump to Step 2"}
           >
             <div className="sched-step-circle">
-              <span>2</span>
+              {modalStep > 2 ? <Check size={14} /> : <span>2</span>}
             </div>
             <div className="sched-step-info">
               <span className="sched-step-label">Step 2</span>
-              <span className="sched-step-title">Resource Assignment</span>
+              <span className="sched-step-title">Subject &amp; Section</span>
+            </div>
+          </button>
+
+          <div className={`sched-step-divider ${modalStep === 3 ? "is-active" : ""}`} />
+
+          <button
+            type="button"
+            className={`sched-step-btn ${modalStep === 3 ? "is-active" : ""}`}
+            onClick={() => {
+              if (isStep2ResourcesAvailable) {
+                setModalStep(3);
+              }
+            }}
+            disabled={modalStep < 3 && !isStep2ResourcesAvailable}
+            title={!isStep2ResourcesAvailable ? "Please select Subject and Section first" : "Jump to Step 3"}
+          >
+            <div className="sched-step-circle">
+              <span>3</span>
+            </div>
+            <div className="sched-step-info">
+              <span className="sched-step-label">Step 3</span>
+              <span className="sched-step-title">Teacher &amp; Room</span>
             </div>
           </button>
         </div>
 
-        {/* STEP 1: Basic Schedule Information (WHAT & WHEN) */}
+        {/* STEP 1: TIME FIRST */}
         {modalStep === 1 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div className="sched-modal-side-by-side">
-              {/* LEFT COLUMN: Subject & Component (Consolidated Card) */}
-              <div className="sched-form-card" style={{ padding: "14px 16px", gap: 10 }}>
-                <div className="sched-form-card-header" style={{ paddingBottom: 8 }}>
-                  <div className="sched-form-card-title-wrap">
-                    <div className="sched-form-card-icon">
-                      <BookOpen size={16} />
-                    </div>
-                    <span className="sched-form-card-title">Curriculum Subject &amp; Component</span>
-                  </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div
+              className="sched-form-card"
+              style={{
+                padding: "20px",
+                background: "var(--srcb-surface, #ffffff)",
+                border: "1px solid var(--srcb-border)",
+                borderRadius: 12,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                <span className="sched-form-card-title" style={{ fontSize: "0.95rem", fontWeight: 700 }}>
+                  1. Select Designated Class Time First
+                </span>
+                {form.time && getTimeDurationStr(form.time) && (
                   <span
-                    className="sched-form-card-badge"
                     style={{
-                      background: form.isMajor ? "rgba(37, 99, 235, 0.1)" : "rgba(245, 158, 11, 0.1)",
-                      color: form.isMajor ? "var(--srcb-royal)" : "#b45309",
-                      fontWeight: 700,
-                      padding: "2px 8px",
-                      borderRadius: 4,
-                    }}
-                  >
-                    {selectedSubjectObj ? `${selectedSubjectObj.units} Units · ` : ""}
-                    {form.isMajor
-                      ? pairedDay && pairedEnabled && !editingSchedule
-                        ? `Major: ${form.classMode === "Lecture" ? "Lec (2h) + Lab (3h)" : "Lab (3h) + Lec (2h)"}`
-                        : form.classMode === "Laboratory"
-                          ? "Major Lab (3h)"
-                          : "Major Lecture (2h)"
-                      : "Gen Ed / Minor (1.5h)"}
-                  </span>
-                </div>
-
-                <div className="field-group" style={{ margin: 0 }}>
-                  <label htmlFor="schedSubject" className="modal-field-label">
-                    <BookOpen size={13} />
-                    <span>Academic Subject</span>
-                    <span className="required-asterisk">*</span>
-                  </label>
-                  <SearchableSelect
-                    id="schedSubject"
-                    value={form.subjectCode}
-                    onChange={(val) => handleSubjectChange(val)}
-                    options={subjectOptionsForStep1}
-                    placeholder="Search & select curriculum subject..."
-                    searchPlaceholder="Search by subject code, title, program..."
-                    emptyText="No matching academic subjects found"
-                  />
-                </div>
-
-                {selectedSubjectObj && (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "4px 8px",
+                      background: "rgba(2, 132, 199, 0.1)",
+                      color: "var(--srcb-royal, #0284c7)",
+                      fontWeight: 600,
+                      padding: "3px 8px",
                       borderRadius: 6,
-                      background: "rgba(2, 132, 199, 0.06)",
-                      border: "1px solid rgba(2, 132, 199, 0.15)",
-                      fontSize: "0.74rem",
-                      flexWrap: "wrap",
+                      fontSize: "0.75rem",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
                     }}
                   >
-                    <span style={{ fontWeight: 700, color: "var(--srcb-navy)" }}>{selectedSubjectObj.code}</span>
-                    <span style={{ color: "var(--srcb-text-muted)" }}>•</span>
-                    <span style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {selectedSubjectObj.name}
-                    </span>
-                    <span className={`pill ${selectedSubjectObj.isMajor ? "pill--blue" : "pill--amber"}`} style={{ fontSize: "0.66rem", padding: "1px 5px" }}>
-                      {selectedSubjectObj.isMajor ? "Major" : "Gen Ed (Universal)"}
-                    </span>
-                  </div>
-                )}
-
-                {/* Session Component */}
-                <div style={{ marginTop: 2 }}>
-                  <label style={{ fontSize: "0.74rem", fontWeight: 700, color: "var(--srcb-navy)", display: "flex", alignItems: "center", gap: 5, marginBottom: 4 }}>
                     <Clock size={12} />
-                    <span>Academic Component Allocation</span>
-                  </label>
-                  {form.isMajor ? (
-                    <>
-                      <div className="sched-segmented-control">
-                        <button
-                          type="button"
-                          className={`sched-segmented-btn ${form.classMode === "Lecture" ? "is-selected" : ""}`}
-                          onClick={() => handleClassModeChange("Lecture")}
-                          style={{ padding: "6px 12px" }}
-                        >
-                          <BookOpen size={13} />
-                          <span>{form.day}: Lecture (2h)</span>
-                        </button>
-                        <button
-                          type="button"
-                          className={`sched-segmented-btn ${form.classMode === "Laboratory" ? "is-selected" : ""}`}
-                          onClick={() => handleClassModeChange("Laboratory")}
-                          style={{ padding: "6px 12px" }}
-                        >
-                          <Monitor size={13} />
-                          <span>{form.day}: Lab (3h)</span>
-                        </button>
-                      </div>
-
-                      {/* Paired Day Auto-Complement Banner */}
-                      {pairedDay && pairedEnabled && !editingSchedule && (
-                        <div
-                          style={{
-                            marginTop: 6,
-                            padding: "6px 10px",
-                            background: "rgba(37, 99, 235, 0.06)",
-                            border: "1px solid rgba(37, 99, 235, 0.18)",
-                            borderRadius: 6,
-                            fontSize: "0.74rem",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            gap: 6,
-                          }}
-                        >
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <Sparkles size={13} color="var(--srcb-royal)" style={{ flexShrink: 0 }} />
-                            <span>
-                              <strong>Paired Day:</strong> {pairedDay} auto-assigned as{" "}
-                              <strong style={{ color: pairedClassMode === "Laboratory" ? "#7c3aed" : "#2563eb" }}>
-                                {pairedClassMode} ({pairedClassMode === "Laboratory" ? "3 hrs" : "2 hrs"})
-                              </strong>
-                            </span>
-                          </div>
-                          <span
-                            style={{
-                              fontSize: "0.7rem",
-                              fontWeight: 700,
-                              background: pairedClassMode === "Laboratory" ? "rgba(124, 58, 237, 0.12)" : "rgba(37, 99, 235, 0.12)",
-                              color: pairedClassMode === "Laboratory" ? "#7c3aed" : "#2563eb",
-                              padding: "1px 6px",
-                              borderRadius: 4,
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {pairedTime}
-                          </span>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div
-                      style={{
-                        padding: "8px 12px",
-                        borderRadius: 8,
-                        background: "rgba(245, 158, 11, 0.08)",
-                        border: "1px solid rgba(245, 158, 11, 0.2)",
-                        fontSize: "0.76rem",
-                        color: "#92400e",
-                        fontWeight: 600,
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        minHeight: 34,
-                      }}
-                    >
-                      <Clock size={14} color="#d97706" />
-                      <span>Gen Ed / Minor (1.5h standard session)</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Preferred Campus Building */}
-                <div className="field-group" style={{ margin: 0, marginTop: 4 }}>
-                  <label htmlFor="schedBuilding" className="modal-field-label" style={{ fontSize: "0.74rem" }}>
-                    <Building2 size={13} />
-                    <span>Campus Building</span>
-                  </label>
-                  <select
-                    id="schedBuilding"
-                    value={form.building}
-                    onChange={(e) => handleBuildingChange(e.target.value as BuildingType)}
-                    style={{ fontSize: "0.82rem", padding: "6px 10px" }}
-                  >
-                    {buildingOptions.map((b) => (
-                      <option key={b} value={b}>
-                        {b}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    {getTimeDurationStr(form.time)}
+                  </span>
+                )}
               </div>
 
-              {/* RIGHT COLUMN: WHEN & READINESS (Day + Paired Day + Time + Availability) */}
-              <div className="sched-form-card" style={{ padding: "14px 16px", gap: 10 }}>
-                <div className="sched-form-card-header" style={{ paddingBottom: 8 }}>
-                  <div className="sched-form-card-title-wrap">
-                    <div className="sched-form-card-icon">
-                      <CalendarDays size={16} />
-                    </div>
-                    <span className="sched-form-card-title">Schedule Timing &amp; Duration</span>
-                  </div>
-                  {form.time && getTimeDurationStr(form.time) && (
-                    <span className="sched-duration-tag">
-                      <Clock size={12} />
-                      {getTimeDurationStr(form.time)}
-                    </span>
-                  )}
-                </div>
-
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1.6fr", gap: 20, alignItems: "start" }}>
+                {/* Teaching Day Selection */}
                 <div className="field-group" style={{ margin: 0 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                    <label htmlFor="schedDay" className="modal-field-label" style={{ margin: 0 }}>
-                      <Calendar size={13} />
-                      <span>Teaching Day</span>
-                      <span className="required-asterisk">*</span>
-                    </label>
-                    {!editingSchedule && pairedDay && (
-                      <label
-                        style={{
-                          fontSize: "0.72rem",
-                          fontWeight: 600,
-                          color: "var(--srcb-primary, #1e40af)",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 5,
-                          background: "rgba(59, 130, 246, 0.08)",
-                          padding: "2px 8px",
-                          borderRadius: 6,
-                          border: "1px solid rgba(59, 130, 246, 0.2)",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={pairedEnabled}
-                          onChange={(e) => setPairedEnabled(e.target.checked)}
-                          style={{ cursor: "pointer", margin: 0 }}
-                        />
-                        <Sparkles size={11} /> Auto-pairs with {pairedDay}
-                      </label>
-                    )}
-                  </div>
+                  <label htmlFor="schedDay" className="modal-field-label" style={{ marginBottom: 6 }}>
+                    <Calendar size={13} />
+                    <span>Teaching Day</span>
+                    <span className="required-asterisk">*</span>
+                  </label>
                   <select
                     id="schedDay"
                     value={form.day}
@@ -3728,43 +3920,110 @@ export function SchedulesPage() {
                         setPairedEnabled(hasPair);
                       }
                     }}
+                    style={{ padding: "9px 12px", fontSize: "0.86rem", borderRadius: 8 }}
                   >
                     {DAYS.map((d) => (
                       <option key={d} value={d}>
-                        {d}
+                        {d} {getPairedDay(d) ? `(Pairs with ${getPairedDay(d)})` : ""}
                       </option>
                     ))}
                   </select>
+                  {!editingSchedule && pairedDay && (
+                    <label
+                      style={{
+                        fontSize: "0.74rem",
+                        color: "var(--srcb-text-muted)",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        marginTop: 8,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={pairedEnabled}
+                        onChange={(e) => setPairedEnabled(e.target.checked)}
+                        style={{ cursor: "pointer", margin: 0 }}
+                      />
+                      <span>Auto-pairs with {pairedDay}</span>
+                    </label>
+                  )}
                 </div>
 
+                {/* Time Slot Inputs with Start & End + Quick Duration Presets */}
                 <div className="field-group" style={{ margin: 0 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                     <label htmlFor="schedStartTime" className="modal-field-label" style={{ margin: 0 }}>
                       <Clock size={13} />
                       <span>Time Window</span>
                       <span className="required-asterisk">*</span>
                     </label>
-                    {getTimeDurationStr(form.time) && (
-                      <span className="sched-duration-chip" title="Total allocated class duration">
-                        <Clock size={11} /> {getTimeDurationStr(form.time)}
-                      </span>
-                    )}
+
+                    {/* Quick Duration Buttons */}
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <button
+                        type="button"
+                        onClick={() => handleQuickDuration(90)}
+                        style={{
+                          padding: "3px 8px",
+                          borderRadius: 6,
+                          fontSize: "0.72rem",
+                          fontWeight: parsedDurationMinutes === 90 ? 700 : 500,
+                          background: parsedDurationMinutes === 90 ? "rgba(2, 132, 199, 0.15)" : "transparent",
+                          border: parsedDurationMinutes === 90 ? "1px solid var(--srcb-royal, #0284c7)" : "1px solid var(--srcb-border)",
+                          color: parsedDurationMinutes === 90 ? "var(--srcb-royal)" : "var(--srcb-text)",
+                          cursor: "pointer",
+                        }}
+                        title="Standard 1.5 Hours for Minor / Gen Ed"
+                      >
+                        1.5h (Minor)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleQuickDuration(120)}
+                        style={{
+                          padding: "3px 8px",
+                          borderRadius: 6,
+                          fontSize: "0.72rem",
+                          fontWeight: parsedDurationMinutes === 120 ? 700 : 500,
+                          background: parsedDurationMinutes === 120 ? "rgba(37, 99, 235, 0.15)" : "transparent",
+                          border: parsedDurationMinutes === 120 ? "1px solid var(--srcb-royal, #2563eb)" : "1px solid var(--srcb-border)",
+                          color: parsedDurationMinutes === 120 ? "var(--srcb-royal)" : "var(--srcb-text)",
+                          cursor: "pointer",
+                        }}
+                        title="Standard 2.0 Hours for Major Lecture"
+                      >
+                        2.0h (Major Lec)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleQuickDuration(180)}
+                        style={{
+                          padding: "3px 8px",
+                          borderRadius: 6,
+                          fontSize: "0.72rem",
+                          fontWeight: parsedDurationMinutes === 180 ? 700 : 500,
+                          background: parsedDurationMinutes === 180 ? "rgba(124, 58, 237, 0.15)" : "transparent",
+                          border: parsedDurationMinutes === 180 ? "1px solid #7c3aed" : "1px solid var(--srcb-border)",
+                          color: parsedDurationMinutes === 180 ? "#7c3aed" : "var(--srcb-text)",
+                          cursor: "pointer",
+                        }}
+                        title="Standard 3.0 Hours for Laboratory"
+                      >
+                        3.0h (Lab)
+                      </button>
+                    </div>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 8 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 10 }}>
                     <div>
-                      <label htmlFor="schedStartTime" style={{ fontSize: "0.7rem", color: "var(--srcb-text-muted)", display: "block", marginBottom: 2, fontWeight: 600 }}>
-                        Start Time
-                      </label>
                       <select
                         id="schedStartTime"
+                        aria-label="Start Time"
                         value={form.time.split("-")[0]?.trim() || "07:00 AM"}
-                        onChange={(e) => {
-                          const newStart = e.target.value;
-                          const duration = getExpectedSubjectDuration(selectedSubjectObj, form.classMode);
-                          const newEnd = calculateEndTimeFromStart(newStart, duration);
-                          setForm({ ...form, time: `${newStart} - ${newEnd}` });
-                        }}
+                        onChange={(e) => handleStartTimeChange(e.target.value)}
+                        style={{ padding: "9px 12px", fontSize: "0.86rem", borderRadius: 8, width: "100%" }}
                       >
                         {TIME_POINTS.slice(0, -1).map((tp) => (
                           <option key={tp} value={tp}>
@@ -3774,280 +4033,419 @@ export function SchedulesPage() {
                       </select>
                     </div>
 
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", paddingTop: 16, color: "var(--srcb-text-muted)" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", color: "var(--srcb-text-muted)" }}>
                       <ArrowRight size={14} />
                     </div>
 
                     <div>
-                      <label htmlFor="schedEndTime" style={{ fontSize: "0.7rem", color: "var(--srcb-text-muted)", display: "block", marginBottom: 2, fontWeight: 600 }}>
-                        End Time (Auto-calculated)
-                      </label>
                       <select
                         id="schedEndTime"
+                        aria-label="End Time"
                         value={form.time.split("-")[1]?.trim() || "08:30 AM"}
-                        disabled
-                        style={{ background: "var(--srcb-surface-alt)", cursor: "not-allowed", opacity: 0.95 }}
-                        title="End time is automatically calculated from the required subject component duration."
+                        onChange={(e) => handleEndTimeChange(e.target.value)}
+                        style={{ padding: "9px 12px", fontSize: "0.86rem", borderRadius: 8, width: "100%" }}
                       >
-                        <option value={form.time.split("-")[1]?.trim() || "08:30 AM"}>
-                          {form.time.split("-")[1]?.trim() || "08:30 AM"} ({getTimeDurationStr(form.time) || "Auto"})
-                        </option>
+                        {validEndPoints.map((tp) => {
+                          const sPart = form.time.split("-")[0]?.trim() || "07:00 AM";
+                          const dur = getTimeDurationStr(`${sPart} - ${tp}`);
+                          return (
+                            <option key={tp} value={tp}>
+                              {tp} {dur ? `(${dur})` : ""}
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
                   </div>
-
-                  {/* SRCB Official Standard Time Slots Quick-Select */}
-                  <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px dashed var(--srcb-border)" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                      <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "var(--srcb-navy)", display: "flex", alignItems: "center", gap: 5 }}>
-                        <Sparkles size={12} color="var(--srcb-royal)" />
-                        <span>SRCB Standard Period Presets ({form.day === "Wednesday" ? "Wednesday 3h Blocks" : form.day === "Saturday" ? "Saturday Blocks" : "M-Th & T-F 1.5h Periods"})</span>
-                      </span>
-                    </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                      {SRCB_STANDARD_TIME_SLOTS
-                        .filter((preset) => {
-                          if (form.day === "Wednesday") return preset.category === "wednesday" || preset.category === "laboratory";
-                          if (form.day === "Saturday") return preset.category === "saturday";
-                          return preset.category === "m-th-tf" || (form.classMode === "Laboratory" && preset.category === "laboratory");
-                        })
-                        .map((preset) => {
-                          const isSelected = form.time.trim() === preset.label.trim();
-                          return (
-                            <button
-                              key={preset.id}
-                              type="button"
-                              onClick={() => {
-                                setForm({ ...form, time: preset.label });
-                              }}
-                              style={{
-                                padding: "3px 8px",
-                                borderRadius: 5,
-                                border: isSelected ? "1px solid var(--srcb-royal, #2563eb)" : "1px solid var(--srcb-border, #cbd5e1)",
-                                background: isSelected ? "rgba(37, 99, 235, 0.12)" : "var(--srcb-surface-alt, #f8fafc)",
-                                color: isSelected ? "var(--srcb-royal, #2563eb)" : "var(--srcb-text, #1e293b)",
-                                fontSize: "0.72rem",
-                                fontWeight: isSelected ? 700 : 500,
-                                cursor: "pointer",
-                                transition: "all 0.15s ease",
-                              }}
-                              title={preset.description}
-                            >
-                              {preset.startTime.replace(/ (AM|PM)/i, "")} - {preset.endTime}
-                            </button>
-                          );
-                        })}
-                    </div>
-                  </div>
                 </div>
-
-                {/* Compact Availability Assessment */}
-                {form.subjectCode && form.day && form.time && (
-                  <div className="sched-compact-readiness-row" style={{ padding: "6px 8px" }}>
-                    <span style={{ fontWeight: 700, color: "var(--srcb-navy)", display: "flex", alignItems: "center", gap: 4 }}>
-                      <Sparkles size={12} color="var(--srcb-royal)" /> Pre-check:
-                    </span>
-                    <span className={`sched-compact-chip ${availableFacultyForSlot.length > 0 ? "is-good" : "is-warning"}`}>
-                      {availableFacultyForSlot.length > 0 ? `✓ ${availableFacultyForSlot.length} Faculty Free` : "⚠ No Faculty Free"}
-                    </span>
-                    <span className={`sched-compact-chip ${availableRoomsForSlot.length > 0 ? "is-good" : "is-warning"}`}>
-                      {availableRoomsForSlot.length > 0 ? `✓ ${availableRoomsForSlot.length} Rooms Free` : "⚠ No Rooms Free"}
-                    </span>
-                    <span className={`sched-compact-chip ${availableSectionsForSlot.length > 0 ? "is-good" : "is-warning"}`}>
-                      {availableSectionsForSlot.length > 0 ? `✓ ${availableSectionsForSlot.length} Sections Free` : "⚠ Check Section"}
-                    </span>
-                  </div>
-                )}
-
-                {/* Concurrent Time Slot Information Banner */}
-                {form.day && form.time && concurrentSlotSchedules.length > 0 && (
-                  <div
-                    style={{
-                      padding: "8px 12px",
-                      background: "rgba(37, 99, 235, 0.08)",
-                      border: "1px solid rgba(37, 99, 235, 0.25)",
-                      borderRadius: 8,
-                      fontSize: "0.78rem",
-                      color: "var(--srcb-royal, #2563eb)",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 4,
-                      marginTop: 6,
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700 }}>
-                      <Layers size={14} />
-                      <span>Concurrent Time Slot: {concurrentSlotSchedules.length} other subject{concurrentSlotSchedules.length > 1 ? "s" : ""} scheduled at this time</span>
-                    </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 2 }}>
-                      {concurrentSlotSchedules.map((cs) => (
-                        <span
-                          key={cs.id}
-                          style={{
-                            padding: "2px 8px",
-                            background: "var(--srcb-surface, #fff)",
-                            border: "1px solid var(--srcb-border, #cbd5e1)",
-                            borderRadius: 4,
-                            fontSize: "0.72rem",
-                            fontWeight: 600,
-                            color: "var(--srcb-text, #1e293b)",
-                          }}
-                        >
-                          {cs.subjectCode} ({cs.section} • {cs.room || "Online"} • {cs.faculty})
-                        </span>
-                      ))}
-                    </div>
-                    <span style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted, #64748b)" }}>
-                      Multiple different subjects can run concurrently at this time across distinct rooms and sections.
-                    </span>
-                  </div>
-                )}
               </div>
+
+              {/* Concurrent Time Slot Note */}
+              {concurrentSlotSchedules.length > 0 && (
+                <div
+                  style={{
+                    padding: "6px 10px",
+                    background: "rgba(37, 99, 235, 0.06)",
+                    border: "1px solid rgba(37, 99, 235, 0.2)",
+                    borderRadius: 6,
+                    fontSize: "0.74rem",
+                    color: "var(--srcb-royal, #2563eb)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    marginTop: 12,
+                  }}
+                >
+                  <Layers size={13} style={{ flexShrink: 0 }} />
+                  <span>
+                    <strong>Concurrent Time Slot:</strong> {concurrentSlotSchedules.length} other class{concurrentSlotSchedules.length > 1 ? "es" : ""} running at this time ({concurrentSlotSchedules.map((cs) => `${cs.subjectCode || "Class"} in ${cs.room || "Room"}`).join(", ")}).
+                  </span>
+                </div>
+              )}
             </div>
 
-            {/* Sticky Action Footer */}
-            <div className="modal-actions" style={{ marginTop: 8 }}>
+            {/* STEP 1 ACTIONS */}
+            <div className="modal-actions" style={{ justifyContent: "space-between", marginTop: 4 }}>
               <button
                 type="button"
                 className="cancel-button"
                 onClick={() => {
                   setIsOpen(false);
                   setEditingSchedule(null);
+                  setEditingPlottedSlotId(null);
                   setModalStep(1);
                 }}
               >
                 Cancel
               </button>
-              <button
-                type="button"
-                className="action-button"
-                disabled={!isStep1ResourcesAvailable}
-                style={{
-                  opacity: !isStep1ResourcesAvailable ? 0.5 : 1,
-                  cursor: !isStep1ResourcesAvailable ? "not-allowed" : "pointer",
-                }}
-                onClick={handleContinueToStep2}
-                title="Proceed to assign Faculty, Room, and Section"
-              >
-                <span>Continue to Resource Assignment</span>
-                <ArrowRight size={16} />
-              </button>
+
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                {editingSchedule && (
+                  <button
+                    type="button"
+                    className="action-button action-button--secondary"
+                    onClick={() => handleSave(false)}
+                    disabled={loading}
+                    style={{ padding: "8px 16px", fontSize: "0.84rem" }}
+                  >
+                    {loading ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+                    <span>Save Changes</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="action-button"
+                  aria-label="Confirm Time & Next"
+                  onClick={() => handleConfirmTimeAndNext()}
+                  style={{
+                    padding: "8px 20px",
+                    fontSize: "0.86rem",
+                    fontWeight: 600,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  <span>Confirm Time &amp; Next</span>
+                  <ArrowRight size={15} />
+                </button>
+              </div>
             </div>
           </div>
         )}
 
-        {/* STEP 2: Resource Assignment ONLY (WHO, WHERE, FOR WHOM) */}
+        {/* STEP 2: CURRICULUM SUBJECT & SECTION */}
         {modalStep === 2 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {/* Step 1 Context Summary Bar */}
-            <div className="sched-context-banner" style={{ padding: "6px 12px" }}>
-              <div className="sched-context-tags">
-                <div className="sched-context-item">
-                  <BookOpen size={13} color="var(--srcb-royal)" />
-                  <strong>Subject:</strong> <span>{form.subjectCode} — {form.subject}</span>
-                </div>
-                <div className="sched-context-item">
-                  <Calendar size={13} color="var(--srcb-royal)" />
-                  <strong>Schedule:</strong>{" "}
-                  <span>
-                    {!editingSchedule && pairedDay && pairedEnabled
-                      ? `${form.day} (${form.classMode === "Laboratory" ? "Lab 3h" : "Lec 2h"}: ${form.time}) & ${pairedDay} (${pairedClassMode === "Laboratory" ? "Lab 3h" : "Lec 2h"}: ${pairedTime})`
-                      : `${form.day} • ${form.time}`}
-                  </span>
-                </div>
-                <div className="sched-context-item">
-                  <Building2 size={13} color="var(--srcb-royal)" />
-                  <strong>Building:</strong> <span>{form.building || "All Buildings"}</span>
-                </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Minimal Confirmed Time Context Bar */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "8px 14px",
+                background: "var(--srcb-surface-alt, #f8fafc)",
+                borderRadius: 8,
+                border: "1px solid var(--srcb-border)",
+                fontSize: "0.82rem",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Clock size={14} color="var(--srcb-royal)" />
+                <span>
+                  <strong>Confirmed Time:</strong>{" "}
+                  {!editingSchedule && pairedDay && pairedEnabled
+                    ? `${form.day} & ${pairedDay} • ${form.time} ${form.isMajor
+                      ? `(${form.classMode})`
+                      : `(${parsedDurationMinutes / 60}h Minor)`
+                    }`
+                    : `${form.day} • ${form.time} (${form.isMajor ? form.classMode : `${parsedDurationMinutes / 60}h Minor`})`}
+                </span>
               </div>
               <button
                 type="button"
                 className="secondary-button"
                 onClick={() => setModalStep(1)}
-                style={{ padding: "3px 8px", fontSize: "0.74rem" }}
+                style={{ padding: "3px 8px", fontSize: "0.74rem", display: "inline-flex", alignItems: "center", gap: 4 }}
               >
                 <Edit2 size={12} />
-                <span>Edit Slot</span>
+                <span>Change Time</span>
               </button>
             </div>
 
-            <div className="sched-modal-side-by-side">
-              {/* LEFT COLUMN: Section & Faculty */}
-              <div className="sched-form-card" style={{ padding: "14px 16px", gap: 10 }}>
-                <div className="sched-form-card-header" style={{ paddingBottom: 8 }}>
-                  <div className="sched-form-card-title-wrap">
-                    <div className="sched-form-card-icon">
-                      <Users size={16} />
-                    </div>
-                    <span className="sched-form-card-title">Student Cohort &amp; Instructor</span>
+            {/* Step 2 Form Card: Subject & Section */}
+            <div
+              className="sched-form-card"
+              style={{
+                padding: "20px",
+                background: "var(--srcb-surface, #ffffff)",
+                border: "1px solid var(--srcb-border)",
+                borderRadius: 12,
+                display: "flex",
+                flexDirection: "column",
+                gap: 16,
+              }}
+            >
+              <span className="sched-form-card-title" style={{ fontSize: "0.95rem", fontWeight: 700 }}>
+                2. Curriculum Subject &amp; Section
+              </span>
+
+              {/* Subject Selection */}
+              <div className="field-group" style={{ margin: 0 }}>
+                <label htmlFor="schedSubject" className="modal-field-label" style={{ marginBottom: 6 }}>
+                  <BookOpen size={13} />
+                  <span>Curriculum Subject / Course</span>
+                  <span className="required-asterisk">*</span>
+                </label>
+                <SearchableSelect
+                  id="schedSubject"
+                  value={form.subjectCode}
+                  onChange={(val) => handleSubjectChange(val)}
+                  options={subjectOptionsForStep1}
+                  placeholder="Search course code or subject title..."
+                  searchPlaceholder="Search subjects (e.g. IT 101, CC 102)..."
+                  emptyText="No matching subjects found"
+                />
+              </div>
+
+              {/* Major Subject Mode / Paired Info */}
+              {selectedSubjectObj && form.isMajor && (
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: 10,
+                    padding: "10px 14px",
+                    background: "rgba(37, 99, 235, 0.05)",
+                    borderRadius: 8,
+                    border: "1px solid rgba(37, 99, 235, 0.15)",
+                  }}
+                >
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <span style={{ fontSize: "0.76rem", fontWeight: 600, color: "var(--srcb-text-muted)" }}>
+                      Class Mode:
+                    </span>
+                    <button
+                      type="button"
+                      className={`mode-btn ${form.classMode === "Lecture" ? "is-active" : ""}`}
+                      onClick={() => setForm((prev) => ({ ...prev, classMode: "Lecture" }))}
+                      style={{ padding: "4px 10px", fontSize: "0.75rem", borderRadius: 4 }}
+                    >
+                      {form.day}: Lecture (2h)
+                    </button>
+                    <button
+                      type="button"
+                      className={`mode-btn ${form.classMode === "Laboratory" ? "is-active" : ""}`}
+                      onClick={() => setForm((prev) => ({ ...prev, classMode: "Laboratory" }))}
+                      style={{ padding: "4px 10px", fontSize: "0.75rem", borderRadius: 4 }}
+                    >
+                      {form.day}: Lab (3h)
+                    </button>
                   </div>
-                  {form.section && (
-                    <span className="sched-form-card-badge" style={{ color: "var(--srcb-royal)" }}>
-                      Enrolled: {selectedSectionHeadcount} Students
+
+                  {!editingSchedule && pairedDay && pairedEnabled && (
+                    <span style={{ fontSize: "0.74rem", color: "var(--srcb-text-muted)" }}>
+                      {pairedDay} auto-assigned as <strong>{pairedClassMode} ({pairedClassMode === "Laboratory" ? "3 hrs" : "2 hrs"})</strong>
                     </span>
                   )}
                 </div>
+              )}
 
-                <div className="field-group" style={{ margin: 0 }}>
-                  <label htmlFor="schedSection" className="modal-field-label">
-                    <Users size={13} />
-                    <span>Student Section</span>
-                    <span className="required-asterisk">*</span>
-                  </label>
-                  <SearchableSelect
-                    id="schedSection"
-                    value={form.section}
-                    onChange={(val) => {
-                      const sec = availableSections.find(
-                        (s) => s.section === val || (s.course && `${s.course} ${s.yearLevel || ''}-${s.section}`.trim() === val)
-                      );
-                      setForm({
-                        ...form,
-                        section: val,
-                        program: sec?.program || sec?.course || form.program,
-                      });
-                    }}
-                    options={sectionOptionsForStep2}
-                    placeholder="Search & select student section..."
-                    searchPlaceholder="Search sections (e.g. BSIT 1-A)..."
-                    emptyText="No matching student sections found"
-                  />
-                </div>
-
-                {/* Combined / Cross-Program Cohort Toggle */}
-                <div
-                  style={{
-                    padding: "8px 10px",
-                    borderRadius: 6,
-                    background: form.isCombinedCohort ? "rgba(37, 99, 235, 0.08)" : "var(--srcb-surface-alt, #f8fafc)",
-                    border: form.isCombinedCohort ? "1px solid rgba(37, 99, 235, 0.3)" : "1px solid var(--srcb-border)",
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 8,
-                    cursor: "pointer",
+              {/* Section Selection */}
+              <div className="field-group" style={{ margin: 0 }}>
+                <label htmlFor="schedSection" className="modal-field-label" style={{ marginBottom: 6 }}>
+                  <Users size={13} />
+                  <span>Student Section</span>
+                  <span className="required-asterisk">*</span>
+                </label>
+                <SearchableSelect
+                  id="schedSection"
+                  value={form.section}
+                  onChange={(val) => {
+                    const sec = availableSections.find(
+                      (s) => s.section === val || (s.course && `${s.course} ${s.yearLevel || ''}-${s.section}`.trim() === val)
+                    );
+                    setForm({
+                      ...form,
+                      section: val,
+                      program: sec?.program || sec?.course || form.program,
+                    });
                   }}
-                  onClick={() => setForm({ ...form, isCombinedCohort: !form.isCombinedCohort })}
-                >
-                  <input
-                    type="checkbox"
-                    checked={form.isCombinedCohort}
-                    onChange={(e) => setForm({ ...form, isCombinedCohort: e.target.checked })}
-                    style={{ marginTop: 2, cursor: "pointer" }}
-                  />
-                  <div>
-                    <span style={{ fontSize: "0.78rem", fontWeight: 700, color: form.isCombinedCohort ? "var(--srcb-royal)" : "var(--srcb-text)", display: "block" }}>
-                      Combined / Cross-Program Shared Cohort
-                    </span>
-                    <span style={{ fontSize: "0.71rem", color: "var(--srcb-text-muted)", display: "block", marginTop: 2 }}>
-                      Allows this section to share this room &amp; instructor with another section taking the same course (e.g. Crim 1 / IT 1, HM-1 / CJEP).
-                    </span>
+                  options={sectionOptionsForStep2}
+                  placeholder="Search & select student section..."
+                  searchPlaceholder="Search sections (e.g. BSIT 1-A)..."
+                  emptyText="No matching student sections found"
+                />
+                {concurrentSlotSchedules.length > 0 && (
+                  <div style={{ marginTop: 6, fontSize: "0.74rem", color: "var(--srcb-royal)" }}>
+                    Other classes scheduled at this time: <strong>{concurrentSlotSchedules.map((cs) => `${cs.section || "Sec"} (${cs.subjectCode})`).join(", ")}</strong>
                   </div>
-                </div>
+                )}
+              </div>
 
+              {/* Combined / Cross-Program Cohort Checkbox */}
+              <label
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  fontSize: "0.78rem",
+                  color: "var(--srcb-text)",
+                  cursor: "pointer",
+                  marginTop: -4,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={form.isCombinedCohort}
+                  onChange={(e) => setForm({ ...form, isCombinedCohort: e.target.checked })}
+                  style={{ cursor: "pointer", margin: 0 }}
+                />
+                <span>Combined / Cross-Program Shared Cohort</span>
+              </label>
+            </div>
+
+            {/* Step 2 Action Footer */}
+            <div className="modal-actions" style={{ justifyContent: "space-between", marginTop: 4 }}>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setModalStep(1)}
+              >
+                <ArrowLeft size={15} />
+                <span>Back to Time</span>
+              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <button
+                  type="button"
+                  className="cancel-button"
+                  onClick={() => {
+                    setIsOpen(false);
+                    setEditingSchedule(null);
+                    setModalStep(1);
+                  }}
+                >
+                  Cancel
+                </button>
+                {!editingSchedule && (
+                  <button
+                    type="button"
+                    className="action-button action-button--secondary"
+                    disabled={
+                      loading ||
+                      !form.subjectCode ||
+                      !form.section ||
+                      (!validationFeedback.valid && validationFeedback.errors.length > 0 && !isDeanOrAdmin)
+                    }
+                    onClick={() => handleSave(true)}
+                    title="Save this subject and immediately schedule another subject at this exact same time slot"
+                    style={{
+                      background: "var(--srcb-royal-light, #eff6ff)",
+                      color: "var(--srcb-royal, #2563eb)",
+                      borderColor: "var(--srcb-royal, #2563eb)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <Plus size={15} />
+                    <span>Save &amp; Add Another Subject Here</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="action-button"
+                  disabled={!form.subjectCode || !form.section}
+                  onClick={handleContinueToStep3}
+                  style={{
+                    padding: "8px 20px",
+                    fontSize: "0.86rem",
+                    fontWeight: 600,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  <span>Confirm Subject &amp; Next</span>
+                  <ArrowRight size={15} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 3: INSTRUCTOR & CLASSROOM */}
+        {modalStep === 3 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Minimal Context Summary Bar */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "8px 14px",
+                background: "var(--srcb-surface-alt, #f8fafc)",
+                borderRadius: 8,
+                border: "1px solid var(--srcb-border)",
+                fontSize: "0.82rem",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span>
+                  <strong>Time:</strong> {form.day} • {form.time}
+                </span>
+                <span style={{ color: "var(--srcb-border)" }}>|</span>
+                <span>
+                  <strong>Subject:</strong> {form.subjectCode}
+                </span>
+                <span style={{ color: "var(--srcb-border)" }}>|</span>
+                <span>
+                  <strong>Section:</strong> {form.section}
+                </span>
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setModalStep(1)}
+                  style={{ padding: "3px 8px", fontSize: "0.74rem" }}
+                >
+                  <Edit2 size={11} />
+                  <span>Time</span>
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setModalStep(2)}
+                  style={{ padding: "3px 8px", fontSize: "0.74rem" }}
+                >
+                  <Edit2 size={11} />
+                  <span>Subject</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Side-by-Side: Instructor & Classroom */}
+            <div
+              className="sched-form-card"
+              style={{
+                padding: "20px",
+                background: "var(--srcb-surface, #ffffff)",
+                border: "1px solid var(--srcb-border)",
+                borderRadius: 12,
+                display: "flex",
+                flexDirection: "column",
+                gap: 16,
+              }}
+            >
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+                {/* Column 1: Instructor */}
                 <div className="field-group" style={{ margin: 0 }}>
-                  <label htmlFor="schedFaculty" className="modal-field-label">
+                  <label htmlFor="schedFaculty" className="modal-field-label" style={{ marginBottom: 6 }}>
                     <UserCheck size={13} />
-                    <span>Instructor / Faculty</span>
+                    <span>3. Instructor Assignment</span>
                     <span className="required-asterisk">*</span>
                   </label>
                   <SearchableSelect
@@ -4066,73 +4464,18 @@ export function SchedulesPage() {
                     searchPlaceholder="Search instructors..."
                     emptyText="No matching instructors found"
                   />
-                </div>
-
-                {/* Part-Time Instructor Availability Window */}
-                {selectedFacultyMember && selectedFacultyMember.status === "Part-Time" && (
-                  <div
-                    style={{
-                      padding: "6px 10px",
-                      background: "var(--srcb-surface)",
-                      borderRadius: 6,
-                      border: "1px solid var(--srcb-border)",
-                      borderLeft: "3px solid #f59e0b",
-                      fontSize: "0.74rem",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 4, fontWeight: 700, color: "#d97706", marginBottom: 4 }}>
-                      <Clock size={12} />
-                      <span>Part-Time Availability Windows:</span>
+                  {selectedFacultyMember && selectedFacultyMember.status === "Part-Time" && (
+                    <div style={{ marginTop: 6, fontSize: "0.73rem", color: "#d97706" }}>
+                      Part-Time Availability: {selectedFacultyMember.availability || "Check availability"}
                     </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                      {formatGroupedAvailability(selectedFacultyMember.availability).map(({ day, formattedRange }) => {
-                        const isMatchingDay =
-                          day.toLowerCase() === form.day.toLowerCase() ||
-                          (!editingSchedule && day.toLowerCase() === (getPairedDay(form.day) || "").toLowerCase());
-                        return (
-                          <span
-                            key={day}
-                            style={{
-                              padding: "2px 6px",
-                              borderRadius: 4,
-                              background: isMatchingDay ? "rgba(245, 158, 11, 0.15)" : "rgba(148, 163, 184, 0.08)",
-                              border: `1px solid ${isMatchingDay ? "rgba(245, 158, 11, 0.4)" : "var(--srcb-border)"}`,
-                              fontSize: "0.72rem",
-                            }}
-                          >
-                            <strong>{day}:</strong> {formattedRange}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* RIGHT COLUMN: Room & Validation */}
-              <div className="sched-form-card" style={{ padding: "14px 16px", gap: 10 }}>
-                <div className="sched-form-card-header" style={{ paddingBottom: 8 }}>
-                  <div className="sched-form-card-title-wrap">
-                    <div className="sched-form-card-icon">
-                      <DoorOpen size={16} />
-                    </div>
-                    <span className="sched-form-card-title">Classroom &amp; Conflict Verification</span>
-                  </div>
-                  {selectedRoomObj && (
-                    <span className="sched-form-card-badge">
-                      Cap: {selectedRoomObj.capacity} seats · {selectedRoomObj.type || "Classroom"}
-                    </span>
                   )}
                 </div>
 
+                {/* Column 2: Classroom & Verification */}
                 <div className="field-group" style={{ margin: 0 }}>
-                  <label htmlFor="schedRoom" className="modal-field-label">
+                  <label htmlFor="schedRoom" className="modal-field-label" style={{ marginBottom: 6 }}>
                     <DoorOpen size={13} />
-                    <span>
-                      {!editingSchedule && pairedDay && pairedEnabled
-                        ? `Classroom for ${form.day} (${form.classMode === "Laboratory" ? "Lab - 3h" : "Lecture - 2h"})`
-                        : "Classroom / Laboratory"}
-                    </span>
+                    <span>Classroom &amp; Verification</span>
                     <span className="required-asterisk">*</span>
                   </label>
                   <SearchableSelect
@@ -4144,124 +4487,89 @@ export function SchedulesPage() {
                     searchPlaceholder="Search rooms..."
                     emptyText="No matching rooms found"
                   />
-                  {concurrentSlotSchedules.length > 0 && (
-                    <div className="sched-concurrent-alert" style={{ marginTop: 6, padding: "6px 10px", fontSize: "0.74rem" }}>
-                      <Sparkles size={13} style={{ flexShrink: 0, marginTop: 1 }} />
-                      <div>
-                        <strong>Concurrent Slot:</strong> {concurrentSlotSchedules.length} class(es) running in other rooms ({concurrentSlotSchedules.map((cs) => cs.room).join(", ")}).
-                        {form.room && !concurrentSlotSchedules.some((cs) => cs.room.toLowerCase() === form.room.toLowerCase()) && (
-                          <span style={{ color: "#166534", fontWeight: 700, marginLeft: 4 }}>
-                            ✓ Room {form.room} is clear.
-                          </span>
-                        )}
-                      </div>
+
+                  {/* Paired Day Room if needed */}
+                  {!editingSchedule && pairedDay && pairedEnabled && (
+                    <div style={{ marginTop: 10 }}>
+                      <label htmlFor="schedPairedRoom" className="modal-field-label" style={{ marginBottom: 4, fontSize: "0.76rem" }}>
+                        <span>Classroom for {pairedDay} ({pairedClassMode})</span>
+                        <span className="required-asterisk">*</span>
+                      </label>
+                      <SearchableSelect
+                        id="schedPairedRoom"
+                        value={form.pairedRoom || form.room}
+                        onChange={(val) => setForm((prev) => ({ ...prev, pairedRoom: val }))}
+                        options={pairedRoomOptionsForStep2}
+                        placeholder={`Search room for ${pairedDay}...`}
+                        searchPlaceholder="Search rooms..."
+                        emptyText="No matching rooms found"
+                      />
                     </div>
                   )}
+
                   {isRoomTooSmall && (
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6,
-                        padding: "6px 10px",
-                        background: "rgba(239, 68, 68, 0.08)",
-                        border: "1px solid rgba(239, 68, 68, 0.25)",
-                        borderRadius: 6,
-                        color: "#dc2626",
-                        fontSize: "0.75rem",
-                        fontWeight: 600,
-                        marginTop: 4,
-                      }}
-                    >
-                      <AlertTriangle size={14} style={{ flexShrink: 0 }} />
-                      <span>
-                        ⚠ Room capacity ({selectedRoomObj?.capacity}) is less than section size ({selectedSectionHeadcount}).
-                      </span>
+                    <div style={{ marginTop: 6, color: "#dc2626", fontSize: "0.74rem", display: "flex", alignItems: "center", gap: 4 }}>
+                      <AlertTriangle size={13} />
+                      <span>Room capacity ({selectedRoomObj?.capacity}) is less than section size ({selectedSectionHeadcount}).</span>
                     </div>
                   )}
                 </div>
-
-                {/* Paired Day Room Selection */}
-                {!editingSchedule && pairedDay && pairedEnabled && (
-                  <div className="field-group" style={{ margin: 0, marginTop: 4 }}>
-                    <label htmlFor="schedPairedRoom" className="modal-field-label">
-                      <DoorOpen size={13} />
-                      <span>
-                        Classroom for {pairedDay} ({pairedClassMode === "Laboratory" ? "Lab - 3h" : "Lecture - 2h"})
-                      </span>
-                      <span className="required-asterisk">*</span>
-                    </label>
-                    <SearchableSelect
-                      id="schedPairedRoom"
-                      value={form.pairedRoom || form.room}
-                      onChange={(val) => setForm((prev) => ({ ...prev, pairedRoom: val }))}
-                      options={pairedRoomOptionsForStep2}
-                      placeholder={`Search & select room for ${pairedDay}...`}
-                      searchPlaceholder="Search rooms..."
-                      emptyText="No matching rooms found"
-                    />
-                  </div>
-                )}
-
-                {/* Validation & Conflict Diagnostics */}
-                {validationFeedback.errors.length > 0 ? (
-                  <div
-                    style={{
-                      padding: 8,
-                      background: "rgba(239, 68, 68, 0.08)",
-                      borderRadius: 6,
-                      border: "1px solid rgba(239, 68, 68, 0.25)",
-                      borderLeft: "3px solid #dc2626",
-                      fontSize: "0.75rem",
-                    }}
-                  >
-                    <div style={{ fontWeight: 700, color: "#dc2626", marginBottom: 2, display: "flex", alignItems: "center", gap: 6 }}>
-                      <AlertTriangle size={14} />
-                      <span>Conflicts Detected ({validationFeedback.errors.length})</span>
-                    </div>
-                    {validationFeedback.errors.map((err, i) => (
-                      <div key={i} style={{ color: "var(--srcb-text)", marginTop: 2 }}>
-                        • {err}
-                      </div>
-                    ))}
-                  </div>
-                ) : validationFeedback.valid && form.subjectCode && form.section && form.faculty ? (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "8px 12px",
-                      background: "rgba(16, 185, 129, 0.08)",
-                      borderRadius: 6,
-                      border: "1px solid rgba(16, 185, 129, 0.25)",
-                      fontSize: "0.78rem",
-                      color: "#059669",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <ShieldCheck size={16} />
-                    <span>All resources verified: Instructor, Room, and Section are clear.</span>
-                  </div>
-                ) : (
-                  <div style={{ fontSize: "0.75rem", color: "var(--srcb-text-muted)" }}>
-                    Select an available Section, Instructor, and Room to verify conflict-free scheduling.
-                  </div>
-                )}
               </div>
+
+              {/* Validation & Conflict Diagnostics */}
+              {validationFeedback.errors.length > 0 ? (
+                <div
+                  style={{
+                    padding: "8px 12px",
+                    background: "rgba(239, 68, 68, 0.08)",
+                    borderRadius: 6,
+                    border: "1px solid rgba(239, 68, 68, 0.25)",
+                    borderLeft: "3px solid #dc2626",
+                    fontSize: "0.76rem",
+                  }}
+                >
+                  <div style={{ fontWeight: 700, color: "#dc2626", marginBottom: 2, display: "flex", alignItems: "center", gap: 6 }}>
+                    <AlertTriangle size={14} />
+                    <span>Conflicts Detected ({validationFeedback.errors.length})</span>
+                  </div>
+                  {validationFeedback.errors.map((err, i) => (
+                    <div key={i} style={{ color: "var(--srcb-text)", marginTop: 2 }}>
+                      • {err}
+                    </div>
+                  ))}
+                </div>
+              ) : validationFeedback.valid && form.subjectCode && form.section && form.faculty ? (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "6px 10px",
+                    background: "rgba(16, 185, 129, 0.08)",
+                    borderRadius: 6,
+                    border: "1px solid rgba(16, 185, 129, 0.2)",
+                    fontSize: "0.75rem",
+                    color: "#059669",
+                    fontWeight: 600,
+                  }}
+                >
+                  <ShieldCheck size={14} />
+                  <span>All resources verified: Instructor, Room, and Section are clear.</span>
+                </div>
+              ) : null}
             </div>
 
-            {/* Sticky Action Footer */}
-            <div className="modal-actions" style={{ justifyContent: "space-between", marginTop: 8 }}>
+            {/* Action Footer */}
+            <div className="modal-actions" style={{ justifyContent: "space-between", marginTop: 4 }}>
               <button
                 type="button"
                 className="secondary-button"
-                onClick={() => setModalStep(1)}
+                onClick={() => setModalStep(2)}
               >
-                <ArrowLeft size={16} />
-                <span>Back to Step 1</span>
+                <ArrowLeft size={15} />
+                <span>Back to Subject &amp; Section</span>
               </button>
-              <div style={{ display: "flex", gap: 10 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <button
                   type="button"
                   className="cancel-button"
@@ -4283,7 +4591,7 @@ export function SchedulesPage() {
                       !form.section ||
                       !form.faculty ||
                       (form.modality === "Face-to-Face" && !form.room) ||
-                      (!validationFeedback.valid && validationFeedback.errors.length > 0)
+                      (!validationFeedback.valid && validationFeedback.errors.length > 0 && !isDeanOrAdmin)
                     }
                     onClick={() => handleSave(true)}
                     title="Save this subject and immediately schedule another subject at this exact same time slot"
@@ -4309,7 +4617,7 @@ export function SchedulesPage() {
                     !form.section ||
                     !form.faculty ||
                     (form.modality === "Face-to-Face" && !form.room) ||
-                    (!validationFeedback.valid && validationFeedback.errors.length > 0)
+                    (!validationFeedback.valid && validationFeedback.errors.length > 0 && !isDeanOrAdmin)
                   }
                   onClick={() => handleSave(false)}
                 >
@@ -4357,22 +4665,38 @@ export function SchedulesPage() {
                   </div>
 
                   {canCreate && (
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={() => {
-                        const slotDay = activeStackGroup.day;
-                        const slotTime = activeStackGroup.slot;
-                        setActiveStackGroup(null);
-                        handleOpenAddAtSlot(slotDay, slotTime);
-                      }}
-                      title={`+ Add Subject / Add another subject to slot (${activeStackGroup.day} ${activeStackGroup.slot})`}
-                      aria-label={`+ Add Subject / Add another subject to slot ${activeStackGroup.day} ${activeStackGroup.slot}`}
-                      style={{ padding: "5px 12px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: 5 }}
-                    >
-                      <Plus size={13} />
-                      <span>+ Add Subject</span>
-                    </button>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => {
+                          const slotDay = activeStackGroup.day;
+                          const slotTime = activeStackGroup.slot;
+                          setActiveStackGroup(null);
+                          handleOpenAddAtSlot(slotDay, slotTime);
+                        }}
+                        title={`+ Add Subject / Add another subject to slot (${activeStackGroup.day} ${activeStackGroup.slot})`}
+                        aria-label={`+ Add Subject / Add another subject to slot ${activeStackGroup.day} ${activeStackGroup.slot}`}
+                        style={{ padding: "5px 12px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: 5 }}
+                      >
+                        <Plus size={13} />
+                        <span>+ Add Subject</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => {
+                          handlePlotNewSlotAt(activeStackGroup.day, activeStackGroup.slot);
+                          setActiveStackGroup(null);
+                        }}
+                        title={`+ Plot Another Slot (${activeStackGroup.day} ${activeStackGroup.slot})`}
+                        aria-label={`+ Plot Another Slot ${activeStackGroup.day} ${activeStackGroup.slot}`}
+                        style={{ padding: "5px 12px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: 5 }}
+                      >
+                        <Clock size={13} />
+                        <span>+ Plot Another Slot</span>
+                      </button>
+                    </div>
                   )}
                 </div>
 
@@ -4395,9 +4719,198 @@ export function SchedulesPage() {
                 )}
               </div>
 
+              {/* Drawer Bulk Selection Toolbar (Delete multiple classes in this slot) */}
+              {canCreate && activeStackGroup.schedules.length > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "8px 12px",
+                    background: "var(--srcb-surface-alt, #f8fafc)",
+                    borderRadius: 8,
+                    marginBottom: 12,
+                    border: "1px solid var(--srcb-border-subtle, #e2e8f0)",
+                    flexWrap: "wrap",
+                    gap: 8,
+                  }}
+                >
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.82rem", fontWeight: 600, cursor: "pointer", margin: 0 }}>
+                    <input
+                      type="checkbox"
+                      data-testid="drawer-select-all-checkbox"
+                      checked={activeStackGroup.schedules.length > 0 && activeStackGroup.schedules.every((s) => selectedInDrawerIds.has(s.id))}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedInDrawerIds(new Set(activeStackGroup.schedules.map((s) => s.id)));
+                        } else {
+                          setSelectedInDrawerIds(new Set());
+                        }
+                      }}
+                      style={{ width: 16, height: 16, accentColor: "var(--srcb-royal, #2563eb)", cursor: "pointer" }}
+                    />
+                    <span>Select All in Slot ({activeStackGroup.schedules.length})</span>
+                  </label>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {selectedInDrawerIds.size > 0 && (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        data-testid="drawer-delete-selected-btn"
+                        onClick={() => {
+                          const toDelete = activeStackGroup.schedules.filter((s) => selectedInDrawerIds.has(s.id));
+                          setSchedulesToBulkDelete(toDelete);
+                        }}
+                        style={{
+                          padding: "5px 12px",
+                          fontSize: "0.78rem",
+                          color: "#dc2626",
+                          borderColor: "#fca5a5",
+                          background: "#fff1f2",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                          fontWeight: 700,
+                        }}
+                      >
+                        <Trash2 size={13} />
+                        <span>Delete Selected ({selectedInDrawerIds.size})</span>
+                      </button>
+                    )}
+
+                    {activeStackGroup.schedules.length > 1 && (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        data-testid="drawer-clear-slot-btn"
+                        onClick={() => {
+                          setSchedulesToBulkDelete(activeStackGroup.schedules);
+                        }}
+                        style={{
+                          padding: "5px 12px",
+                          fontSize: "0.78rem",
+                          color: "#dc2626",
+                          borderColor: "#fca5a5",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                        }}
+                        title="Delete all schedules in this slot at once"
+                      >
+                        <Trash2 size={13} />
+                        <span>Delete All in Slot ({activeStackGroup.schedules.length})</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* TIER 2: Clean Subject-Only List with TIER 3 Accordion Details */}
               <div className="stacked-group-modal-list">
                 {activeStackGroup.schedules.map((item, index) => {
+                  if (item.isPlotted) {
+                    const cleanId = item.id.replace(/^plotted-/, "");
+                    return (
+                      <div
+                        key={item.id || `plotted-${index}`}
+                        className="stacked-accordion-item is-plotted-item"
+                        style={{ borderLeftColor: "#4f46e5" }}
+                      >
+                        <div className="stacked-accordion-header" style={{ cursor: "default" }}>
+                          <div className="stacked-accordion-title-area">
+                            {canCreate && (
+                              <input
+                                type="checkbox"
+                                data-testid={`drawer-item-checkbox-${cleanId}`}
+                                checked={selectedInDrawerIds.has(item.id)}
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedInDrawerIds((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(item.id)) next.delete(item.id);
+                                    else next.add(item.id);
+                                    return next;
+                                  });
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                style={{ width: 16, height: 16, accentColor: "var(--srcb-royal, #2563eb)", cursor: "pointer", marginRight: 8, flexShrink: 0 }}
+                                aria-label="Select plotted slot"
+                              />
+                            )}
+                            <span
+                              className="stacked-accordion-code"
+                              style={{
+                                color: "#4f46e5",
+                                background: "rgba(79, 70, 229, 0.1)",
+                                padding: "2px 6px",
+                                borderRadius: 4,
+                                fontWeight: 700,
+                                fontSize: "0.75rem",
+                              }}
+                            >
+                              PLOTTED SLOT
+                            </span>
+                            <span className="stacked-accordion-divider">—</span>
+                            <span className="stacked-accordion-subject" style={{ color: "var(--srcb-text-muted)" }}>
+                              Ready for Subject &amp; Room Assignment
+                            </span>
+                          </div>
+
+                          <div
+                            className="stacked-accordion-actions"
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ display: "flex", gap: 6, alignItems: "center" }}
+                          >
+                            {canCreate && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="primary-button"
+                                  style={{
+                                    padding: "4px 10px",
+                                    fontSize: "0.75rem",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                  }}
+                                  onClick={() => {
+                                    setActiveStackGroup(null);
+                                    handleAssignPlottedSlot(item);
+                                  }}
+                                  title="Assign Subject & Room"
+                                >
+                                  <Plus size={12} />
+                                  <span>Assign Subject &amp; Room</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="icon-button icon-button--sm icon-button--danger"
+                                  onClick={() => {
+                                    handleRemovePlottedSlot(cleanId);
+                                    setActiveStackGroup((prev) =>
+                                      prev
+                                        ? {
+                                          ...prev,
+                                          schedules: prev.schedules.filter((s) => s.id !== item.id),
+                                        }
+                                        : null
+                                    );
+                                  }}
+                                  title="Remove Plotted Slot"
+                                  aria-label="Remove Plotted Slot"
+                                  style={{ width: 28, height: 28 }}
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
                   const sTheme = getProgramTheme(item);
                   const itemId = item.id || `stack-item-${index}`;
                   const isExpanded = expandedStackItemId === itemId;
@@ -4427,6 +4940,25 @@ export function SchedulesPage() {
                         }}
                       >
                         <div className="stacked-accordion-title-area">
+                          {canCreate && (
+                            <input
+                              type="checkbox"
+                              data-testid={`drawer-item-checkbox-${itemId}`}
+                              checked={selectedInDrawerIds.has(item.id)}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                setSelectedInDrawerIds((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(item.id)) next.delete(item.id);
+                                  else next.add(item.id);
+                                  return next;
+                                });
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{ width: 16, height: 16, accentColor: "var(--srcb-royal, #2563eb)", cursor: "pointer", marginRight: 8, flexShrink: 0 }}
+                              aria-label={`Select ${item.subjectCode}`}
+                            />
+                          )}
                           <span className="stacked-accordion-code" style={{ color: sTheme.primary }}>
                             {item.subjectCode}
                           </span>
@@ -4566,6 +5098,46 @@ export function SchedulesPage() {
                     </div>
                   );
                 })}
+
+                {/* Footer Quick Action CTA */}
+                {canCreate && (
+                  <div className="stacked-group-modal-footer-cta">
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--srcb-navy, #0f2c59)" }}>
+                      <Layers size={15} style={{ color: "var(--srcb-royal, #2563eb)", flexShrink: 0 }} />
+                      <span style={{ fontSize: "0.82rem", fontWeight: 600 }}>
+                        Different class or section at this same time?
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <button
+                        type="button"
+                        className="primary-button"
+                        style={{ padding: "5px 12px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: 5 }}
+                        onClick={() => {
+                          const slotDay = activeStackGroup.day;
+                          const slotTime = activeStackGroup.slot;
+                          setActiveStackGroup(null);
+                          handleOpenAddAtSlot(slotDay, slotTime);
+                        }}
+                      >
+                        <Plus size={13} />
+                        <span>+ Add Another Class Here</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        style={{ padding: "5px 12px", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: 5 }}
+                        onClick={() => {
+                          handlePlotNewSlotAt(activeStackGroup.day, activeStackGroup.slot);
+                          setActiveStackGroup(null);
+                        }}
+                      >
+                        <Clock size={13} />
+                        <span>+ Plot Another Slot</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -4623,17 +5195,7 @@ export function SchedulesPage() {
         }}
       />
 
-      {/* Admin Schedule Adjustment Review Modal */}
-      <AdminAdjustmentReviewModal
-        isOpen={Boolean(requestToReview)}
-        onClose={() => setRequestToReview(null)}
-        request={requestToReview}
-        roomsList={roomsList}
-        onReviewed={() => {
-          fetchAdjustmentRequests();
-          fetchSchedules();
-        }}
-      />
+
 
       {/* Automated Faculty Gmail Dispatch Modal */}
       {isGmailDispatchModalOpen && (
@@ -4762,6 +5324,170 @@ export function SchedulesPage() {
         </Modal>
       )}
 
+      {/* Dean's Multi-Schedule Time Plotter Modal */}
+      {isBatchPlotterOpen && (
+        <Modal
+          isOpen={isBatchPlotterOpen}
+          title="Plot Time Schedules to Matrix"
+          subtitle="Pre-plot designated class time slots across the week. You can then click each plotted slot on the timetable to assign the subject and room."
+          onClose={() => setIsBatchPlotterOpen(false)}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Day Selector */}
+            <div className="batch-plotter-section">
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <strong style={{ fontSize: "0.85rem", color: "var(--srcb-navy)" }}>
+                  1. Select Teaching Days:
+                </strong>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    style={{ padding: "2px 8px", fontSize: "0.72rem" }}
+                    onClick={() => setBatchPlotDays(["Monday", "Thursday"])}
+                  >
+                    Mon &amp; Thu
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    style={{ padding: "2px 8px", fontSize: "0.72rem" }}
+                    onClick={() => setBatchPlotDays(["Tuesday", "Friday"])}
+                  >
+                    Tue &amp; Fri
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    style={{ padding: "2px 8px", fontSize: "0.72rem" }}
+                    onClick={() => setBatchPlotDays(DAYS)}
+                  >
+                    All Days
+                  </button>
+                </div>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {DAYS.map((day) => {
+                  const isChecked = batchPlotDays.includes(day);
+                  return (
+                    <label
+                      key={day}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "6px 12px",
+                        borderRadius: 6,
+                        border: isChecked ? "1.5px solid var(--srcb-royal)" : "1px solid var(--srcb-border)",
+                        background: isChecked ? "rgba(37, 99, 235, 0.08)" : "var(--srcb-surface)",
+                        cursor: "pointer",
+                        fontSize: "0.82rem",
+                        fontWeight: isChecked ? 700 : 500,
+                        color: isChecked ? "var(--srcb-royal)" : "var(--srcb-text)",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setBatchPlotDays((prev) => [...prev, day]);
+                          } else {
+                            setBatchPlotDays((prev) => prev.filter((d) => d !== day));
+                          }
+                        }}
+                        style={{ accentColor: "var(--srcb-royal)" }}
+                      />
+                      <span>{day}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Time Slot Selector */}
+            <div className="batch-plotter-section">
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <strong style={{ fontSize: "0.85rem", color: "var(--srcb-navy)" }}>
+                  2. Select Time Schedules to Plot:
+                </strong>
+                <span style={{ fontSize: "0.72rem", color: "var(--srcb-text-muted)" }}>
+                  {batchPlotTimes.length} slot(s) selected
+                </span>
+              </div>
+              <div className="batch-plotter-grid">
+                {SRCB_STANDARD_TIME_SLOTS.map((slot) => {
+                  const isChecked = batchPlotTimes.includes(slot.label);
+                  return (
+                    <div
+                      key={slot.id}
+                      className={`batch-plotter-chip ${isChecked ? "is-selected" : ""}`}
+                      onClick={() => {
+                        if (isChecked) {
+                          setBatchPlotTimes((prev) => prev.filter((t) => t !== slot.label));
+                        } else {
+                          setBatchPlotTimes((prev) => [...prev, slot.label]);
+                        }
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        readOnly
+                        style={{ accentColor: "var(--srcb-royal)", cursor: "pointer" }}
+                      />
+                      <div style={{ display: "flex", flexDirection: "column" }}>
+                        <span>{slot.label}</span>
+                        <span style={{ fontSize: "0.68rem", color: "var(--srcb-text-muted)", fontWeight: 500 }}>
+                          {slot.durationMinutes} mins • {slot.description}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Summary & Action */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "10px 14px",
+                background: "rgba(37, 99, 235, 0.05)",
+                border: "1px solid rgba(37, 99, 235, 0.2)",
+                borderRadius: 8,
+              }}
+            >
+              <div style={{ fontSize: "0.8rem", color: "var(--srcb-navy)" }}>
+                Will plot <strong>{batchPlotDays.length * batchPlotTimes.length}</strong> slot(s) across{" "}
+                <strong>{batchPlotDays.length}</strong> day(s).
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  className="cancel-button"
+                  onClick={() => setIsBatchPlotterOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="action-button"
+                  onClick={handleBatchPlotTimeSchedules}
+                  disabled={batchPlotDays.length === 0 || batchPlotTimes.length === 0}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700 }}
+                >
+                  <CalendarPlus size={15} />
+                  <span>Plot {batchPlotDays.length * batchPlotTimes.length} Schedules to Matrix</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* Delete Schedule Block Confirmation Modal (Heuristic 3 & 5) */}
       <ConfirmModal
         isOpen={Boolean(scheduleToDelete)}
@@ -4780,6 +5506,56 @@ export function SchedulesPage() {
               <AlertTriangle size={14} style={{ flexShrink: 0 }} /> The room, instructor timeslot, and section cohort will be immediately freed up.
             </span>
           </span>
+        }
+      />
+
+      {/* Bulk Delete Schedules Confirmation Modal */}
+      <ConfirmModal
+        isOpen={schedulesToBulkDelete.length > 0}
+        title={`Remove ${schedulesToBulkDelete.length} Scheduled Class${schedulesToBulkDelete.length > 1 ? "es" : ""}`}
+        variant="danger"
+        confirmLabel={`Delete ${schedulesToBulkDelete.length} Class${schedulesToBulkDelete.length > 1 ? "es" : ""}`}
+        loading={loading}
+        onCancel={() => setSchedulesToBulkDelete([])}
+        onConfirm={executeBulkDelete}
+        message={
+          <div>
+            <p style={{ margin: "0 0 10px", fontWeight: 600 }}>
+              Are you sure you want to remove these <strong>{schedulesToBulkDelete.length}</strong> scheduled class blocks at once?
+            </p>
+            <div
+              style={{
+                maxHeight: 180,
+                overflowY: "auto",
+                background: "var(--srcb-surface-alt, #f8fafc)",
+                borderRadius: 6,
+                padding: "8px 12px",
+                marginBottom: 12,
+                border: "1px solid var(--srcb-border-subtle, #e2e8f0)",
+                fontSize: "0.82rem",
+              }}
+            >
+              {schedulesToBulkDelete.map((item, idx) => (
+                <div
+                  key={item.id || idx}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    padding: "4px 0",
+                    borderBottom: idx < schedulesToBulkDelete.length - 1 ? "1px dashed #e2e8f0" : "none",
+                  }}
+                >
+                  <span>
+                    <strong>{item.subjectCode || "Class"}</strong> — {item.section || "Section"} ({item.day} {item.time})
+                  </span>
+                  <span style={{ color: "var(--srcb-text-muted)" }}>{item.room || "Room TBA"}</span>
+                </div>
+              ))}
+            </div>
+            <span style={{ fontSize: "0.82rem", color: "#dc2626", display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <AlertTriangle size={14} style={{ flexShrink: 0 }} /> The rooms, instructor timeslots, and section cohorts for these {schedulesToBulkDelete.length} schedules will be immediately freed up.
+            </span>
+          </div>
         }
       />
     </motion.div>

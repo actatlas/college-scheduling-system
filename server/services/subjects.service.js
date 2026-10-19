@@ -72,7 +72,7 @@ async function listSubjects(programCodeOrUser, userParam = null, options = {}) {
     const scope = resolveUserProgramScope(user);
     const programHeadAllowedPrograms = scope.allowedProgramCodes;
 
-    let sql = `SELECT s.code, s.name, s.units, s.lecture_hours, s.lab_hours, s.semester_id, sem.name AS semester_name, s.program_code, s.instructor_id,
+    let sql = `SELECT s.code, s.name, s.units, s.lecture_hours, s.lab_hours, s.subject_type, s.semester_id, sem.name AS semester_name, s.program_code, s.instructor_id,
               COALESCE(t.name, '') AS instructor
        FROM subjects s
        LEFT JOIN teachers t ON t.id = s.instructor_id
@@ -96,7 +96,8 @@ async function listSubjects(programCodeOrUser, userParam = null, options = {}) {
     if (!Array.isArray(rows)) return [];
 
     const mapped = rows.map((s) => {
-      const isGE = isGeneralEducationSubject(s.code, s.program_code, s.name);
+      const isMinorType = String(s.subject_type || '').toLowerCase() === 'minor' || String(s.subject_type || '').toLowerCase() === 'gen ed';
+      const isGE = isMinorType || isGeneralEducationSubject(s.code, s.program_code, s.name);
       return {
         code: s.code || '',
         name: s.name || '',
@@ -108,6 +109,7 @@ async function listSubjects(programCodeOrUser, userParam = null, options = {}) {
         programCode: isGE ? 'ALL' : (s.program_code || ''),
         program: isGE ? 'ALL' : (s.program_code || ''),
         courseCode: s.program_code || '',
+        subjectType: s.subject_type || (isGE ? 'Minor' : 'Major'),
         isMajor: !isGE,
         instructorId: s.instructor_id ? String(s.instructor_id) : '',
         instructor: s.instructor || 'Unassigned',
@@ -151,16 +153,21 @@ async function createSubject({ code, name, units, lectureHours, labHours, semest
     semester,
   });
 
+  const isMinorVal = isMajor === false || isMajor === 0 || isMajor === '0' || !isMajor || isGeneralEducationSubject(code, programCode, name);
+  const subjectTypeVal = isMinorVal ? 'Minor' : 'Major';
+  const effectiveLecHours = isMinorVal && (Number(lectureHours) === 0 || Number(lectureHours) === 2 || isNaN(Number(lectureHours))) ? 1.5 : (Number(lectureHours) || 0);
+
   try {
     await query(
-      `INSERT INTO subjects (code, name, units, lecture_hours, lab_hours, semester_id, program_code, instructor_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO subjects (code, name, units, lecture_hours, lab_hours, subject_type, semester_id, program_code, instructor_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         code,
         name,
         Number(units) || 0,
-        Number(lectureHours) || 0,
+        effectiveLecHours,
         Number(labHours) || 0,
+        subjectTypeVal,
         validSemesterId,
         validProgramCode,
         validInstructorId,
@@ -208,13 +215,18 @@ async function updateSubject(code, { name, units, lectureHours, labHours, semest
     semester,
   });
 
+  const isMinorVal = isMajor === false || isMajor === 0 || isMajor === '0' || (isMajor === undefined && isGeneralEducationSubject(code, programCode, name));
+  const subjectTypeVal = isMinorVal ? 'Minor' : 'Major';
+  const effectiveLecHours = isMinorVal && (Number(lectureHours) === 0 || Number(lectureHours) === 2 || isNaN(Number(lectureHours))) ? 1.5 : (Number(lectureHours) || 0);
+
   await query(
-    `UPDATE subjects SET name = ?, units = ?, lecture_hours = ?, lab_hours = ?, semester_id = ?, program_code = ?, instructor_id = ? WHERE code = ?`,
+    `UPDATE subjects SET name = ?, units = ?, lecture_hours = ?, lab_hours = ?, subject_type = ?, semester_id = ?, program_code = ?, instructor_id = ? WHERE code = ?`,
     [
       name,
       Number(units) || 0,
-      Number(lectureHours) || 0,
+      effectiveLecHours,
       Number(labHours) || 0,
+      subjectTypeVal,
       validSemesterId,
       validProgramCode,
       validInstructorId,

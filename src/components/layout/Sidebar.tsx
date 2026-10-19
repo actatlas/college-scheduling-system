@@ -8,7 +8,6 @@ import {
   Settings,
   LogOut,
   DoorOpen,
-  ShieldCheck,
   Plus,
   GraduationCap,
   FileBarChart,
@@ -35,18 +34,6 @@ function getRole() {
   return (window.localStorage.getItem("userRole") || "admin").toLowerCase();
 }
 
-function getRoleLabel(role: string) {
-  switch (role) {
-    case "super_admin":
-      return "Super Admin (ICT)";
-    case "admin":
-      return "Dean of Student Affairs (Admin)";
-    case "program_head":
-      return "Program Head";
-    default:
-      return "Staff Portal";
-  }
-}
 
 interface SidebarProps {
   isMobileOpen?: boolean;
@@ -218,11 +205,6 @@ export function Sidebar({ isMobileOpen = false, onClose }: SidebarProps) {
         </button>
       )}
 
-      {/* Role Indicator Badge */}
-      <div className="sidebar__role-pill">
-        <ShieldCheck size={15} />
-        <span>{getRoleLabel(role)}</span>
-      </div>
 
       {/* Grouped Information Architecture Navigation */}
       <nav className="sidebar__nav" aria-label="Primary">

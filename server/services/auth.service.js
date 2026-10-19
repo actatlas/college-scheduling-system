@@ -52,9 +52,29 @@ async function ensureCatalogSeed() {
     }
   }
 
+  try {
+    await query("ALTER TABLE semesters MODIFY COLUMN term VARCHAR(50) NOT NULL DEFAULT '1st Semester'");
+  } catch (err) {
+    try {
+      await query("ALTER TABLE semesters ADD COLUMN term VARCHAR(50) NOT NULL DEFAULT '1st Semester'");
+    } catch (e) {
+      // ignore if unsupported
+    }
+  }
+
+  try {
+    await query("ALTER TABLE semesters MODIFY COLUMN school_year VARCHAR(50) NOT NULL DEFAULT '2026-2027'");
+  } catch (err) {
+    try {
+      await query("ALTER TABLE semesters ADD COLUMN school_year VARCHAR(50) NOT NULL DEFAULT '2026-2027'");
+    } catch (e) {
+      // ignore if unsupported
+    }
+  }
+
   const [semester] = await query('SELECT id FROM semesters WHERE name = ? LIMIT 1', ['1st Semester']);
   if (!semester) {
-    await query('INSERT INTO semesters (name, is_active) VALUES (?, ?)', ['1st Semester', true]);
+    await query('INSERT INTO semesters (school_year, term, name, is_active) VALUES (?, ?, ?, ?)', ['2026-2027', '1st Semester', '1st Semester', true]);
   }
 
   const [academicYear] = await query('SELECT id FROM academic_years WHERE name = ? LIMIT 1', ['2026-2027']);

@@ -239,6 +239,12 @@ describe("SchedulesPage Institutional Class Durations", () => {
 
     expect(await screen.findByText(/Create Class Schedule - Step 1/i)).toBeInTheDocument();
 
+    // Confirm Time & advance to Step 2: Subject & Section
+    const confirmTimeBtn = screen.getByRole("button", { name: /Confirm Time & Next/i });
+    fireEvent.click(confirmTimeBtn);
+
+    expect(await screen.findByText(/2\. Curriculum Subject & Section/i)).toBeInTheDocument();
+
     // Select major subject IT101 from SearchableSelect dropdown
     const subjectTrigger = document.getElementById("schedSubject")?.parentElement?.querySelector("button") as HTMLElement;
     fireEvent.click(subjectTrigger);

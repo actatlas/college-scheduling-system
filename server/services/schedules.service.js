@@ -10,6 +10,15 @@ async function ensureSchedulesTable() {
   try {
     await query("ALTER TABLE schedules ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'DRAFT'");
   } catch {}
+  try {
+    await query("ALTER TABLE schedules ADD COLUMN color VARCHAR(20) NOT NULL DEFAULT '#2563eb'");
+  } catch {}
+  try {
+    await query("ALTER TABLE rooms ADD COLUMN building VARCHAR(100) NOT NULL DEFAULT 'College Building' AFTER capacity");
+  } catch {}
+  try {
+    await query("UPDATE sections SET course_code = program_code WHERE course_code IS NULL OR course_code = ''");
+  } catch {}
   tableEnsured = true;
 }
 
@@ -47,11 +56,19 @@ function getProgramColor(progOrCode) {
   return '#64748b';
 }
 
-function isGeneralEducationSubject(code, programCode) {
+function isGeneralEducationSubject(code, programCode, subjectType, isMajor) {
+  if (isMajor === false || isMajor === 0 || isMajor === '0') return true;
+  const cleanType = String(subjectType || '').toLowerCase().trim();
+  if (cleanType === 'minor' || cleanType === 'gen ed' || cleanType === 'general education') return true;
   const cleanProg = String(programCode || '').toUpperCase().trim();
-  if (cleanProg === 'ALL' || cleanProg === 'GEN' || cleanProg === 'UNIVERSAL' || cleanProg === 'GENERAL EDUCATION') return true;
+  if (cleanProg === 'ALL' || cleanProg === 'GEN' || cleanProg === 'GENED' || cleanProg === 'UNIVERSAL' || cleanProg === 'GENERAL EDUCATION') return true;
   const cleanCode = String(code || '').toUpperCase().trim();
-  return /^(GE|GEC|NSTP|PE|PATHFIT|RIZAL|RS|THEOLOGY|CWTS|ROTC)\b/i.test(cleanCode);
+  return /^(GE|GEC|NSTP|PE|PATHFIT|RIZAL|RS|THEOLOGY|CWTS|ROTC)\b/i.test(cleanCode) ||
+         /^GE[\s-]*\d+/i.test(cleanCode) ||
+         /^PE[\s-]*\d+/i.test(cleanCode) ||
+         /^NSTP[\s-]*\d+/i.test(cleanCode) ||
+         /^RS[\s-]*\d+/i.test(cleanCode) ||
+         /^PATHFIT[\s-]*\d+/i.test(cleanCode);
 }
 
 function getExpectedSubjectDuration(subjectRow, classMode = 'Lecture') {
@@ -59,6 +76,18 @@ function getExpectedSubjectDuration(subjectRow, classMode = 'Lecture') {
   const modeClean = String(classMode || '').toLowerCase().trim();
   const isLab = modeClean === 'laboratory' || modeClean === 'lab';
 
+  // Institutional rule: Minor / General Education subjects are ALWAYS 90 minutes (1.5 hours)
+  const isGeneral = isGeneralEducationSubject(
+    subjectRow.code,
+    subjectRow.program_code,
+    subjectRow.subject_type || subjectRow.subjectType,
+    subjectRow.is_major ?? subjectRow.isMajor
+  );
+  if (isGeneral) {
+    return 90; // Exactly 1 hour 30 mins (1.5h)
+  }
+
+  // Major Subject Laboratory
   if (isLab) {
     const labH = Number(subjectRow.lab_hours ?? subjectRow.labHours);
     if (!isNaN(labH) && labH > 0) {
@@ -67,15 +96,12 @@ function getExpectedSubjectDuration(subjectRow, classMode = 'Lecture') {
     return 180; // 3 hours fallback
   }
 
+  // Major Subject Lecture
   const lecH = Number(subjectRow.lecture_hours ?? subjectRow.lectureHours);
   if (!isNaN(lecH) && lecH > 0) {
     return Math.round(lecH * 60);
   }
 
-  const isGeneral = isGeneralEducationSubject(subjectRow.code, subjectRow.program_code);
-  if (isGeneral) {
-    return 90; // 1.5 hours fallback
-  }
   return 120; // 2 hours fallback for major lecture
 }
 
@@ -144,6 +170,8 @@ async function validateSchedulePayload({
   user = null,
   is_combined_cohort = false,
   isCombinedCohort = false,
+  bypassDurationValidation = false,
+  followScheduledTime = false,
 }) {
   const start = normalizeTime(start_time);
   const end = normalizeTime(end_time);
@@ -184,7 +212,7 @@ async function validateSchedulePayload({
   }
 
   // 3. Validate Academic Dependencies Existence
-  const [subjectRow] = await query('SELECT code, name, program_code, lab_hours, lecture_hours FROM subjects WHERE code = ? LIMIT 1', [subject_code]);
+  const [subjectRow] = await query('SELECT code, name, subject_type, program_code, lab_hours, lecture_hours FROM subjects WHERE code = ? LIMIT 1', [subject_code]);
   if (!subjectRow) {
     const err = new Error(`Subject with code "${subject_code}" does not exist.`);
     err.statusCode = 404;
@@ -230,6 +258,12 @@ async function validateSchedulePayload({
 
   // 4. Validate Class Duration (Dynamic Configuration)
   const actualDurationMinutes = endMin - startMin;
+  if (actualDurationMinutes <= 0) {
+    const err = new Error(`Invalid schedule duration: Class session must have a duration greater than 0 minutes.`);
+    err.statusCode = 400;
+    err.code = 'INVALID_CLASS_DURATION';
+    throw err;
+  }
 
   let effectiveClassMode = classMode || class_mode;
   if (!effectiveClassMode) {
@@ -244,7 +278,10 @@ async function validateSchedulePayload({
 
   const expectedDurationMinutes = getExpectedSubjectDuration(subjectRow, effectiveClassMode);
 
-  if (actualDurationMinutes !== expectedDurationMinutes) {
+  const isAuthorizedScheduler = user && ['admin', 'super_admin', 'dean'].includes(String(user.role).toLowerCase());
+  const shouldFollowScheduledTime = Boolean(bypassDurationValidation || followScheduledTime || isAuthorizedScheduler);
+
+  if (!shouldFollowScheduledTime && actualDurationMinutes !== expectedDurationMinutes) {
     const hoursExpected = expectedDurationMinutes / 60;
     const hoursStr = hoursExpected % 1 === 0 ? `${hoursExpected} hour(s)` : `${hoursExpected} hours`;
     const err = new Error(
@@ -368,10 +405,17 @@ async function validateSchedulePayload({
     }
 
     if (section_id && row.section_id && Number(row.section_id) === Number(section_id)) {
-      const err = new Error(`Section ${sectionRow ? `${sectionRow.course_code} ${sectionRow.year_level}-${sectionRow.section_label}` : section_id} already has a class scheduled on ${normalizedDay} (${String(row.start_time).slice(0, 5)}-${String(row.end_time).slice(0, 5)}).`);
-      err.statusCode = 409;
-      err.code = 'SECTION_CONFLICT';
-      throw err;
+      const sectionDisplayName = sectionRow
+        ? (sectionRow.section_name || `${sectionRow.course_code || sectionRow.program_code || ''} ${sectionRow.year_level}-${sectionRow.section_label}`.trim())
+        : `Section #${section_id}`;
+
+      // Allow Dean / Administrator co-scheduling, combined cohorts, or dean schedule override
+      if (!isSharedCohort && !isAuthorizedScheduler) {
+        const err = new Error(`Section ${sectionDisplayName} already has a class scheduled on ${normalizedDay} (${String(row.start_time).slice(0, 5)}-${String(row.end_time).slice(0, 5)}).`);
+        err.statusCode = 409;
+        err.code = 'SECTION_CONFLICT';
+        throw err;
+      }
     }
   }
 
@@ -595,15 +639,31 @@ async function resolveScheduleFKs({ subjectCode, facultyId, faculty, roomNumber,
     const trimmedSec = String(section).trim();
     const [secRow] = await query(
       `SELECT id FROM sections 
-       WHERE CONCAT(course_code, ' ', year_level, '-', section_label) = ? 
-          OR section_label = ? 
-          OR CONCAT(course_code, ' ', year_level) = ? 
-          OR CONCAT(course_code, ' ', section_label) = ?
-          OR ? LIKE CONCAT('%', section_label, '%')
+       WHERE id = ?
+          OR section_name = ?
+          OR CONCAT(COALESCE(course_code, program_code, ''), ' ', year_level, '-', section_label) = ?
+          OR CONCAT(COALESCE(course_code, program_code, ''), ' ', year_level, ' ', section_label) = ?
+          OR CONCAT(COALESCE(course_code, program_code, ''), ' ', section_label) = ?
        ORDER BY id ASC LIMIT 1`,
       [trimmedSec, trimmedSec, trimmedSec, trimmedSec, trimmedSec]
     );
-    if (secRow) validSectionId = secRow.id;
+    if (secRow) {
+      validSectionId = secRow.id;
+    } else {
+      const parts = trimmedSec.split(/[\s-]+/);
+      if (parts.length >= 2) {
+        const potentialCourse = parts[0];
+        const potentialLabel = parts[parts.length - 1];
+        const [parsedRow] = await query(
+          `SELECT id FROM sections
+           WHERE (course_code = ? OR program_code = ?)
+             AND section_label = ?
+           ORDER BY id ASC LIMIT 1`,
+          [potentialCourse, potentialCourse, potentialLabel]
+        );
+        if (parsedRow) validSectionId = parsedRow.id;
+      }
+    }
   }
   if (validSectionId) {
     const [secCheck] = await query('SELECT id FROM sections WHERE id = ? LIMIT 1', [validSectionId]);
@@ -678,6 +738,8 @@ async function createSchedule(payload, user) {
     class_mode: payload.class_mode || payload.classMode,
     user,
     is_combined_cohort: Boolean(payload.is_combined_cohort || payload.isCombinedCohort),
+    bypassDurationValidation: Boolean(payload.bypassDurationValidation || payload.followScheduledTime),
+    followScheduledTime: Boolean(payload.followScheduledTime || payload.bypassDurationValidation),
   });
 
   const finalColor = color && color !== '#2563eb'
@@ -805,6 +867,8 @@ async function updateSchedule(id, payload, user, req = null) {
     class_mode: payload.class_mode || payload.classMode,
     user,
     is_combined_cohort: Boolean(payload.is_combined_cohort || payload.isCombinedCohort),
+    bypassDurationValidation: Boolean(payload.bypassDurationValidation || payload.followScheduledTime),
+    followScheduledTime: Boolean(payload.followScheduledTime || payload.bypassDurationValidation),
   });
 
   const nextStatus = status ? normalizeScheduleStatus(status) : normalizeScheduleStatus(schedRow.status);
@@ -1131,6 +1195,68 @@ async function deleteSchedule(id, user) {
   return { message: 'Schedule deleted successfully' };
 }
 
+async function bulkDeleteSchedules(ids, user) {
+  await ensureSchedulesTable();
+  if (user && String(user.role).toLowerCase() === 'teacher') {
+    const err = new Error('Teachers have read-only access and cannot delete schedules.');
+    err.statusCode = 403;
+    err.code = 'UNAUTHORIZED_ROLE';
+    throw err;
+  }
+
+  const rawIds = Array.isArray(ids) ? ids : (ids ? [ids] : []);
+  let targetIds = rawIds
+    .map((x) => (typeof x === 'object' && x?.id ? x.id : x))
+    .map((x) => Number(x))
+    .filter((n) => Number.isFinite(n) && n > 0);
+
+  if (targetIds.length === 0) {
+    return { deletedCount: 0, deletedIds: [], message: 'No valid schedules provided for deletion.' };
+  }
+
+  if (user && String(user.role).toLowerCase() === 'program_head') {
+    const scope = resolveUserProgramScope(user);
+    const placeholders = targetIds.map(() => '?').join(',');
+    const validRows = await query(
+      `SELECT sc.id, sub.program_code, sec.course_code
+       FROM schedules sc
+       LEFT JOIN subjects sub ON sub.code = sc.subject_code
+       LEFT JOIN sections sec ON sec.id = sc.section_id
+       WHERE sc.id IN (${placeholders})`,
+      targetIds
+    );
+
+    const unauthorized = validRows.filter(
+      (r) => !scope.allowedProgramCodes.some((code) => isProgramMatch(r.program_code, code) || isProgramMatch(r.course_code, code))
+    );
+
+    if (unauthorized.length > 0) {
+      const err = new Error(`Unauthorized: Program Heads can only delete schedules within their assigned program (${scope.allowedProgramCodes.join(', ')}).`);
+      err.statusCode = 403;
+      err.code = 'UNAUTHORIZED_PROGRAM_ACCESS';
+      throw err;
+    }
+
+    targetIds = validRows
+      .filter((r) => scope.allowedProgramCodes.some((code) => isProgramMatch(r.program_code, code) || isProgramMatch(r.course_code, code)))
+      .map((r) => r.id);
+  }
+
+  if (targetIds.length === 0) {
+    return { deletedCount: 0, deletedIds: [], message: 'No matching schedules found to delete.' };
+  }
+
+  const placeholders = targetIds.map(() => '?').join(',');
+  const result = await query(`DELETE FROM schedules WHERE id IN (${placeholders})`, targetIds);
+  const deletedCount = result?.affectedRows ?? targetIds.length;
+
+  return {
+    deletedCount,
+    deletedIds: targetIds,
+    message: `Successfully deleted ${deletedCount} class schedule${deletedCount === 1 ? '' : 's'}.`,
+  };
+}
+
 async function generateSchedules({ user } = {}) {
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
   const minorTimeSlots = [
@@ -1430,6 +1556,7 @@ const schedulesService = {
   detectConflicts,
   createSchedule,
   deleteSchedule,
+  bulkDeleteSchedules,
   updateSchedule,
   finalizeSchedule,
   publishSchedule,

@@ -65,6 +65,12 @@ describe("Subject Durations and Scheduling Logic", () => {
       expect(getExpectedSubjectDuration(genSubject, "Lecture")).toBe(90);
       expect(getExpectedSubjectDuration(minorSubject)).toBe(90);
       expect(getExpectedSubjectDuration({ code: "PE101", isMajor: false })).toBe(90);
+
+      // Minor subjects even if database stores lectureHours = 2 or 3 must ALWAYS be 1.5h (90 mins)
+      expect(getExpectedSubjectDuration({ code: "GE EL 2", name: "FO LA", lectureHours: 2, isMajor: false })).toBe(90);
+      expect(getExpectedSubjectDuration({ code: "GE EL 5", name: "Peace Education", lecture_hours: 2, subjectType: "Minor" })).toBe(90);
+      expect(getExpectedSubjectDuration({ code: "GE101", lectureHours: 2, program_code: "ALL" })).toBe(90);
+      expect(getExpectedSubjectDuration({ code: "NSTP 1", lectureHours: 3, isMajor: false })).toBe(90);
     });
 
     it("assigns exactly 2 hours (120 min) for major subject lecture sessions", () => {

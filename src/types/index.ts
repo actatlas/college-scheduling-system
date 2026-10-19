@@ -200,6 +200,7 @@ export interface ClassScheduleItem {
   color: string
   status?: ScheduleStatus | 'Confirmed' | 'Draft' | string
   isCombinedCohort?: boolean
+  isPlotted?: boolean
 }
 
 export interface ExamScheduleItem {

@@ -330,7 +330,7 @@ describe('Role and Faculty Availability Permissions', () => {
     expect(res.body.message).toBe('Faculty member deleted successfully');
   });
 
-  it('Admin cannot edit teacher profiles (returns 403 UNAUTHORIZED_ROLE)', async () => {
+  it('Dean / Admin CAN edit teacher profiles (returns 200)', async () => {
     const adminUser = { sub: 2, role: 'admin', email: 'admin@srcb.edu.ph' };
     const res = mockRes();
     await facultyController.updateFaculty(
@@ -338,12 +338,21 @@ describe('Role and Faculty Availability Permissions', () => {
       res,
       () => {}
     );
-    expect(res.statusCode).toBe(403);
-    expect(res.body.code).toBe('UNAUTHORIZED_ROLE');
-    expect(res.body.error).toContain('Only Super Administrators can edit teacher profiles');
+    expect(res.statusCode).toBe(200);
   });
 
-
+  it('Program Head cannot edit teacher profiles (returns 403 UNAUTHORIZED_ROLE)', async () => {
+    const programHeadUser = { sub: 3, role: 'program_head', email: 'programhead@srcb.edu.ph' };
+    const res = mockRes();
+    await facultyController.updateFaculty(
+      { user: programHeadUser, params: { id: 'FAC-003' }, body: { name: 'Changed Name', phone: '09999999999' } },
+      res,
+      () => {}
+    );
+    expect(res.statusCode).toBe(403);
+    expect(res.body.code).toBe('UNAUTHORIZED_ROLE');
+    expect(res.body.error).toContain('Only the Dean or Super Administrator can edit teacher profiles');
+  });
 
   it('Super Admin CAN edit teacher profiles (returns 200)', async () => {
     const superAdminUser = { sub: 1, role: 'super_admin', email: 'superadmin@srcb.edu.ph' };
@@ -356,7 +365,7 @@ describe('Role and Faculty Availability Permissions', () => {
     expect(res.statusCode).toBe(200);
   });
 
-  it('Admin cannot create/register faculty (returns 403 UNAUTHORIZED_ROLE)', async () => {
+  it('Dean / Admin CAN create/register faculty (returns 201)', async () => {
     const adminUser = { sub: 2, role: 'admin', email: 'admin@srcb.edu.ph' };
     const res = mockRes();
     await facultyController.createFaculty(
@@ -364,8 +373,20 @@ describe('Role and Faculty Availability Permissions', () => {
       res,
       () => {}
     );
+    expect(res.statusCode).toBe(201);
+    expect(res.body.data.id).toBe('FAC-NEW');
+  });
+
+  it('Program Head cannot create/register faculty (returns 403 UNAUTHORIZED_ROLE)', async () => {
+    const programHeadUser = { sub: 3, role: 'program_head', email: 'programhead@srcb.edu.ph' };
+    const res = mockRes();
+    await facultyController.createFaculty(
+      { user: programHeadUser, body: { id: 'FAC-NEW-2', name: 'New Faculty', email: 'new2@srcb.edu.ph' } },
+      res,
+      () => {}
+    );
     expect(res.statusCode).toBe(403);
     expect(res.body.code).toBe('UNAUTHORIZED_ROLE');
-    expect(res.body.error).toContain('Only the Super Administrator can register faculty accounts');
+    expect(res.body.error).toContain('Only the Dean or Super Administrator can register faculty accounts');
   });
 });

@@ -401,12 +401,6 @@ export const SubjectPalette: React.FC<SubjectPaletteProps> = ({
           })
         )}
       </div>
-
-      {/* Palette Footer Tip */}
-      <div className="palette-footer-tip">
-        <Sparkles size={13} className="palette-footer-sparkle" />
-        <span>Drop subject onto any slot to jump directly to Section & Faculty assignment</span>
-      </div>
     </aside>
   );
 };
