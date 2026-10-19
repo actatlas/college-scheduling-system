@@ -40,11 +40,20 @@ import {
   UserX,
   AlertTriangle,
   Eye,
+  GraduationCap,
 } from "lucide-react";
 import { useProgramContext } from "../contexts/ProgramContext";
 import { formatSystemId } from "../utils/idFormatter";
 import type { FacultyMember, ScheduleAdjustmentRequest, RoomItem } from "../types";
 import { AdminAdjustmentReviewModal } from "../components/schedule/AdminAdjustmentReviewModal";
+
+export const ASSIGNED_ACADEMIC_PROGRAMS = [
+  { code: "ITP", name: "Information Technology Program" },
+  { code: "BAP", name: "Business Administration Program" },
+  { code: "CJEP", name: "Criminal Justice Education Program" },
+  { code: "TEP", name: "Teacher Education Program" },
+  { code: "HMP", name: "Hospitality Management Program" },
+];
 
 export function FacultyPage() {
   const [faculty, setFaculty] = useState<FacultyMember[]>([]);
@@ -77,14 +86,12 @@ export function FacultyPage() {
   const [deptFilter, setDeptFilter] = useState<string>("all");
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
-  const [openRowActionId, setOpenRowActionId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
   const filterRef = useRef<HTMLDivElement>(null);
   const exportRef = useRef<HTMLDivElement>(null);
-  const actionMenuRef = useRef<HTMLDivElement>(null);
 
   const [isOpen, setIsOpen] = useState(false);
   const [editingFaculty, setEditingFaculty] = useState<FacultyMember | null>(null);
@@ -96,9 +103,25 @@ export function FacultyPage() {
   const [firstNameError, setFirstNameError] = useState<string | null>(null);
   const [lastNameError, setLastNameError] = useState<string | null>(null);
   const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [showCustomId, setShowCustomId] = useState(false);
 
-  const { selectedProgram, matchesProgram } = useProgramContext();
+  const { selectedProgram, matchesProgram, programOptions } = useProgramContext();
   const { addNotification } = useNotifications();
+
+  const academicProgramOptions = useMemo(() => {
+    const map = new Map<string, { code: string; name: string }>();
+    ASSIGNED_ACADEMIC_PROGRAMS.forEach((p) => {
+      map.set(p.code.toUpperCase(), p);
+    });
+    (programOptions || [])
+      .filter((p) => p.key && p.key !== "ALL")
+      .forEach((p) => {
+        if (!map.has(p.key.toUpperCase())) {
+          map.set(p.key.toUpperCase(), { code: p.key, name: p.label || p.key });
+        }
+      });
+    return Array.from(map.values());
+  }, [programOptions]);
 
   const role = (localStorage.getItem("userRole") || "admin").toLowerCase();
   const isSuperAdmin = role === "super_admin";
@@ -260,6 +283,7 @@ export function FacultyPage() {
     setFirstNameError(null);
     setLastNameError(null);
     setPhoneError(null);
+    setShowCustomId(false);
     setForm({
       id: f.id,
       department: f.department,
@@ -267,7 +291,7 @@ export function FacultyPage() {
       status: f.status,
       maxLoadHours: f.maxLoadHours || (f.status === "Part-Time" ? 12 : 24),
       availability: f.availability || "",
-      programs: f.programs || ["BSIT"],
+      programs: f.programs || (f.department ? [f.department] : []),
     });
     setIsOpen(true);
   };
@@ -284,16 +308,17 @@ export function FacultyPage() {
     setFirstNameError(null);
     setLastNameError(null);
     setPhoneError(null);
+    setShowCustomId(false);
     const nextNum = faculty.length + 1;
     const padded = nextNum < 10 ? `00${nextNum}` : nextNum < 100 ? `0${nextNum}` : `${nextNum}`;
     setForm({
       id: `FAC-${padded}`,
-      department: selectedProgram?.label || "Information Technology Program",
+      department: selectedProgram?.label && selectedProgram.key !== "ALL" ? selectedProgram.label : "",
       email: "",
       status: "Full-Time",
       maxLoadHours: 24,
       availability: "Monday-Friday: 08:00-17:00",
-      programs: [selectedProgram?.key || "BSIT"],
+      programs: selectedProgram?.label && selectedProgram.key !== "ALL" ? [selectedProgram.label] : [],
     });
     setIsOpen(true);
   };
@@ -468,11 +493,11 @@ export function FacultyPage() {
         toast.push("Teacher profile updated successfully", "success");
         addNotification({
           title: "Teacher Profile Updated",
-          message: `Faculty record for ${fullName} (${form.department}) updated.`,
+          message: `Faculty record for ${fullName}${form.department ? ` (${form.department})` : ""} updated.`,
           type: "success",
           link: "/faculty",
           targetRole: "admin,program_head",
-          targetProgram: form.department,
+          targetProgram: form.department || "General",
           targetTeacherId: editingFaculty.id,
         });
       } else {
@@ -480,11 +505,11 @@ export function FacultyPage() {
         toast.push("Teacher registered successfully", "success");
         addNotification({
           title: "New Teacher Registered",
-          message: `${fullName} registered to ${form.department} faculty roster.`,
+          message: `${fullName} registered to faculty roster.`,
           type: "success",
           link: "/faculty",
           targetRole: "admin,program_head",
-          targetProgram: form.department,
+          targetProgram: form.department || "General",
           targetTeacherId: form.id,
         });
       }
@@ -498,7 +523,7 @@ export function FacultyPage() {
     }
   };
 
-  // Click outside listener for filter, export, and row actions popovers
+  // Click outside listener for filter and export popovers
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as Node;
@@ -507,9 +532,6 @@ export function FacultyPage() {
       }
       if (exportRef.current && !exportRef.current.contains(target)) {
         setIsExportOpen(false);
-      }
-      if (actionMenuRef.current && !actionMenuRef.current.contains(target)) {
-        setOpenRowActionId(null);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -763,7 +785,7 @@ export function FacultyPage() {
 
       {/* View Segmented Tabs: Faculty Roster vs Permission Requests */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
-        <div className="sched-view-tabs" style={{ background: "var(--srcb-surface)", padding: 4, borderRadius: 8, border: "1px solid var(--srcb-border)", display: "inline-flex", gap: 4 }}>
+        <div className="sched-view-tabs">
           <button
             type="button"
             data-testid="faculty-roster-tab-btn"
@@ -776,29 +798,17 @@ export function FacultyPage() {
                 return next;
               });
             }}
-            style={{
-              padding: "6px 14px",
-              borderRadius: 6,
-              border: "none",
-              background: activeTab === "roster" ? "var(--srcb-navy, #002855)" : "transparent",
-              color: activeTab === "roster" ? "#ffffff" : "var(--srcb-text)",
-              fontWeight: 700,
-              fontSize: "0.82rem",
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
           >
             <Users size={14} />
             <span>Faculty Roster</span>
             <span
               style={{
-                padding: "1px 6px",
+                padding: "1px 7px",
                 borderRadius: 999,
                 fontSize: "0.72rem",
-                background: activeTab === "roster" ? "rgba(255,255,255,0.2)" : "rgba(148, 163, 184, 0.2)",
-                color: activeTab === "roster" ? "#ffffff" : "var(--srcb-text-muted)",
+                fontWeight: 700,
+                background: activeTab === "roster" ? "rgba(15, 44, 89, 0.12)" : "rgba(148, 163, 184, 0.2)",
+                color: activeTab === "roster" ? "var(--srcb-navy, #0f2c59)" : "var(--srcb-text-muted)",
               }}
             >
               {faculty.length}
@@ -816,19 +826,6 @@ export function FacultyPage() {
                 next.set("tab", "requests");
                 return next;
               });
-            }}
-            style={{
-              padding: "6px 14px",
-              borderRadius: 6,
-              border: "none",
-              background: activeTab === "requests" ? "var(--srcb-navy, #002855)" : "transparent",
-              color: activeTab === "requests" ? "#ffffff" : "var(--srcb-text)",
-              fontWeight: 700,
-              fontSize: "0.82rem",
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
             }}
           >
             <ShieldCheck size={14} />
@@ -849,11 +846,12 @@ export function FacultyPage() {
             ) : (
               <span
                 style={{
-                  padding: "1px 6px",
+                  padding: "1px 7px",
                   borderRadius: 999,
                   fontSize: "0.72rem",
-                  background: activeTab === "requests" ? "rgba(255,255,255,0.2)" : "rgba(148, 163, 184, 0.2)",
-                  color: activeTab === "requests" ? "#ffffff" : "var(--srcb-text-muted)",
+                  fontWeight: 700,
+                  background: activeTab === "requests" ? "rgba(15, 44, 89, 0.12)" : "rgba(148, 163, 184, 0.2)",
+                  color: activeTab === "requests" ? "var(--srcb-navy, #0f2c59)" : "var(--srcb-text-muted)",
                 }}
               >
                 {adjustmentRequests.length}
@@ -1022,8 +1020,8 @@ export function FacultyPage() {
             </div>
             <div className="bulk-bar-actions" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               {/* Direct selection if user wants to delete or remove them */}
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.15)", padding: "2px 8px", borderRadius: 6 }}>
-                <span style={{ fontSize: "0.78rem", fontWeight: 600 }}>Action:</span>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(15, 44, 89, 0.08)", padding: "3px 8px", borderRadius: 6, border: "1px solid rgba(15, 44, 89, 0.15)" }}>
+                <span style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--srcb-navy, #0f2c59)" }}>Action:</span>
                 <select
                   data-testid="bulk-action-select"
                   value={bulkActionChoice}
@@ -1031,7 +1029,7 @@ export function FacultyPage() {
                   style={{
                     padding: "3px 8px",
                     borderRadius: 4,
-                    border: "1px solid rgba(255,255,255,0.4)",
+                    border: "1px solid var(--srcb-border, #cbd5e1)",
                     background: "var(--srcb-surface, #ffffff)",
                     color: "var(--srcb-text, #0f172a)",
                     fontSize: "0.78rem",
@@ -1071,9 +1069,10 @@ export function FacultyPage() {
                       setIsBulkModalOpen(true);
                     }}
                     style={{
-                      background: "rgba(239, 68, 68, 0.2)",
+                      background: "rgba(239, 68, 68, 0.12)",
                       borderColor: "#f87171",
-                      color: "#ffffff",
+                      color: "#dc2626",
+                      fontWeight: 600,
                     }}
                   >
                     <Trash2 size={14} />
@@ -1089,9 +1088,10 @@ export function FacultyPage() {
                       setIsBulkModalOpen(true);
                     }}
                     style={{
-                      background: "rgba(245, 158, 11, 0.2)",
+                      background: "rgba(245, 158, 11, 0.12)",
                       borderColor: "#fbbf24",
-                      color: "#ffffff",
+                      color: "#d97706",
+                      fontWeight: 600,
                     }}
                   >
                     <UserX size={14} />
@@ -1143,7 +1143,7 @@ export function FacultyPage() {
                   <th>FACULTY MEMBER</th>
                   <th>DEPARTMENT / PROGRAMS</th>
                   <th>FACULTY TYPE</th>
-                  <th>TEACHING LOAD (MAX HOURS)</th>
+                  <th>TEACHING LOAD</th>
                   <th style={{ textAlign: "right" }}>ACTIONS</th>
                 </tr>
               </thead>
@@ -1175,7 +1175,6 @@ export function FacultyPage() {
                 ) : (
                   paginatedFaculty.map((f) => {
                     const isSelected = selectedIds.has(f.id);
-                    const isActionOpen = openRowActionId === f.id;
 
                     return (
                       <tr key={f.id} className={isSelected ? "is-selected" : ""}>
@@ -1216,7 +1215,7 @@ export function FacultyPage() {
                           <div>
                             <span className="pill" style={{ fontWeight: 700 }}>
                               <Building2 size={13} style={{ marginRight: 4 }} />
-                              {f.department}
+                              {f.department || "General Faculty"}
                             </span>
                             {f.programs && f.programs.length > 0 && (
                               <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
@@ -1243,80 +1242,43 @@ export function FacultyPage() {
 
                         {/* Teaching Load Cell */}
                         <td>
-                          <div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <Clock size={13} style={{ color: "var(--srcb-royal, #0284c7)" }} />
                             <span style={{ fontWeight: 700, color: "var(--srcb-navy)" }}>
                               {f.maxLoadHours || (f.status === "Part-Time" ? 12 : 24)} hrs/wk max
                             </span>
                           </div>
                         </td>
 
-                        {/* Actions Dropdown Column */}
+                        {/* Actions Column */}
                         <td style={{ textAlign: "right" }}>
-                          <div
-                            style={{ position: "relative", display: "inline-block" }}
-                            ref={isActionOpen ? actionMenuRef : undefined}
-                          >
-                            <button
-                              type="button"
-                              className={`row-actions-trigger ${isActionOpen ? "is-open" : ""}`}
-                              onClick={() =>
-                                setOpenRowActionId((prev) => (prev === f.id ? null : f.id))
-                              }
-                              aria-label={`Actions for ${f.name}`}
-                              aria-expanded={isActionOpen}
-                            >
-                              <span>Actions</span>
-                              <ChevronDown size={13} />
-                            </button>
+                          <div className="faculty-actions-cell">
+                            {canEdit && (
+                              <button
+                                type="button"
+                                className="faculty-action-btn faculty-action-btn--edit"
+                                onClick={() => handleEdit(f)}
+                                title={`Edit ${f.name} Profile`}
+                                aria-label={`Edit ${f.name}`}
+                                data-testid={`edit-faculty-${f.id}`}
+                              >
+                                <Edit2 size={13} />
+                                <span>Edit</span>
+                              </button>
+                            )}
 
-                            {/* Row Action Dropdown Popover */}
-                            {isActionOpen && (
-                              <div className="user-mgmt-dropdown-popover" role="menu">
-                                {canEdit && (
-                                  <button
-                                    type="button"
-                                    className="user-mgmt-menu-item"
-                                    onClick={() => {
-                                      setOpenRowActionId(null);
-                                      handleEdit(f);
-                                    }}
-                                    role="menuitem"
-                                  >
-                                    <Edit2 size={15} />
-                                    <span>Edit Profile</span>
-                                  </button>
-                                )}
-                                <div className="user-mgmt-menu-divider" />
-                                <button
-                                  type="button"
-                                  className="user-mgmt-menu-item"
-                                  onClick={() => {
-                                    setOpenRowActionId(null);
-                                    handleDispatchFacultyGmail(f);
-                                  }}
-                                  role="menuitem"
-                                >
-                                  <Mail size={15} />
-                                  <span>Dispatch Schedule (Gmail)</span>
-                                </button>
-                                {canDelete && (
-                                  <>
-                                    <div className="user-mgmt-menu-divider" />
-                                    <button
-                                      type="button"
-                                      className="user-mgmt-menu-item danger"
-                                      onClick={() => {
-                                        setOpenRowActionId(null);
-                                        setFacultyToDelete(f);
-                                      }}
-                                      role="menuitem"
-                                    >
-                                      <Trash2 size={15} />
-                                      <span>Delete Faculty</span>
-                                    </button>
-                                  </>
-                                )}
-                              </div>
+                            {canDelete && (
+                              <button
+                                type="button"
+                                className="faculty-action-btn faculty-action-btn--danger"
+                                onClick={() => setFacultyToDelete(f)}
+                                title={`Delete ${f.name}`}
+                                aria-label={`Delete ${f.name}`}
+                                data-testid={`delete-faculty-${f.id}`}
+                              >
+                                <Trash2 size={13} />
+                                <span>Delete</span>
+                              </button>
                             )}
                           </div>
                         </td>
@@ -1787,10 +1749,10 @@ export function FacultyPage() {
         </section>
       )}
 
-      {/* Add / Edit Faculty Modal */}
+      {/* Add / Edit Faculty Modal - Minimal, Essential-Only Design */}
       <Modal
         isOpen={isOpen && canEdit}
-        size="lg"
+        size="md"
         icon={<UserCheck size={20} />}
         title={editingFaculty ? "Edit Teacher Profile" : "Register Teacher"}
         eyebrow="Faculty Directory"
@@ -1800,24 +1762,78 @@ export function FacultyPage() {
           setEditingFaculty(null);
         }}
       >
-        <div className="form-grid">
-          <div className="field-group">
-            <label htmlFor="facultyId">
-              <Hash size={13} /> Employee ID <span className="required-asterisk">*</span>
-            </label>
-            <input
-              id="facultyId"
-              value={form.id}
-              disabled={!!editingFaculty}
-              onChange={(e) => setForm({ ...form, id: e.target.value.toUpperCase() })}
-              placeholder="e.g. FAC-2026-001"
-              required
-              aria-required="true"
-            />
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Subtle Auto-Generated ID Header Pill */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "9px 14px",
+              background: "var(--srcb-surface-subtle, #f8fafc)",
+              borderRadius: 8,
+              border: "1px solid var(--srcb-border, #e2e8f0)",
+              fontSize: "0.82rem",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Hash size={13} style={{ color: "var(--srcb-navy, #1e3a8a)" }} />
+              <span style={{ color: "var(--srcb-text-muted, #64748b)" }}>Employee ID:</span>
+              <span style={{ fontFamily: "monospace", fontWeight: 700, color: "var(--srcb-navy, #1e3a8a)", letterSpacing: "0.03em" }}>
+                {form.id}
+              </span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span
+                style={{
+                  fontSize: "0.72rem",
+                  color: "#059669",
+                  background: "rgba(16, 185, 129, 0.1)",
+                  padding: "2px 8px",
+                  borderRadius: 12,
+                  fontWeight: 600,
+                }}
+              >
+                {editingFaculty ? "Assigned ID" : "Auto-Generated"}
+              </span>
+              {!editingFaculty && (
+                <button
+                  type="button"
+                  onClick={() => setShowCustomId(!showCustomId)}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--srcb-navy, #1e3a8a)",
+                    fontSize: "0.76rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                    padding: 0,
+                  }}
+                >
+                  {showCustomId ? "Hide" : "Customize"}
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* Requirement 4: First Name & Last Name (Characters Only) */}
-          <div style={{ gridColumn: "1 / -1", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          {/* Optional Custom Employee ID Input when toggled */}
+          {showCustomId && !editingFaculty && (
+            <div className="field-group" style={{ marginTop: -4 }}>
+              <label htmlFor="facultyId" style={{ fontSize: "0.78rem" }}>
+                <Hash size={12} /> Custom Employee ID
+              </label>
+              <input
+                id="facultyId"
+                value={form.id}
+                onChange={(e) => setForm({ ...form, id: e.target.value.toUpperCase() })}
+                placeholder="e.g. FAC-2026-001"
+              />
+            </div>
+          )}
+
+          {/* Row 1: First Name & Last Name */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
             <div className="field-group">
               <label htmlFor="facultyFirstName">
                 <Users size={13} /> First Name <span className="required-asterisk">*</span>
@@ -1857,93 +1873,96 @@ export function FacultyPage() {
             </div>
           </div>
 
-          <div className="field-group">
-            <label htmlFor="facultyEmail">
-              <Mail size={13} /> Email Address
-            </label>
-            <input
-              id="facultyEmail"
-              type="email"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              placeholder="faculty@srcb.edu.ph"
-            />
+          {/* Row 2: Assigned Academic Program & Faculty Type */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <div className="field-group">
+              <label htmlFor="facultyProgram">
+                <GraduationCap size={13} /> Assigned Academic Program
+              </label>
+              <select
+                id="facultyProgram"
+                data-testid="faculty-program-select"
+                aria-label="Assigned Academic Program"
+                value={
+                  academicProgramOptions.find(
+                    (p) =>
+                      p.name.toLowerCase() === (form.department || "").toLowerCase() ||
+                      p.code.toLowerCase() === (form.department || "").toLowerCase() ||
+                      (p.name.toLowerCase().includes((form.department || "").toLowerCase()) && (form.department || "").length > 2)
+                  )?.name || form.department
+                }
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setForm({
+                    ...form,
+                    department: val,
+                    programs: val ? [val] : [],
+                  });
+                }}
+              >
+                <option value="">None / General Faculty</option>
+                {academicProgramOptions.map((p) => (
+                  <option key={p.code} value={p.name}>
+                    {p.code} - {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="field-group">
+              <label htmlFor="facultyStatus">
+                <CheckCircle2 size={13} /> Faculty Type
+              </label>
+              <select
+                id="facultyStatus"
+                aria-label="Faculty Type"
+                value={form.status}
+                onChange={(e) => {
+                  const status = e.target.value as "Full-Time" | "Part-Time";
+                  setForm({
+                    ...form,
+                    status,
+                    maxLoadHours: status === "Part-Time" ? 12 : 24,
+                  });
+                }}
+              >
+                <option value="Full-Time">Full-Time (24 hrs/wk)</option>
+                <option value="Part-Time">Part-Time (12 hrs/wk)</option>
+              </select>
+            </div>
           </div>
 
-          {/* Requirement 3: Phone Number Validation */}
-          <div className="field-group">
-            <label htmlFor="facultyPhone">
-              <Phone size={13} /> Phone Contact
-            </label>
-            <input
-              id="facultyPhone"
-              value={phone}
-              onChange={(e) => handlePhoneChange(e.target.value)}
-              placeholder="09171234567"
-            />
-            {phoneError && (
-              <p className="field-error-msg" role="alert" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                <AlertCircle size={13} style={{ flexShrink: 0 }} /> {phoneError}
-              </p>
-            )}
-          </div>
+          {/* Row 3: Email Address & Phone Contact */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <div className="field-group">
+              <label htmlFor="facultyEmail">
+                <Mail size={13} /> Email Address
+              </label>
+              <input
+                id="facultyEmail"
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                placeholder="faculty@srcb.edu.ph"
+              />
+            </div>
 
-          <div className="field-group">
-            <label htmlFor="facultyDept">
-              <Building2 size={13} /> Department / Academic Program
-            </label>
-            <input
-              id="facultyDept"
-              value={form.department}
-              onChange={(e) => setForm({ ...form, department: e.target.value })}
-              placeholder="e.g. Information Technology Program"
-              list="faculty-dept-datalist"
-            />
-            <datalist id="faculty-dept-datalist">
-              {departments.map((d) => (
-                <option key={d} value={d} />
-              ))}
-              <option value="Information Technology Program" />
-              <option value="Business Administration Program" />
-              <option value="Teacher Education Program" />
-              <option value="Criminal Justice Education Program" />
-              <option value="Hospitality Management Program" />
-            </datalist>
-          </div>
-
-          <div className="field-group">
-            <label htmlFor="facultyStatus">
-              <CheckCircle2 size={13} /> Faculty Type
-            </label>
-            <select
-              id="facultyStatus"
-              value={form.status}
-              onChange={(e) => {
-                const status = e.target.value as "Full-Time" | "Part-Time";
-                setForm({
-                  ...form,
-                  status,
-                  maxLoadHours: status === "Part-Time" ? 12 : 24,
-                });
-              }}
-            >
-              <option value="Full-Time">Full-Time Faculty</option>
-              <option value="Part-Time">Part-Time Faculty</option>
-            </select>
-          </div>
-
-          <div className="field-group">
-            <label htmlFor="facultyMaxLoad">
-              <Clock size={13} /> Maximum Weekly Load (Hours)
-            </label>
-            <input
-              id="facultyMaxLoad"
-              type="number"
-              value={form.maxLoadHours}
-              onChange={(e) => setForm({ ...form, maxLoadHours: Number(e.target.value) || 24 })}
-              min={1}
-              max={40}
-            />
+            <div className="field-group">
+              <label htmlFor="facultyPhone">
+                <Phone size={13} /> Phone Contact
+              </label>
+              <input
+                id="facultyPhone"
+                value={phone}
+                onChange={(e) => handlePhoneChange(e.target.value)}
+                placeholder="09171234567"
+              />
+              {phoneError && (
+                <p className="field-error-msg" role="alert" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <AlertCircle size={13} style={{ flexShrink: 0 }} /> {phoneError}
+                </p>
+              )}
+            </div>
           </div>
         </div>
 

@@ -549,6 +549,70 @@
   background: var(--srcb-royal, #0284c7);
 }
 
+/* Compact schedule creation wizard modal: prevents unwanted vertical scroll on Step 3 */
+.sched-wizard-modal.modal-card {
+  max-height: min(94vh, 920px);
+}
+
+.sched-wizard-modal .modal-card__header {
+  padding: 12px 20px;
+}
+
+.sched-wizard-modal .modal-card__header-icon {
+  width: 34px;
+  height: 34px;
+}
+
+.sched-wizard-modal .modal-card__header h3 {
+  font-size: 1.05rem;
+}
+
+.sched-wizard-modal .modal-card__header .modal-description {
+  margin: 1px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.sched-wizard-modal .modal-card__body {
+  padding: 12px 20px 8px;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.sched-wizard-modal .sched-wizard-stepper {
+  padding: 4px 8px;
+  margin-bottom: 0;
+  gap: 6px;
+}
+
+.sched-wizard-modal .sched-step-btn {
+  padding: 4px 10px;
+  gap: 6px;
+}
+
+.sched-wizard-modal .sched-step-circle {
+  width: 20px;
+  height: 20px;
+  font-size: 0.72rem;
+}
+
+.sched-wizard-modal .sched-step-info {
+  line-height: 1.15;
+}
+
+.sched-wizard-modal .sched-step-label {
+  font-size: 0.58rem;
+}
+
+.sched-wizard-modal .sched-step-title {
+  font-size: 0.78rem;
+}
+
+.sched-wizard-modal .modal-actions {
+  padding: 8px 18px;
+  margin: 0 -20px -8px -20px;
+}
+
 /* Card Containers for Form Sections */
 .sched-form-card {
   background: var(--srcb-surface, #ffffff);

@@ -398,6 +398,54 @@ export function canProgramTakeSubject(sub: any, programCode?: string): boolean {
   return subProg === targetProg || subProg === 'ALL' || subProg === 'UNIVERSAL'
 }
 
+export function getProgramFamily(str?: string | null): string {
+  if (!str) return ""
+  const s = String(str).toUpperCase().trim()
+  if (["ALL", "GEN", "GENED", "GENERAL EDUCATION", "UNIVERSAL"].includes(s)) return "GENED"
+
+  const IT_KEYS = ["ITP", "BSIT", "BSCS", "INFORMATION TECHNOLOGY", "COMPUTER SCIENCE", "COMPUTING", "COMPUTER"]
+  const CRIM_KEYS = ["CJEP", "BSCRIM", "CRIMINOLOGY", "CRIMINAL JUSTICE"]
+  const BUS_KEYS = ["BAP", "BSA", "BSBA", "ACCOUNTANCY", "BUSINESS ADMINISTRATION", "BUSINESS"]
+  const HM_KEYS = ["HMP", "BSHM", "HOSPITALITY MANAGEMENT", "HOTEL AND RESTAURANT", "HOSPITALITY"]
+  const EDUC_KEYS = ["TEP", "BSED", "BEED", "TEACHER EDUCATION", "EDUCATION"]
+
+  if (IT_KEYS.some((k) => s === k || s.includes(k) || k.includes(s))) return "IT"
+  if (CRIM_KEYS.some((k) => s === k || s.includes(k) || k.includes(s))) return "CRIM"
+  if (BUS_KEYS.some((k) => s === k || s.includes(k) || k.includes(s))) return "BUS"
+  if (HM_KEYS.some((k) => s === k || s.includes(k) || k.includes(s))) return "HM"
+  if (EDUC_KEYS.some((k) => s === k || s.includes(k) || k.includes(s))) return "EDUC"
+  return s
+}
+
+export function matchesProgramFamily(progA?: string | null, progB?: string | null): boolean {
+  if (!progA || !progB) return false
+  const a = String(progA).toUpperCase().trim()
+  const b = String(progB).toUpperCase().trim()
+  if (!a || !b) return false
+  if (a === "ALL" || b === "ALL" || a === "UNIVERSAL" || b === "UNIVERSAL") return true
+  if (a === b) return true
+  const famA = getProgramFamily(a)
+  const famB = getProgramFamily(b)
+  if (!famA || !famB) return false
+  return famA === famB
+}
+
+export function canTeacherTeachSubject(teacher: any, subject: any, programCode?: string): boolean {
+  if (!subject) return true
+  if (isGeneralSubject(subject)) return true
+  const targetProg = String(subject.program || programCode || '').trim()
+  if (!targetProg || targetProg === 'ALL' || targetProg === 'UNIVERSAL') return true
+
+  const tProgs = Array.isArray(teacher?.programs) && teacher.programs.length > 0
+    ? teacher.programs
+    : teacher?.department ? [teacher.department] : []
+
+  // Teachers with no assigned department or program are unassigned/general faculty and can teach
+  if (tProgs.length === 0) return true
+
+  return tProgs.some((p: string) => matchesProgramFamily(p, targetProg))
+}
+
 /**
  * Returns the expected duration in minutes for a schedule session:
  * - Minor / General Education subjects: 90 minutes (1 hour 30 mins / 1.5h)

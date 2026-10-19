@@ -133,6 +133,14 @@ describe("Dean Faculty Directory Management - Add Teacher", () => {
     fireEvent.change(emailInput, { target: { value: "hopper@srcb.edu.ph" } });
     fireEvent.change(phoneInput, { target: { value: "09181234567" } });
 
+    // Verify Assigned Academic Program selection is present and selectable when adding
+    const programSelect = screen.getByLabelText(/Assigned Academic Program/i);
+    expect(programSelect).toBeInTheDocument();
+    fireEvent.change(programSelect, { target: { value: "Information Technology Program" } });
+
+    // Verify Full-Time / Part-Time selection remains present
+    expect(screen.getByLabelText(/Faculty Type/i)).toBeInTheDocument();
+
     // Click Register Teacher submit button
     const submitBtn = screen.getByRole("button", { name: /Register Teacher/i });
     fireEvent.click(submitBtn);
@@ -145,6 +153,7 @@ describe("Dean Faculty Directory Management - Add Teacher", () => {
           email: "hopper@srcb.edu.ph",
           phone: "09181234567",
           status: "Full-Time",
+          department: "Information Technology Program",
         })
       );
     });
@@ -163,16 +172,14 @@ describe("Dean Faculty Directory Management - Add Teacher", () => {
       </BrowserRouter>
     );
 
-    // Open row actions dropdown for Prof. Ada Lovelace
-    const actionToggleBtn = await screen.findByLabelText(/Actions for Prof. Ada Lovelace/i);
-    fireEvent.click(actionToggleBtn);
-
-    // Click Edit Profile
-    const editBtn = await screen.findByRole("menuitem", { name: /Edit Profile/i });
+    // Click direct Edit action button for Prof. Ada Lovelace
+    const editBtn = await screen.findByRole("button", { name: /Edit Prof. Ada Lovelace|Edit/i });
     fireEvent.click(editBtn);
 
     // Modal opens in Edit mode
     expect(await screen.findByRole("heading", { name: /Edit Teacher Profile/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/Assigned Academic Program/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Faculty Type/i)).toBeInTheDocument();
     const phoneInput = screen.getByLabelText(/Phone Contact/i);
     fireEvent.change(phoneInput, { target: { value: "09199887766" } });
 

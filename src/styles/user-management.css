@@ -179,14 +179,14 @@
 
 .user-mgmt-dropdown-popover {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + 4px);
   right: 0;
-  z-index: 50;
-  min-width: 220px;
-  background: var(--srcb-surface);
-  border: 1px solid var(--srcb-border);
+  z-index: 100;
+  min-width: 200px;
+  background: var(--srcb-surface, #ffffff);
+  border: 1px solid var(--srcb-border, #cbd5e1);
   border-radius: 10px;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 12px 28px -4px rgba(15, 23, 42, 0.16), 0 4px 6px -2px rgba(15, 23, 42, 0.05);
   padding: 6px;
   animation: popoverFadeIn 150ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -410,6 +410,7 @@
   border-radius: 10px;
   border: 1px solid var(--srcb-border);
   background: var(--srcb-surface);
+  min-height: 280px;
 }
 
 .user-mgmt-table {
@@ -656,32 +657,92 @@ html[data-theme="dark"] .status-indicator-pill.part-time {
   border-color: rgba(251, 191, 36, 0.25);
 }
 
-/* Action Dropdown Trigger in Table Row */
+/* Action Dropdown Trigger & Quick Buttons in Table Row */
+.faculty-actions-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+.faculty-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 6px;
+  border: 1px solid var(--srcb-border, #cbd5e1);
+  background: var(--srcb-surface, #ffffff);
+  color: var(--srcb-text, #334155);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.faculty-action-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(15, 23, 42, 0.08);
+}
+
+.faculty-action-btn:active {
+  transform: translateY(0);
+}
+
+.faculty-action-btn--edit {
+  color: var(--srcb-navy, #0f2c59);
+  background: rgba(15, 44, 89, 0.04);
+  border-color: rgba(15, 44, 89, 0.2);
+}
+
+.faculty-action-btn--edit:hover {
+  background: var(--srcb-navy, #0f2c59);
+  color: #ffffff;
+  border-color: var(--srcb-navy, #0f2c59);
+}
+
+.faculty-action-btn--danger {
+  color: #dc2626;
+  background: rgba(239, 68, 68, 0.05);
+  border-color: rgba(239, 68, 68, 0.22);
+}
+
+.faculty-action-btn--danger:hover {
+  background: #dc2626;
+  color: #ffffff;
+  border-color: #dc2626;
+}
+
 .row-actions-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
   border-radius: 6px;
-  border: 1px solid var(--srcb-border);
-  background: var(--srcb-surface);
-  color: var(--srcb-text);
-  font-size: 0.82rem;
+  border: 1px solid var(--srcb-border, #cbd5e1);
+  background: var(--srcb-surface-alt, #f8fafc);
+  color: var(--srcb-text-muted, #64748b);
+  font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all var(--srcb-transition);
+  transition: all 0.15s ease;
 }
 
 .row-actions-trigger:hover {
   background: var(--srcb-surface-hover, #f1f5f9);
-  color: var(--srcb-navy);
+  color: var(--srcb-navy, #0f2c59);
   border-color: rgba(15, 44, 89, 0.25);
 }
 
 .row-actions-trigger.is-open {
-  background: var(--srcb-navy);
+  background: var(--srcb-navy, #0f2c59);
   color: #ffffff;
-  border-color: var(--srcb-navy);
 }
 
 /* ==========================================================================
@@ -977,6 +1038,36 @@ html[data-theme="dark"] .status-indicator-pill.suspended {
   background: rgba(239, 68, 68, 0.15);
   color: #f87171;
   border-color: rgba(239, 68, 68, 0.3);
+}
+
+html[data-theme="dark"] .faculty-action-btn {
+  background: #1a1b22;
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+}
+
+html[data-theme="dark"] .faculty-action-btn--edit {
+  background: rgba(59, 130, 246, 0.12);
+  color: #93c5fd;
+  border-color: rgba(59, 130, 246, 0.25);
+}
+
+html[data-theme="dark"] .faculty-action-btn--edit:hover {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+}
+
+html[data-theme="dark"] .faculty-action-btn--danger {
+  background: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.25);
+}
+
+html[data-theme="dark"] .faculty-action-btn--danger:hover {
+  background: #dc2626;
+  color: #ffffff;
+  border-color: #dc2626;
 }
 
 html[data-theme="dark"] .row-actions-trigger {

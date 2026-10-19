@@ -62,6 +62,7 @@ import {
   calculateEndTimeFromStart,
   SRCB_STANDARD_TIME_SLOTS,
   isSrcbStandaloneDay,
+  canTeacherTeachSubject,
 } from "../utils/scheduling";
 import { getProgramTheme, getProgramColor } from "../utils/programColors";
 import { ScheduleDetailsModal } from "../components/schedule/ScheduleDetailsModal";
@@ -1248,11 +1249,23 @@ export function SchedulesPage() {
   }, [role, sectionsList, selectedProgram.key, matchesProgram]);
 
   const availableFaculty = useMemo(() => {
+    let list = facultyList;
     if (role === "program_head") {
-      return facultyList.filter((f) => matchesProgram(f.programs || f.department));
+      list = list.filter((f) => matchesProgram(f.programs || f.department));
     }
-    return facultyList;
-  }, [role, facultyList, selectedProgram.key, matchesProgram]);
+    // Program-specific major subject instructor restriction:
+    // Teachers assigned to a specific program will only teach their program's major subjects
+    const currentSub = form.subjectCode
+      ? subjectsList.find((s) => s.code.toLowerCase() === form.subjectCode.toLowerCase())
+      : null;
+    if (currentSub && (currentSub.isMajor || form.isMajor)) {
+      const targetProg = currentSub.program || form.program;
+      if (targetProg && targetProg !== "ALL" && targetProg !== "UNIVERSAL") {
+        list = list.filter((f) => canTeacherTeachSubject(f, currentSub, targetProg));
+      }
+    }
+    return list;
+  }, [role, facultyList, selectedProgram.key, matchesProgram, form.subjectCode, form.isMajor, form.program, subjectsList]);
 
   const scheduledSubjectCodes = useMemo(() => {
     return new Set(
@@ -3781,6 +3794,7 @@ export function SchedulesPage() {
       <Modal
         isOpen={isOpen && canCreate}
         size="lg"
+        className="sched-wizard-modal"
         icon={<Calendar size={18} />}
         eyebrow="Class Timetable"
         title={
@@ -3867,17 +3881,20 @@ export function SchedulesPage() {
 
         {/* STEP 1: TIME FIRST */}
         {modalStep === 1 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <div
               className="sched-form-card"
               style={{
-                padding: "20px",
+                padding: "14px 16px",
                 background: "var(--srcb-surface, #ffffff)",
                 border: "1px solid var(--srcb-border)",
                 borderRadius: 12,
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
                 <span className="sched-form-card-title" style={{ fontSize: "0.95rem", fontWeight: 700 }}>
                   1. Select Designated Class Time First
                 </span>
@@ -3901,10 +3918,10 @@ export function SchedulesPage() {
                 )}
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1.6fr", gap: 20, alignItems: "start" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1.6fr", gap: 16, alignItems: "start" }}>
                 {/* Teaching Day Selection */}
                 <div className="field-group" style={{ margin: 0 }}>
-                  <label htmlFor="schedDay" className="modal-field-label" style={{ marginBottom: 6 }}>
+                  <label htmlFor="schedDay" className="modal-field-label" style={{ marginBottom: 4, fontSize: "0.82rem" }}>
                     <Calendar size={13} />
                     <span>Teaching Day</span>
                     <span className="required-asterisk">*</span>
@@ -3920,7 +3937,7 @@ export function SchedulesPage() {
                         setPairedEnabled(hasPair);
                       }
                     }}
-                    style={{ padding: "9px 12px", fontSize: "0.86rem", borderRadius: 8 }}
+                    style={{ padding: "8px 12px", fontSize: "0.85rem", borderRadius: 8 }}
                   >
                     {DAYS.map((d) => (
                       <option key={d} value={d}>
@@ -3936,7 +3953,7 @@ export function SchedulesPage() {
                         display: "inline-flex",
                         alignItems: "center",
                         gap: 6,
-                        marginTop: 8,
+                        marginTop: 6,
                         cursor: "pointer",
                       }}
                     >
@@ -3953,8 +3970,8 @@ export function SchedulesPage() {
 
                 {/* Time Slot Inputs with Start & End + Quick Duration Presets */}
                 <div className="field-group" style={{ margin: 0 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <label htmlFor="schedStartTime" className="modal-field-label" style={{ margin: 0 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                    <label htmlFor="schedStartTime" className="modal-field-label" style={{ margin: 0, fontSize: "0.82rem" }}>
                       <Clock size={13} />
                       <span>Time Window</span>
                       <span className="required-asterisk">*</span>
@@ -3966,7 +3983,7 @@ export function SchedulesPage() {
                         type="button"
                         onClick={() => handleQuickDuration(90)}
                         style={{
-                          padding: "3px 8px",
+                          padding: "2px 7px",
                           borderRadius: 6,
                           fontSize: "0.72rem",
                           fontWeight: parsedDurationMinutes === 90 ? 700 : 500,
@@ -3983,7 +4000,7 @@ export function SchedulesPage() {
                         type="button"
                         onClick={() => handleQuickDuration(120)}
                         style={{
-                          padding: "3px 8px",
+                          padding: "2px 7px",
                           borderRadius: 6,
                           fontSize: "0.72rem",
                           fontWeight: parsedDurationMinutes === 120 ? 700 : 500,
@@ -4000,7 +4017,7 @@ export function SchedulesPage() {
                         type="button"
                         onClick={() => handleQuickDuration(180)}
                         style={{
-                          padding: "3px 8px",
+                          padding: "2px 7px",
                           borderRadius: 6,
                           fontSize: "0.72rem",
                           fontWeight: parsedDurationMinutes === 180 ? 700 : 500,
@@ -4023,7 +4040,7 @@ export function SchedulesPage() {
                         aria-label="Start Time"
                         value={form.time.split("-")[0]?.trim() || "07:00 AM"}
                         onChange={(e) => handleStartTimeChange(e.target.value)}
-                        style={{ padding: "9px 12px", fontSize: "0.86rem", borderRadius: 8, width: "100%" }}
+                        style={{ padding: "8px 12px", fontSize: "0.85rem", borderRadius: 8, width: "100%" }}
                       >
                         {TIME_POINTS.slice(0, -1).map((tp) => (
                           <option key={tp} value={tp}>
@@ -4043,7 +4060,7 @@ export function SchedulesPage() {
                         aria-label="End Time"
                         value={form.time.split("-")[1]?.trim() || "08:30 AM"}
                         onChange={(e) => handleEndTimeChange(e.target.value)}
-                        style={{ padding: "9px 12px", fontSize: "0.86rem", borderRadius: 8, width: "100%" }}
+                        style={{ padding: "8px 12px", fontSize: "0.85rem", borderRadius: 8, width: "100%" }}
                       >
                         {validEndPoints.map((tp) => {
                           const sPart = form.time.split("-")[0]?.trim() || "07:00 AM";
@@ -4073,7 +4090,7 @@ export function SchedulesPage() {
                     display: "flex",
                     alignItems: "center",
                     gap: 6,
-                    marginTop: 12,
+                    marginTop: 6,
                   }}
                 >
                   <Layers size={13} style={{ flexShrink: 0 }} />
@@ -4085,7 +4102,7 @@ export function SchedulesPage() {
             </div>
 
             {/* STEP 1 ACTIONS */}
-            <div className="modal-actions" style={{ justifyContent: "space-between", marginTop: 4 }}>
+            <div className="modal-actions" style={{ justifyContent: "space-between", marginTop: 2, padding: "8px 16px" }}>
               <button
                 type="button"
                 className="cancel-button"
@@ -4095,6 +4112,7 @@ export function SchedulesPage() {
                   setEditingPlottedSlotId(null);
                   setModalStep(1);
                 }}
+                style={{ padding: "6px 14px", fontSize: "0.82rem" }}
               >
                 Cancel
               </button>
@@ -4106,7 +4124,7 @@ export function SchedulesPage() {
                     className="action-button action-button--secondary"
                     onClick={() => handleSave(false)}
                     disabled={loading}
-                    style={{ padding: "8px 16px", fontSize: "0.84rem" }}
+                    style={{ padding: "6px 14px", fontSize: "0.82rem", display: "inline-flex", alignItems: "center", gap: 6 }}
                   >
                     {loading ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
                     <span>Save Changes</span>
@@ -4118,8 +4136,8 @@ export function SchedulesPage() {
                   aria-label="Confirm Time & Next"
                   onClick={() => handleConfirmTimeAndNext()}
                   style={{
-                    padding: "8px 20px",
-                    fontSize: "0.86rem",
+                    padding: "6px 18px",
+                    fontSize: "0.84rem",
                     fontWeight: 600,
                     display: "inline-flex",
                     alignItems: "center",
@@ -4136,22 +4154,22 @@ export function SchedulesPage() {
 
         {/* STEP 2: CURRICULUM SUBJECT & SECTION */}
         {modalStep === 2 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {/* Minimal Confirmed Time Context Bar */}
             <div
               style={{
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
-                padding: "8px 14px",
+                padding: "6px 12px",
                 background: "var(--srcb-surface-alt, #f8fafc)",
                 borderRadius: 8,
                 border: "1px solid var(--srcb-border)",
-                fontSize: "0.82rem",
+                fontSize: "0.8rem",
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <Clock size={14} color="var(--srcb-royal)" />
+                <Clock size={12} color="var(--srcb-royal)" />
                 <span>
                   <strong>Confirmed Time:</strong>{" "}
                   {!editingSchedule && pairedDay && pairedEnabled
@@ -4166,9 +4184,9 @@ export function SchedulesPage() {
                 type="button"
                 className="secondary-button"
                 onClick={() => setModalStep(1)}
-                style={{ padding: "3px 8px", fontSize: "0.74rem", display: "inline-flex", alignItems: "center", gap: 4 }}
+                style={{ padding: "2px 8px", fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: 4 }}
               >
-                <Edit2 size={12} />
+                <Edit2 size={10} />
                 <span>Change Time</span>
               </button>
             </div>
@@ -4177,35 +4195,85 @@ export function SchedulesPage() {
             <div
               className="sched-form-card"
               style={{
-                padding: "20px",
+                padding: "14px 16px",
                 background: "var(--srcb-surface, #ffffff)",
                 border: "1px solid var(--srcb-border)",
                 borderRadius: 12,
                 display: "flex",
                 flexDirection: "column",
-                gap: 16,
+                gap: 12,
               }}
             >
-              <span className="sched-form-card-title" style={{ fontSize: "0.95rem", fontWeight: 700 }}>
-                2. Curriculum Subject &amp; Section
-              </span>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+                <span className="sched-form-card-title" style={{ fontSize: "0.95rem", fontWeight: 700 }}>
+                  2. Curriculum Subject &amp; Section
+                </span>
+                {form.subjectCode && (
+                  <span
+                    style={{
+                      background: "rgba(2, 132, 199, 0.1)",
+                      color: "var(--srcb-royal, #0284c7)",
+                      fontWeight: 600,
+                      padding: "3px 8px",
+                      borderRadius: 6,
+                      fontSize: "0.75rem",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <BookOpen size={12} />
+                    {form.subjectCode}
+                  </span>
+                )}
+              </div>
 
-              {/* Subject Selection */}
-              <div className="field-group" style={{ margin: 0 }}>
-                <label htmlFor="schedSubject" className="modal-field-label" style={{ marginBottom: 6 }}>
-                  <BookOpen size={13} />
-                  <span>Curriculum Subject / Course</span>
-                  <span className="required-asterisk">*</span>
-                </label>
-                <SearchableSelect
-                  id="schedSubject"
-                  value={form.subjectCode}
-                  onChange={(val) => handleSubjectChange(val)}
-                  options={subjectOptionsForStep1}
-                  placeholder="Search course code or subject title..."
-                  searchPlaceholder="Search subjects (e.g. IT 101, CC 102)..."
-                  emptyText="No matching subjects found"
-                />
+              {/* 2-Column Grid for Subject & Section matching Steps 1 & 3 */}
+              <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 16, alignItems: "start" }}>
+                {/* Subject Selection */}
+                <div className="field-group" style={{ margin: 0 }}>
+                  <label htmlFor="schedSubject" className="modal-field-label" style={{ marginBottom: 4, fontSize: "0.82rem" }}>
+                    <BookOpen size={13} />
+                    <span>Curriculum Subject / Course</span>
+                    <span className="required-asterisk">*</span>
+                  </label>
+                  <SearchableSelect
+                    id="schedSubject"
+                    value={form.subjectCode}
+                    onChange={(val) => handleSubjectChange(val)}
+                    options={subjectOptionsForStep1}
+                    placeholder="Search course code or subject title..."
+                    searchPlaceholder="Search subjects (e.g. IT 101, CC 102)..."
+                    emptyText="No matching subjects found"
+                  />
+                </div>
+
+                {/* Section Selection */}
+                <div className="field-group" style={{ margin: 0 }}>
+                  <label htmlFor="schedSection" className="modal-field-label" style={{ marginBottom: 4, fontSize: "0.82rem" }}>
+                    <Users size={13} />
+                    <span>Student Section</span>
+                    <span className="required-asterisk">*</span>
+                  </label>
+                  <SearchableSelect
+                    id="schedSection"
+                    value={form.section}
+                    onChange={(val) => {
+                      const sec = availableSections.find(
+                        (s) => s.section === val || (s.course && `${s.course} ${s.yearLevel || ''}-${s.section}`.trim() === val)
+                      );
+                      setForm({
+                        ...form,
+                        section: val,
+                        program: sec?.program || sec?.course || form.program,
+                      });
+                    }}
+                    options={sectionOptionsForStep2}
+                    placeholder="Search & select student section..."
+                    searchPlaceholder="Search sections (e.g. BSIT 1-A)..."
+                    emptyText="No matching student sections found"
+                  />
+                </div>
               </div>
 
               {/* Major Subject Mode / Paired Info */}
@@ -4216,8 +4284,8 @@ export function SchedulesPage() {
                     justifyContent: "space-between",
                     alignItems: "center",
                     flexWrap: "wrap",
-                    gap: 10,
-                    padding: "10px 14px",
+                    gap: 8,
+                    padding: "8px 12px",
                     background: "rgba(37, 99, 235, 0.05)",
                     borderRadius: 8,
                     border: "1px solid rgba(37, 99, 235, 0.15)",
@@ -4231,7 +4299,7 @@ export function SchedulesPage() {
                       type="button"
                       className={`mode-btn ${form.classMode === "Lecture" ? "is-active" : ""}`}
                       onClick={() => setForm((prev) => ({ ...prev, classMode: "Lecture" }))}
-                      style={{ padding: "4px 10px", fontSize: "0.75rem", borderRadius: 4 }}
+                      style={{ padding: "3px 8px", fontSize: "0.74rem", borderRadius: 4 }}
                     >
                       {form.day}: Lecture (2h)
                     </button>
@@ -4239,7 +4307,7 @@ export function SchedulesPage() {
                       type="button"
                       className={`mode-btn ${form.classMode === "Laboratory" ? "is-active" : ""}`}
                       onClick={() => setForm((prev) => ({ ...prev, classMode: "Laboratory" }))}
-                      style={{ padding: "4px 10px", fontSize: "0.75rem", borderRadius: 4 }}
+                      style={{ padding: "3px 8px", fontSize: "0.74rem", borderRadius: 4 }}
                     >
                       {form.day}: Lab (3h)
                     </button>
@@ -4253,68 +4321,38 @@ export function SchedulesPage() {
                 </div>
               )}
 
-              {/* Section Selection */}
-              <div className="field-group" style={{ margin: 0 }}>
-                <label htmlFor="schedSection" className="modal-field-label" style={{ marginBottom: 6 }}>
-                  <Users size={13} />
-                  <span>Student Section</span>
-                  <span className="required-asterisk">*</span>
-                </label>
-                <SearchableSelect
-                  id="schedSection"
-                  value={form.section}
-                  onChange={(val) => {
-                    const sec = availableSections.find(
-                      (s) => s.section === val || (s.course && `${s.course} ${s.yearLevel || ''}-${s.section}`.trim() === val)
-                    );
-                    setForm({
-                      ...form,
-                      section: val,
-                      program: sec?.program || sec?.course || form.program,
-                    });
+              {concurrentSlotSchedules.length > 0 && (
+                <div
+                  style={{
+                    padding: "6px 10px",
+                    background: "rgba(37, 99, 235, 0.06)",
+                    border: "1px solid rgba(37, 99, 235, 0.2)",
+                    borderRadius: 6,
+                    fontSize: "0.74rem",
+                    color: "var(--srcb-royal, #2563eb)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    marginTop: 2,
                   }}
-                  options={sectionOptionsForStep2}
-                  placeholder="Search & select student section..."
-                  searchPlaceholder="Search sections (e.g. BSIT 1-A)..."
-                  emptyText="No matching student sections found"
-                />
-                {concurrentSlotSchedules.length > 0 && (
-                  <div style={{ marginTop: 6, fontSize: "0.74rem", color: "var(--srcb-royal)" }}>
-                    Other classes scheduled at this time: <strong>{concurrentSlotSchedules.map((cs) => `${cs.section || "Sec"} (${cs.subjectCode})`).join(", ")}</strong>
-                  </div>
-                )}
-              </div>
-
-              {/* Combined / Cross-Program Cohort Checkbox */}
-              <label
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  fontSize: "0.78rem",
-                  color: "var(--srcb-text)",
-                  cursor: "pointer",
-                  marginTop: -4,
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={form.isCombinedCohort}
-                  onChange={(e) => setForm({ ...form, isCombinedCohort: e.target.checked })}
-                  style={{ cursor: "pointer", margin: 0 }}
-                />
-                <span>Combined / Cross-Program Shared Cohort</span>
-              </label>
+                >
+                  <Layers size={13} style={{ flexShrink: 0 }} />
+                  <span>
+                    <strong>Other classes scheduled at this time:</strong> {concurrentSlotSchedules.map((cs) => `${cs.section || "Sec"} (${cs.subjectCode})`).join(", ")}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Step 2 Action Footer */}
-            <div className="modal-actions" style={{ justifyContent: "space-between", marginTop: 4 }}>
+            <div className="modal-actions" style={{ justifyContent: "space-between", marginTop: 2, padding: "8px 16px" }}>
               <button
                 type="button"
                 className="secondary-button"
                 onClick={() => setModalStep(1)}
+                style={{ padding: "6px 12px", fontSize: "0.82rem", display: "inline-flex", alignItems: "center", gap: 6 }}
               >
-                <ArrowLeft size={15} />
+                <ArrowLeft size={14} />
                 <span>Back to Time</span>
               </button>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -4326,42 +4364,18 @@ export function SchedulesPage() {
                     setEditingSchedule(null);
                     setModalStep(1);
                   }}
+                  style={{ padding: "6px 14px", fontSize: "0.82rem" }}
                 >
                   Cancel
                 </button>
-                {!editingSchedule && (
-                  <button
-                    type="button"
-                    className="action-button action-button--secondary"
-                    disabled={
-                      loading ||
-                      !form.subjectCode ||
-                      !form.section ||
-                      (!validationFeedback.valid && validationFeedback.errors.length > 0 && !isDeanOrAdmin)
-                    }
-                    onClick={() => handleSave(true)}
-                    title="Save this subject and immediately schedule another subject at this exact same time slot"
-                    style={{
-                      background: "var(--srcb-royal-light, #eff6ff)",
-                      color: "var(--srcb-royal, #2563eb)",
-                      borderColor: "var(--srcb-royal, #2563eb)",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 6,
-                    }}
-                  >
-                    <Plus size={15} />
-                    <span>Save &amp; Add Another Subject Here</span>
-                  </button>
-                )}
                 <button
                   type="button"
                   className="action-button"
                   disabled={!form.subjectCode || !form.section}
                   onClick={handleContinueToStep3}
                   style={{
-                    padding: "8px 20px",
-                    fontSize: "0.86rem",
+                    padding: "6px 18px",
+                    fontSize: "0.84rem",
                     fontWeight: 600,
                     display: "inline-flex",
                     alignItems: "center",
@@ -4378,51 +4392,54 @@ export function SchedulesPage() {
 
         {/* STEP 3: INSTRUCTOR & CLASSROOM */}
         {modalStep === 3 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {/* Minimal Context Summary Bar */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {/* Minimal Confirmed Context Summary Bar */}
             <div
               style={{
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
-                padding: "8px 14px",
+                padding: "6px 12px",
                 background: "var(--srcb-surface-alt, #f8fafc)",
                 borderRadius: 8,
                 border: "1px solid var(--srcb-border)",
-                fontSize: "0.82rem",
+                fontSize: "0.8rem",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <span>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <Clock size={12} color="var(--srcb-royal)" />
                   <strong>Time:</strong> {form.day} • {form.time}
                 </span>
                 <span style={{ color: "var(--srcb-border)" }}>|</span>
-                <span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <BookOpen size={12} color="var(--srcb-royal)" />
                   <strong>Subject:</strong> {form.subjectCode}
                 </span>
                 <span style={{ color: "var(--srcb-border)" }}>|</span>
-                <span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <Users size={12} color="var(--srcb-royal)" />
                   <strong>Section:</strong> {form.section}
                 </span>
               </div>
-              <div style={{ display: "flex", gap: 6 }}>
+              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                 <button
                   type="button"
                   className="secondary-button"
                   onClick={() => setModalStep(1)}
-                  style={{ padding: "3px 8px", fontSize: "0.74rem" }}
+                  style={{ padding: "2px 8px", fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: 4 }}
                 >
-                  <Edit2 size={11} />
-                  <span>Time</span>
+                  <Edit2 size={10} />
+                  <span>Change Time</span>
                 </button>
                 <button
                   type="button"
                   className="secondary-button"
                   onClick={() => setModalStep(2)}
-                  style={{ padding: "3px 8px", fontSize: "0.74rem" }}
+                  style={{ padding: "2px 8px", fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: 4 }}
                 >
-                  <Edit2 size={11} />
-                  <span>Subject</span>
+                  <Edit2 size={10} />
+                  <span>Change Subject</span>
                 </button>
               </div>
             </div>
@@ -4431,21 +4448,45 @@ export function SchedulesPage() {
             <div
               className="sched-form-card"
               style={{
-                padding: "20px",
+                padding: "14px 16px",
                 background: "var(--srcb-surface, #ffffff)",
                 border: "1px solid var(--srcb-border)",
                 borderRadius: 12,
                 display: "flex",
                 flexDirection: "column",
-                gap: 16,
+                gap: 12,
               }}
             >
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+                <span className="sched-form-card-title" style={{ fontSize: "0.95rem", fontWeight: 700 }}>
+                  3. Instructor &amp; Classroom Assignment
+                </span>
+                {form.room && (
+                  <span
+                    style={{
+                      background: "rgba(16, 185, 129, 0.1)",
+                      color: "#059669",
+                      fontWeight: 600,
+                      padding: "3px 8px",
+                      borderRadius: 6,
+                      fontSize: "0.75rem",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <DoorOpen size={12} />
+                    {form.room}
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
                 {/* Column 1: Instructor */}
                 <div className="field-group" style={{ margin: 0 }}>
-                  <label htmlFor="schedFaculty" className="modal-field-label" style={{ marginBottom: 6 }}>
+                  <label htmlFor="schedFaculty" className="modal-field-label" style={{ marginBottom: 4, fontSize: "0.82rem" }}>
                     <UserCheck size={13} />
-                    <span>3. Instructor Assignment</span>
+                    <span>Assigned Instructor</span>
                     <span className="required-asterisk">*</span>
                   </label>
                   <SearchableSelect
@@ -4465,17 +4506,17 @@ export function SchedulesPage() {
                     emptyText="No matching instructors found"
                   />
                   {selectedFacultyMember && selectedFacultyMember.status === "Part-Time" && (
-                    <div style={{ marginTop: 6, fontSize: "0.73rem", color: "#d97706" }}>
+                    <div style={{ marginTop: 4, fontSize: "0.72rem", color: "#d97706" }}>
                       Part-Time Availability: {selectedFacultyMember.availability || "Check availability"}
                     </div>
                   )}
                 </div>
 
-                {/* Column 2: Classroom & Verification */}
+                {/* Column 2: Classroom */}
                 <div className="field-group" style={{ margin: 0 }}>
-                  <label htmlFor="schedRoom" className="modal-field-label" style={{ marginBottom: 6 }}>
+                  <label htmlFor="schedRoom" className="modal-field-label" style={{ marginBottom: 4, fontSize: "0.82rem" }}>
                     <DoorOpen size={13} />
-                    <span>Classroom &amp; Verification</span>
+                    <span>Assigned Classroom</span>
                     <span className="required-asterisk">*</span>
                   </label>
                   <SearchableSelect
@@ -4490,8 +4531,9 @@ export function SchedulesPage() {
 
                   {/* Paired Day Room if needed */}
                   {!editingSchedule && pairedDay && pairedEnabled && (
-                    <div style={{ marginTop: 10 }}>
-                      <label htmlFor="schedPairedRoom" className="modal-field-label" style={{ marginBottom: 4, fontSize: "0.76rem" }}>
+                    <div style={{ marginTop: 8 }}>
+                      <label htmlFor="schedPairedRoom" className="modal-field-label" style={{ marginBottom: 3, fontSize: "0.74rem" }}>
+                        <DoorOpen size={12} />
                         <span>Classroom for {pairedDay} ({pairedClassMode})</span>
                         <span className="required-asterisk">*</span>
                       </label>
@@ -4508,8 +4550,8 @@ export function SchedulesPage() {
                   )}
 
                   {isRoomTooSmall && (
-                    <div style={{ marginTop: 6, color: "#dc2626", fontSize: "0.74rem", display: "flex", alignItems: "center", gap: 4 }}>
-                      <AlertTriangle size={13} />
+                    <div style={{ marginTop: 4, color: "#dc2626", fontSize: "0.72rem", display: "flex", alignItems: "center", gap: 4 }}>
+                      <AlertTriangle size={12} />
                       <span>Room capacity ({selectedRoomObj?.capacity}) is less than section size ({selectedSectionHeadcount}).</span>
                     </div>
                   )}
@@ -4520,16 +4562,16 @@ export function SchedulesPage() {
               {validationFeedback.errors.length > 0 ? (
                 <div
                   style={{
-                    padding: "8px 12px",
+                    padding: "6px 10px",
                     background: "rgba(239, 68, 68, 0.08)",
                     borderRadius: 6,
                     border: "1px solid rgba(239, 68, 68, 0.25)",
                     borderLeft: "3px solid #dc2626",
-                    fontSize: "0.76rem",
+                    fontSize: "0.74rem",
                   }}
                 >
                   <div style={{ fontWeight: 700, color: "#dc2626", marginBottom: 2, display: "flex", alignItems: "center", gap: 6 }}>
-                    <AlertTriangle size={14} />
+                    <AlertTriangle size={13} />
                     <span>Conflicts Detected ({validationFeedback.errors.length})</span>
                   </div>
                   {validationFeedback.errors.map((err, i) => (
@@ -4544,29 +4586,30 @@ export function SchedulesPage() {
                     display: "flex",
                     alignItems: "center",
                     gap: 6,
-                    padding: "6px 10px",
+                    padding: "5px 8px",
                     background: "rgba(16, 185, 129, 0.08)",
                     borderRadius: 6,
                     border: "1px solid rgba(16, 185, 129, 0.2)",
-                    fontSize: "0.75rem",
+                    fontSize: "0.74rem",
                     color: "#059669",
                     fontWeight: 600,
                   }}
                 >
-                  <ShieldCheck size={14} />
+                  <ShieldCheck size={13} />
                   <span>All resources verified: Instructor, Room, and Section are clear.</span>
                 </div>
               ) : null}
             </div>
 
             {/* Action Footer */}
-            <div className="modal-actions" style={{ justifyContent: "space-between", marginTop: 4 }}>
+            <div className="modal-actions" style={{ justifyContent: "space-between", marginTop: 2, padding: "8px 16px" }}>
               <button
                 type="button"
                 className="secondary-button"
                 onClick={() => setModalStep(2)}
+                style={{ padding: "6px 12px", fontSize: "0.82rem", display: "inline-flex", alignItems: "center", gap: 6 }}
               >
-                <ArrowLeft size={15} />
+                <ArrowLeft size={14} />
                 <span>Back to Subject &amp; Section</span>
               </button>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -4578,6 +4621,7 @@ export function SchedulesPage() {
                     setEditingSchedule(null);
                     setModalStep(1);
                   }}
+                  style={{ padding: "6px 14px", fontSize: "0.82rem" }}
                 >
                   Cancel
                 </button>
@@ -4602,9 +4646,11 @@ export function SchedulesPage() {
                       display: "inline-flex",
                       alignItems: "center",
                       gap: 6,
+                      padding: "6px 14px",
+                      fontSize: "0.82rem",
                     }}
                   >
-                    <Plus size={15} />
+                    <Plus size={14} />
                     <span>Save &amp; Add Another Subject Here</span>
                   </button>
                 )}
@@ -4620,8 +4666,16 @@ export function SchedulesPage() {
                     (!validationFeedback.valid && validationFeedback.errors.length > 0 && !isDeanOrAdmin)
                   }
                   onClick={() => handleSave(false)}
+                  style={{
+                    padding: "6px 18px",
+                    fontSize: "0.84rem",
+                    fontWeight: 600,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
                 >
-                  {loading ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                  {loading ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
                   <span>{loading ? "Saving…" : (editingSchedule ? "Save Schedule Changes" : "Confirm & Schedule Block")}</span>
                 </button>
               </div>
