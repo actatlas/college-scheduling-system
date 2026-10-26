@@ -122,7 +122,19 @@ async function createFaculty(payload) {
     fName = parts[1] || '';
   }
 
-  const [major] = await query('SELECT id FROM program_majors WHERE code = ? LIMIT 1', [department || 'BSIT']);
+  let major = null;
+  if (department && String(department).trim()) {
+    const deptClean = String(department).trim();
+    const [foundMajor] = await query(
+      `SELECT pm.id FROM program_majors pm
+       LEFT JOIN programs p ON p.code = pm.program_code
+       WHERE pm.code = ? OR pm.name = ? OR pm.program_code = ? OR p.name = ? OR p.code = ?
+       LIMIT 1`,
+      [deptClean, deptClean, deptClean, deptClean, deptClean]
+    );
+    major = foundMajor || null;
+  }
+
   try {
     await query(
       `INSERT INTO teachers (id, name, first_name, last_name, employee_number, position, email, phone, status, faculty_type, program_major_id)
@@ -136,7 +148,7 @@ async function createFaculty(payload) {
     );
   }
 
-  return { id, name, department, email, phone, status: fType, facultyType: fType, position: fPos, employeeNumber: empNum };
+  return { id, name, department: department || '', email, phone, status: fType, facultyType: fType, position: fPos, employeeNumber: empNum };
 }
 
 async function updateFaculty(id, payload) {
@@ -188,6 +200,22 @@ async function updateFaculty(id, payload) {
   if (payload.programMajorId !== undefined) {
     updates.push('program_major_id = ?');
     params.push(payload.programMajorId);
+  } else if (payload.department !== undefined) {
+    if (payload.department && String(payload.department).trim()) {
+      const deptClean = String(payload.department).trim();
+      const [foundMajor] = await query(
+        `SELECT pm.id FROM program_majors pm
+         LEFT JOIN programs p ON p.code = pm.program_code
+         WHERE pm.code = ? OR pm.name = ? OR pm.program_code = ? OR p.name = ? OR p.code = ?
+         LIMIT 1`,
+        [deptClean, deptClean, deptClean, deptClean, deptClean]
+      );
+      updates.push('program_major_id = ?');
+      params.push(foundMajor?.id || null);
+    } else {
+      updates.push('program_major_id = ?');
+      params.push(null);
+    }
   }
 
   if (updates.length > 0) {
@@ -243,5 +271,36 @@ async function deleteFaculty(id) {
   await query('DELETE FROM teachers WHERE id = ?', [id]);
 }
 
-const facultyService = { listFaculty, createFaculty, updateFaculty, deleteFaculty };
+async function bulkDeleteFaculty(ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return { deletedCount: 0 };
+  let count = 0;
+  for (const id of ids) {
+    try {
+      await deleteFaculty(id);
+      count++;
+    } catch (e) {
+      // Continue deleting other records if one was not found
+    }
+  }
+  return { deletedCount: count };
+}
+
+async function bulkRemoveFaculty(ids, action = 'deactivate') {
+  if (!Array.isArray(ids) || ids.length === 0) return { updatedCount: 0 };
+  let count = 0;
+  for (const id of ids) {
+    try {
+      if (action === 'deactivate') {
+        await query('UPDATE teachers SET status = ? WHERE id = ?', ['Inactive', id]);
+      } else {
+        await query('UPDATE teachers SET status = ?, program_major_id = NULL WHERE id = ?', ['Inactive', id]);
+      }
+      count++;
+    } catch (e) {}
+  }
+  return { updatedCount: count };
+}
+
+const facultyService = { listFaculty, createFaculty, updateFaculty, deleteFaculty, bulkDeleteFaculty, bulkRemoveFaculty };
 module.exports = { facultyService };
+

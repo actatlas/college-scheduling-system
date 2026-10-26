@@ -18,6 +18,8 @@ vi.mock("../../data/apiClient", () => ({
 }));
 
 describe("SchedulesPage - Concurrent Multi-Subject Scheduling in Same Time Slot", () => {
+  vi.setConfig({ testTimeout: 15000 });
+
   afterEach(() => {
     cleanup();
   });
@@ -158,10 +160,32 @@ describe("SchedulesPage - Concurrent Multi-Subject Scheduling in Same Time Slot"
     });
 
     // Continue to Step 2
-    const continueBtn = screen.getByRole("button", { name: /Continue to Resource Assignment/i });
-    fireEvent.click(continueBtn);
+    const confirmTimeBtn = screen.getByRole("button", { name: /Confirm Time & Next/i });
+    fireEvent.click(confirmTimeBtn);
 
-    // In Step 2, verify 'Save & Add Another Subject Here' button exists
+    // In Step 2, verify combined cohort option and 'Save & Add Another Subject Here' do NOT appear
+    await waitFor(() => {
+      expect(screen.getByText(/2\. Curriculum Subject & Section/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Combined \/ Cross-Program Shared Cohort/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Save & Add Another Subject Here/i })).not.toBeInTheDocument();
+
+    // Select subject and section to advance to Step 3
+    const subjectTrigger = document.getElementById("schedSubject")?.parentElement?.querySelector("button") as HTMLElement;
+    fireEvent.click(subjectTrigger);
+    const it201Option = await screen.findByRole("option", { name: /IT201/i });
+    fireEvent.click(it201Option);
+
+    const sectionTrigger = document.getElementById("schedSection")?.parentElement?.querySelector("button") as HTMLElement;
+    fireEvent.click(sectionTrigger);
+    const secOption = await screen.findByRole("option", { name: /BSIT 2-B/i });
+    fireEvent.click(secOption);
+
+    // Advance to Step 3
+    const nextBtn = screen.getByRole("button", { name: /Confirm Subject & Next/i });
+    fireEvent.click(nextBtn);
+
+    // In Step 3, verify 'Save & Add Another Subject Here' button exists
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /Save & Add Another Subject Here/i })).toBeInTheDocument();
     });

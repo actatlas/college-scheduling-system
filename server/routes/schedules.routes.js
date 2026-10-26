@@ -6,6 +6,7 @@ const {
   listConflicts,
   createSchedule,
   deleteSchedule,
+  bulkDeleteSchedules,
   updateSchedule,
   finalizeSchedule,
   publishSchedule,
@@ -18,8 +19,10 @@ router.get('/', listSchedules);
 router.post('/generate', generateSchedules);
 router.get('/conflicts', listConflicts);
 
-// Bulk status management
+// Bulk operations
 router.post('/bulk-status', bulkUpdateScheduleStatus);
+router.post('/bulk-delete', bulkDeleteSchedules);
+router.delete('/bulk', bulkDeleteSchedules);
 
 // Individual schedule lifecycle management
 router.post('/:id/finalize', finalizeSchedule);

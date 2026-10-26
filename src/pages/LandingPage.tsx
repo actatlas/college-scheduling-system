@@ -253,12 +253,14 @@ export function LandingPage() {
             <div className="landing-program-badge">HMP</div>
             <div className="landing-program-name">Hospitality Management Program</div>
           </div>
+
           <div className="landing-program-card">
             <img src={teLogo} alt="Teacher Education Program" className="landing-program-img" />
             <div className="landing-program-badge">TEP</div>
             <div className="landing-program-name">Teacher Education Program</div>
           </div>
         </div>
+
       </section>
 
       {/* ===================================================

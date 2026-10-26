@@ -69,12 +69,13 @@ async function createSemester({ name, isActive = false }) {
     await query('UPDATE semesters SET is_active = FALSE');
   }
 
+  const trimmedName = String(name).trim();
   const [res] = await query(
-    'INSERT INTO semesters (name, is_active) VALUES (?, ?)',
-    [String(name).trim(), Boolean(isActive)]
+    'INSERT INTO semesters (school_year, term, name, is_active) VALUES (?, ?, ?, ?)',
+    ['2026-2027', trimmedName, trimmedName, Boolean(isActive)]
   );
   const insertId = res?.insertId || res?.[0]?.insertId;
-  return { id: Number(insertId), name: String(name).trim(), isActive: Boolean(isActive) };
+  return { id: Number(insertId), name: trimmedName, isActive: Boolean(isActive) };
 }
 
 async function setActiveSemester(id) {

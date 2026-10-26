@@ -137,7 +137,7 @@ export function findAvailableRoomForSlot(
       .filter((s) => {
         if (excludeId && String(s.id) === String(excludeId)) return false;
         if (s.modality === 'Online') return false;
-        if (s.day.toLowerCase() !== day.toLowerCase()) return false;
+        if (!s.day || s.day.toLowerCase() !== day.toLowerCase()) return false;
         return isTimeOverlapping(s.time, time);
       })
       .map((s) => String(s.room || '').toLowerCase().trim())
@@ -166,6 +166,8 @@ export function validateScheduleSlot(
     section: string
     modality: 'Face-to-Face' | 'Online'
     isCombinedCohort?: boolean
+    isAuthorizedScheduler?: boolean
+    allowConcurrentSection?: boolean
   },
   existingSchedules?: ClassScheduleItem[],
   _existingFacultyList?: any[]
@@ -174,21 +176,30 @@ export function validateScheduleSlot(
   const schedules = allSchedules.filter((s) => String(s.id) !== String(candidate.id))
   const errors: string[] = []
   const warnings: string[] = []
+  const isPlaceholder = (val?: string) => {
+    if (!val) return true;
+    const clean = val.toLowerCase().trim();
+    return ['tbd', 'tba', 'unassigned', 'awaiting assignment', 'n/a', 'none', ''].includes(clean);
+  };
 
   // 1. Check Faculty Clash
-  const facultyClash = schedules.find(
-    (s) =>
-      s.day.toLowerCase() === candidate.day.toLowerCase() &&
-      isTimeOverlapping(s.time, candidate.time) &&
-      (s.facultyId === candidate.facultyId || s.faculty.toLowerCase() === candidate.faculty.toLowerCase()) &&
-      // If it's a combined cohort sharing the exact same room, it's valid co-instruction
-      !(
-        (candidate.isCombinedCohort || (s as any).isCombinedCohort) &&
-        s.room &&
-        candidate.room &&
-        s.room.toLowerCase().trim() === candidate.room.toLowerCase().trim()
+  const facultyClash = !isPlaceholder(candidate.faculty)
+    ? schedules.find(
+        (s) =>
+          !isPlaceholder(s.faculty) &&
+          s.day.toLowerCase() === candidate.day.toLowerCase() &&
+          isTimeOverlapping(s.time, candidate.time) &&
+          ((candidate.facultyId && s.facultyId && candidate.facultyId === s.facultyId) ||
+            s.faculty.toLowerCase().trim() === candidate.faculty.toLowerCase().trim()) &&
+          // If it's a combined cohort sharing the exact same room, it's valid co-instruction
+          !(
+            (candidate.isCombinedCohort || (s as any).isCombinedCohort) &&
+            s.room &&
+            candidate.room &&
+            s.room.toLowerCase().trim() === candidate.room.toLowerCase().trim()
+          )
       )
-  )
+    : undefined;
   if (facultyClash) {
     errors.push(
       `Faculty double-booking: ${candidate.faculty} is already scheduled for ${facultyClash.subject} (${facultyClash.section}) at this day and time.`
@@ -196,10 +207,11 @@ export function validateScheduleSlot(
   }
 
   // 2. Check Room Collision (if Face-to-Face)
-  if (candidate.modality === 'Face-to-Face' && candidate.room) {
+  if (candidate.modality === 'Face-to-Face' && !isPlaceholder(candidate.room)) {
     const roomClash = schedules.find(
       (s) =>
         s.modality === 'Face-to-Face' &&
+        !isPlaceholder(s.room) &&
         s.day.toLowerCase() === candidate.day.toLowerCase() &&
         isTimeOverlapping(s.time, candidate.time) &&
         s.room &&
@@ -219,16 +231,25 @@ export function validateScheduleSlot(
   }
 
   // 3. Check Section Overlap
-  const sectionClash = schedules.find(
-    (s) =>
-      s.day.toLowerCase() === candidate.day.toLowerCase() &&
-      isTimeOverlapping(s.time, candidate.time) &&
-      s.section.toLowerCase() === candidate.section.toLowerCase()
-  )
-  if (sectionClash) {
-    errors.push(
-      `Section overlap: Section ${candidate.section} already has a class scheduled (${sectionClash.subject}) at this day and time.`
+  if (!isPlaceholder(candidate.section)) {
+    const sectionClash = schedules.find(
+      (s) =>
+        !isPlaceholder(s.section) &&
+        s.day.toLowerCase() === candidate.day.toLowerCase() &&
+        isTimeOverlapping(s.time, candidate.time) &&
+        s.section.toLowerCase().trim() === candidate.section.toLowerCase().trim()
     )
+    if (sectionClash) {
+      if (candidate.isCombinedCohort || (candidate as any).allowConcurrentSection || (candidate as any).isAuthorizedScheduler) {
+        warnings.push(
+          `Section co-scheduling: Section ${candidate.section} already has a scheduled class (${sectionClash.subject}) at this day and time.`
+        )
+      } else {
+        errors.push(
+          `Section overlap: Section ${candidate.section} already has a class scheduled (${sectionClash.subject}) at this day and time.`
+        )
+      }
+    }
   }
 
   // 4. Faculty Availability restrictions removed per requirements (instructors can be scheduled flexibly at any slot)
@@ -349,20 +370,22 @@ export function isGeneralSubject(sub: any): boolean {
   if (!sub) return false
   if (typeof sub === 'string') {
     const code = sub.toUpperCase().trim()
-    if (/^GE[\s-]*\d+/i.test(code) || /^GE\b/i.test(code) || code.startsWith('RS') || code.startsWith('NSTP') || code.startsWith('PE') || code.startsWith('PATHFIT') || code.startsWith('THEOLOGY')) return true
+    if (/^(GE|GEC|NSTP|PE|PATHFIT|RIZAL|RS|THEOLOGY|CWTS|ROTC)\b/i.test(code) || /^GE[\s-]*\d+/i.test(code) || /^PE[\s-]*\d+/i.test(code) || /^NSTP[\s-]*\d+/i.test(code) || /^RS[\s-]*\d+/i.test(code) || /^PATHFIT[\s-]*\d+/i.test(code)) return true
     return false
   }
-  if (sub.isMajor === false) return true
-  const prog = String(sub.program || '').toUpperCase().trim()
-  if (prog === 'ALL' || prog === 'UNIVERSAL' || prog === 'GEN ED' || prog === 'GENERAL EDUCATION') return true
+  if (sub.isMajor === false || sub.is_major === 0 || sub.is_major === false) return true
+  const subjectType = String(sub.subjectType || sub.subject_type || '').toLowerCase().trim()
+  if (subjectType === 'minor' || subjectType === 'gen ed' || subjectType === 'general education') return true
+  const prog = String(sub.program || sub.program_code || sub.programCode || '').toUpperCase().trim()
+  if (prog === 'ALL' || prog === 'UNIVERSAL' || prog === 'GEN ED' || prog === 'GENERAL EDUCATION' || prog === 'GEN' || prog === 'GENED') return true
   const dept = String(sub.department || '').toUpperCase().trim()
-  if (dept.includes('GENERAL EDUCATION') || dept === 'GEN ED') return true
+  if (dept.includes('GENERAL EDUCATION') || dept === 'GEN ED' || dept.includes('MINOR')) return true
   const classification = String(sub.classification || '').toUpperCase().trim()
-  if (classification.includes('GENERAL EDUCATION')) return true
+  if (classification.includes('GENERAL EDUCATION') || classification.includes('MINOR')) return true
   const code = String(sub.subjectCode || sub.code || '').toUpperCase().trim()
-  if (/^GE[\s-]*\d+/i.test(code) || /^GE\b/i.test(code) || code.startsWith('RS') || code.startsWith('NSTP') || code.startsWith('PE') || code.startsWith('PATHFIT') || code.startsWith('THEOLOGY')) return true
+  if (/^(GE|GEC|NSTP|PE|PATHFIT|RIZAL|RS|THEOLOGY|CWTS|ROTC)\b/i.test(code) || /^GE[\s-]*\d+/i.test(code) || /^PE[\s-]*\d+/i.test(code) || /^NSTP[\s-]*\d+/i.test(code) || /^RS[\s-]*\d+/i.test(code) || /^PATHFIT[\s-]*\d+/i.test(code)) return true
   const name = String(sub.subject || sub.name || '').toUpperCase().trim()
-  if (name.includes('GENERAL EDUCATION')) return true
+  if (name.includes('GENERAL EDUCATION') || name.includes('UNDERSTANDING THE SELF') || name.includes('READINGS IN PHILIPPINE') || name.includes('PURPOSIVE COMMUNICATION')) return true
   return false
 }
 
@@ -375,19 +398,79 @@ export function canProgramTakeSubject(sub: any, programCode?: string): boolean {
   return subProg === targetProg || subProg === 'ALL' || subProg === 'UNIVERSAL'
 }
 
+export function getProgramFamily(str?: string | null): string {
+  if (!str) return ""
+  const s = String(str).toUpperCase().trim()
+  if (["ALL", "GEN", "GENED", "GENERAL EDUCATION", "UNIVERSAL"].includes(s)) return "GENED"
+
+  const IT_KEYS = ["ITP", "BSIT", "BSCS", "INFORMATION TECHNOLOGY", "COMPUTER SCIENCE", "COMPUTING", "COMPUTER"]
+  const CRIM_KEYS = ["CJEP", "BSCRIM", "CRIMINOLOGY", "CRIMINAL JUSTICE"]
+  const BUS_KEYS = ["BAP", "BSA", "BSBA", "ACCOUNTANCY", "BUSINESS ADMINISTRATION", "BUSINESS"]
+  const HM_KEYS = ["HMP", "BSHM", "HOSPITALITY MANAGEMENT", "HOTEL AND RESTAURANT", "HOSPITALITY"]
+  const EDUC_KEYS = ["TEP", "BSED", "BEED", "TEACHER EDUCATION", "EDUCATION"]
+
+  if (IT_KEYS.some((k) => s === k || s.includes(k) || k.includes(s))) return "IT"
+  if (CRIM_KEYS.some((k) => s === k || s.includes(k) || k.includes(s))) return "CRIM"
+  if (BUS_KEYS.some((k) => s === k || s.includes(k) || k.includes(s))) return "BUS"
+  if (HM_KEYS.some((k) => s === k || s.includes(k) || k.includes(s))) return "HM"
+  if (EDUC_KEYS.some((k) => s === k || s.includes(k) || k.includes(s))) return "EDUC"
+  return s
+}
+
+export function matchesProgramFamily(progA?: string | null, progB?: string | null): boolean {
+  if (!progA || !progB) return false
+  const a = String(progA).toUpperCase().trim()
+  const b = String(progB).toUpperCase().trim()
+  if (!a || !b) return false
+  if (a === "ALL" || b === "ALL" || a === "UNIVERSAL" || b === "UNIVERSAL") return true
+  if (a === b) return true
+  const famA = getProgramFamily(a)
+  const famB = getProgramFamily(b)
+  if (!famA || !famB) return false
+  return famA === famB
+}
+
+export function canTeacherTeachSubject(teacher: any, subject: any, programCode?: string): boolean {
+  if (!subject) return true
+  if (isGeneralSubject(subject)) return true
+  const targetProg = String(subject.program || programCode || '').trim()
+  if (!targetProg || targetProg === 'ALL' || targetProg === 'UNIVERSAL') return true
+
+  const tProgs = Array.isArray(teacher?.programs) && teacher.programs.length > 0
+    ? teacher.programs
+    : teacher?.department ? [teacher.department] : []
+
+  // Teachers with no assigned department or program are unassigned/general faculty and can teach
+  if (tProgs.length === 0) return true
+
+  return tProgs.some((p: string) => matchesProgramFamily(p, targetProg))
+}
+
 /**
  * Returns the expected duration in minutes for a schedule session:
- * - Reads configured Lecture Hours or Laboratory Hours from the subject.
- * - Defaults:
- *   - Minor / General Education subjects: 90 minutes (1 hour 30 mins)
- *   - Major subjects - Lecture: 120 minutes (2 hours)
- *   - Major subjects - Laboratory: 180 minutes (3 hours)
+ * - Minor / General Education subjects: 90 minutes (1 hour 30 mins / 1.5h)
+ * - Major subjects - Laboratory: 180 minutes (3 hours)
+ * - Major subjects - Lecture: 120 minutes (2 hours)
  */
 export function getExpectedSubjectDuration(sub: any, classMode: 'Lecture' | 'Laboratory' | string = 'Lecture'): number {
   if (!sub) return 90
   const modeClean = String(classMode || '').toLowerCase().trim()
   const isLab = modeClean === 'laboratory' || modeClean === 'lab'
 
+  // Institutional rule: Minor / General Education subjects are ALWAYS scheduled in 1.5h sessions (90 minutes)
+  const isMinor = isGeneralSubject(sub) ||
+    sub.isMajor === false ||
+    sub.is_major === 0 ||
+    sub.is_major === false ||
+    String(sub.subjectType || sub.subject_type || '').toLowerCase() === 'minor' ||
+    String(sub.subjectType || sub.subject_type || '').toLowerCase() === 'gen ed' ||
+    String(sub.subjectType || sub.subject_type || '').toLowerCase() === 'general education'
+
+  if (isMinor) {
+    return 90 // 1.5 hours (1h 30m)
+  }
+
+  // Major Subject Laboratory
   if (isLab) {
     const labH = Number(sub.labHours ?? sub.lab_hours)
     if (!isNaN(labH) && labH > 0) {
@@ -396,18 +479,13 @@ export function getExpectedSubjectDuration(sub: any, classMode: 'Lecture' | 'Lab
     return 180 // 3 hours fallback for laboratory
   }
 
-  // Lecture component
+  // Major Subject Lecture
   const lecH = Number(sub.lectureHours ?? sub.lecture_hours ?? sub.lecHours)
   if (!isNaN(lecH) && lecH > 0) {
     return Math.round(lecH * 60)
   }
 
-  // Institutional fallbacks if hours not explicitly configured
-  const isMinor = isGeneralSubject(sub) || sub.isMajor === false
-  if (isMinor) {
-    return 90 // 1.5 hours (1h 30m)
-  }
-  return 120 // 2 hours for major lecture
+  return 120 // 2 hours default for major lecture
 }
 
 /**

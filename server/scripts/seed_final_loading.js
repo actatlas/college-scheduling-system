@@ -14,8 +14,8 @@ async function seedFinalLoading() {
       ON DUPLICATE KEY UPDATE is_active = TRUE
     `);
     await conn.query(`
-      INSERT INTO semesters (id, name, is_active)
-      VALUES (1, '1st Semester', TRUE), (2, '2nd Semester', FALSE)
+      INSERT INTO semesters (id, school_year, term, name, is_active)
+      VALUES (1, '2026-2027', '1st Semester', '1st Semester', TRUE), (2, '2026-2027', '2nd Semester', '2nd Semester', FALSE)
       ON DUPLICATE KEY UPDATE is_active = VALUES(is_active)
     `);
 

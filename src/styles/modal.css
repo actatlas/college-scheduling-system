@@ -20,6 +20,7 @@
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
@@ -30,7 +31,8 @@
   max-height: min(90vh, 860px);
   display: flex;
   flex-direction: column;
-  overflow: hidden; /* Lock dialog frame: header & footer remain permanently visible */
+  overflow: hidden;
+  /* Lock dialog frame: header & footer remain permanently visible */
   border-radius: 16px;
   background: #ffffff;
   border: 1px solid rgba(226, 232, 240, 0.95);
@@ -67,6 +69,7 @@
     opacity: 0;
     transform: translateY(8px) scale(0.97);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -443,4 +446,3 @@
     width: 100%;
   }
 }
-

@@ -23,7 +23,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       // Prevent duplicate messages stacking quickly
       setToasts((current) => {
         if (current.some((c) => c.message === message)) return current;
-        const id = Date.now();
+        const id = Date.now() + Math.random();
         // auto remove after 6s
         setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 6000);
         return [...current, { id, message, type, actionLabel, onAction }];
