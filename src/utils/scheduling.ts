@@ -137,7 +137,7 @@ export function findAvailableRoomForSlot(
       .filter((s) => {
         if (excludeId && String(s.id) === String(excludeId)) return false;
         if (s.modality === 'Online') return false;
-        if (s.day.toLowerCase() !== day.toLowerCase()) return false;
+        if (!s.day || s.day.toLowerCase() !== day.toLowerCase()) return false;
         return isTimeOverlapping(s.time, time);
       })
       .map((s) => String(s.room || '').toLowerCase().trim())

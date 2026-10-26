@@ -301,7 +301,7 @@ describe("Dean Time-First Class Schedule Logic & Minimal Form", () => {
     });
   });
 
-  it("5. Allows the Dean to batch-plot multiple class time schedules across the week", async () => {
+  it("5. Verifies Plot Time Schedules button is not present next to Schedule Class", async () => {
     render(
       <BrowserRouter>
         <ToastProvider>
@@ -314,21 +314,8 @@ describe("Dean Time-First Class Schedule Logic & Minimal Form", () => {
       </BrowserRouter>
     );
 
-    // Dean clicks "Plot Time Schedules" top toolbar action
-    const batchBtn = await screen.findByRole("button", { name: /Plot Time Schedules/i });
-    fireEvent.click(batchBtn);
-
-    // Modal opens
-    expect(await screen.findByText(/Plot Time Schedules to Matrix/i)).toBeInTheDocument();
-    expect(screen.getByText(/1\. Select Teaching Days:/i)).toBeInTheDocument();
-    expect(screen.getByText(/2\. Select Time Schedules to Plot:/i)).toBeInTheDocument();
-
-    // Plot button
-    const plotSchedulesBtn = screen.getByRole("button", { name: /Plot \d+ Schedules to Matrix/i });
-    fireEvent.click(plotSchedulesBtn);
-
-    // Plotted slots appear on grid
-    const plottedCards = await screen.findAllByTestId("plotted-slot-card");
-    expect(plottedCards.length).toBeGreaterThanOrEqual(1);
+    // Verify Schedule Class is rendered but Plot Time Schedules is removed
+    expect(await screen.findByRole("button", { name: /Schedule Class/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Plot Time Schedules/i })).not.toBeInTheDocument();
   });
 });

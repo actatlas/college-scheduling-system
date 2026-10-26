@@ -303,6 +303,78 @@ function formatSectionDisplay(sec?: any): string {
   return rawSec;
 }
 
+export function isSameSectionMatch(sec: any, s: ClassScheduleItem | any): boolean {
+  if (!sec || !s) return false;
+
+  // 1. Direct ID match
+  const secId = sec.id || (sec as any).sectionId || (sec as any).section_id;
+  const sSecId = s.sectionId || (s as any).section_id;
+  if (secId && sSecId && String(secId) === String(sSecId)) {
+    return true;
+  }
+
+  const sSec = String(s.section || "").trim().toLowerCase();
+  if (!sSec) return false;
+
+  const displayLabel = formatSectionDisplay(sec).trim().toLowerCase();
+  const rawSec = String(sec.section || sec.section_label || sec.name || "").trim().toLowerCase();
+  const secName = String(sec.sectionName || "").trim().toLowerCase();
+
+  if (displayLabel && sSec === displayLabel) return true;
+  if (rawSec && sSec === rawSec) return true;
+  if (secName && sSec === secName) return true;
+
+  // Normalized alphanumeric comparison (e.g. "bsit 1-a" -> "bsit1a")
+  const normS = sSec.replace(/[^a-z0-9]/g, "");
+  const normDisplay = displayLabel.replace(/[^a-z0-9]/g, "");
+  if (normS && normDisplay && normS === normDisplay) return true;
+
+  const course = String(sec.course || sec.course_code || sec.program || "").trim().toLowerCase();
+  const yl = String(sec.yearLevel || sec.year_level || "").trim().toLowerCase();
+  if (course && rawSec) {
+    const normComposed = `${course}${yl}${rawSec}`.replace(/[^a-z0-9]/g, "");
+    if (normS && normComposed && normS === normComposed) return true;
+    if (yl && `${course} ${yl}-${rawSec}` === sSec) return true;
+    if (`${course} ${rawSec}` === sSec) return true;
+  }
+
+  return false;
+}
+
+export function isSectionScheduledAtTime(
+  sec: any,
+  day: string,
+  time: string,
+  checkPaired: boolean = false,
+  pDay: string | null = null,
+  pTime: string | null = null,
+  items: ClassScheduleItem[] = [],
+  excludeScheduleId?: string
+): boolean {
+  if (!day || !time || !sec || !Array.isArray(items)) return false;
+  return items.some((s) => {
+    if (excludeScheduleId && String(s.id) === String(excludeScheduleId)) return false;
+    if (!isSameSectionMatch(sec, s)) return false;
+
+    // Check primary day & time slot
+    if (s.day && s.day.toLowerCase() === day.toLowerCase() && isTimeOverlapping(s.time, time)) {
+      return true;
+    }
+
+    // Check paired day & time slot if paired scheduling is enabled
+    if (checkPaired && pDay && pTime) {
+      if (s.day && s.day.toLowerCase() === pDay.toLowerCase() && isTimeOverlapping(s.time, pTime)) {
+        return true;
+      }
+    }
+
+    return false;
+  });
+}
+
+
+
+
 
 interface DayTimelineBlock {
   key: string;
@@ -497,7 +569,7 @@ function StackedScheduleCell({
         </div>
 
         <div style={{ fontSize: "0.68rem", color: "var(--srcb-text-muted, #64748b)", margin: "2px 0" }}>
-          Ready for Subject &amp; Room
+          Ready for Subject & Room
         </div>
 
         <div style={{ display: "flex", gap: 4, alignItems: "center", marginTop: 2 }}>
@@ -520,7 +592,7 @@ function StackedScheduleCell({
             }}
           >
             <Plus size={11} />
-            <span>Add Subject &amp; Room</span>
+            <span>Add Subject & Room</span>
           </button>
           <button
             type="button"
@@ -886,6 +958,7 @@ export function SchedulesPage() {
     "07:30 AM - 09:30 AM",
     "09:30 AM - 11:30 AM",
   ]);
+
 
   useEffect(() => {
     try {
@@ -1409,35 +1482,89 @@ export function SchedulesPage() {
     });
   }, [roomsList, scheduleItems, form.day, form.time, form.modality, form.subjectCode, form.classMode, subjectsList, editingSchedule]);
 
+  // Selected Subject Object & Day Pairing (moved up for slot dependency resolution)
+  const selectedSubjectObj = useMemo(() => {
+    if (!form.subjectCode) return null;
+    return (
+      availableSubjects.find((s) => s.code === form.subjectCode) ||
+      subjectsList.find((s) => s.code === form.subjectCode) ||
+      null
+    );
+  }, [form.subjectCode, availableSubjects, subjectsList]);
+
+  const pairedDay = useMemo(() => {
+    return getPairedDay(form.day);
+  }, [form.day]);
+
+  const pairedClassMode: "Lecture" | "Laboratory" = useMemo(() => {
+    if (form.isMajor) {
+      return form.classMode === "Lecture" ? "Laboratory" : "Lecture";
+    }
+    return "Lecture";
+  }, [form.isMajor, form.classMode]);
+
+  const pairedDuration = useMemo(() => {
+    return getExpectedSubjectDuration(selectedSubjectObj, pairedClassMode);
+  }, [selectedSubjectObj, pairedClassMode]);
+
+  const pairedTime = useMemo(() => {
+    const startPart = form.time.split("-")[0]?.trim() || "07:00 AM";
+    const endPart = calculateEndTimeFromStart(startPart, pairedDuration);
+    return `${startPart} - ${endPart}`;
+  }, [form.time, pairedDuration]);
+
   // Requirement 6 & 11: Step 2 - Available Sections for selected Subject, Day & Time
+  // STRICT RULE: Never show sections already scheduled on this day/time slot
   const availableSectionsForSlot = useMemo(() => {
-    const subObj = subjectsList.find((s) => s.code === form.subjectCode);
+    const subObj = selectedSubjectObj;
 
     return availableSections.filter((sec) => {
-      // 1. Check curriculum match (section must match subject's program / course & year level)
+      // 1. Exclude if section already has another class scheduled on this day/time or paired day/time
+      if (form.day && form.time) {
+        if (
+          isSectionScheduledAtTime(
+            sec,
+            form.day,
+            form.time,
+            pairedEnabled,
+            pairedDay,
+            pairedTime,
+            scheduleItems,
+            editingSchedule?.id
+          )
+        ) {
+          return false;
+        }
+      }
+
+      // 2. Check curriculum match (section must match subject's program / course & year level)
       if (subObj && !isSubjectMatchingSection(subObj, sec)) {
         return false;
       }
 
-      // 2. Exclude if section already has another class scheduled on this day at overlapping time
-      if (form.day && form.time) {
-        const hasClash = scheduleItems.some((s) => {
-          if (editingSchedule && String(s.id) === String(editingSchedule.id)) return false;
-          if (s.day.toLowerCase() !== form.day.toLowerCase()) return false;
-          const secLabel = sec.section ? (sec.course ? `${sec.course} ${sec.yearLevel || ''}-${sec.section}`.trim() : sec.section) : '';
-          const sSec = s.section || '';
-          const isSameSection =
-            sSec.toLowerCase().trim() === sec.section.toLowerCase().trim() ||
-            (secLabel && sSec.toLowerCase().trim() === secLabel.toLowerCase().trim());
-          if (!isSameSection) return false;
-          return isTimeOverlapping(s.time, form.time);
-        });
-        if (hasClash) return false;
-      }
-
       return true;
     });
-  }, [availableSections, subjectsList, form.subjectCode, form.day, form.time, scheduleItems, editingSchedule]);
+  }, [selectedSubjectObj, availableSections, form.day, form.time, pairedEnabled, pairedDay, pairedTime, scheduleItems, editingSchedule]);
+
+  // Unbooked sections across all programs that are completely free from class clashes during this slot
+  const unbookedSectionsForSlot = useMemo(() => {
+    const base = availableSections.length > 0 ? availableSections : sectionsList;
+    return base.filter((sec) => {
+      if (form.day && form.time) {
+        return !isSectionScheduledAtTime(
+          sec,
+          form.day,
+          form.time,
+          pairedEnabled,
+          pairedDay,
+          pairedTime,
+          scheduleItems,
+          editingSchedule?.id
+        );
+      }
+      return true;
+    });
+  }, [availableSections, sectionsList, form.day, form.time, pairedEnabled, pairedDay, pairedTime, scheduleItems, editingSchedule]);
 
   // Searchable Select Mappers for Step 2
   const facultyOptionsForStep2: SearchableOption[] = useMemo(() => {
@@ -1462,6 +1589,7 @@ export function SchedulesPage() {
     const sec = availableSections.find(
       (s) =>
         s.section === form.section ||
+        formatSectionDisplay(s) === form.section ||
         (s.course && `${s.course} ${s.yearLevel || ""}-${s.section}`.trim() === form.section) ||
         form.section.includes(s.section)
     );
@@ -1512,8 +1640,9 @@ export function SchedulesPage() {
   }, [availableRoomsForSlot, availableRoomsForBuilding, roomsList, selectedSectionHeadcount]);
 
   const sectionOptionsForStep2: SearchableOption[] = useMemo(() => {
-    const baseList = availableSectionsForSlot.length > 0 ? availableSectionsForSlot : availableSections.length > 0 ? availableSections : sectionsList;
-    return baseList.map((sec, idx) => {
+    // Only choose from candidates that are NOT already booked on this slot
+    const candidateList = availableSectionsForSlot.length > 0 ? availableSectionsForSlot : unbookedSectionsForSlot;
+    return candidateList.map((sec, idx) => {
       const secLabel = formatSectionDisplay(sec) || `Section ${idx + 1}`;
       const studentCount = sec.students || 30;
       return {
@@ -1525,37 +1654,7 @@ export function SchedulesPage() {
         searchKeywords: [sec.course || "", sec.program || "", sec.section || "", `Year ${sec.yearLevel}`],
       };
     });
-  }, [availableSectionsForSlot, availableSections, sectionsList]);
-
-  const selectedSubjectObj = useMemo(() => {
-    if (!form.subjectCode) return null;
-    return (
-      availableSubjects.find((s) => s.code === form.subjectCode) ||
-      subjectsList.find((s) => s.code === form.subjectCode) ||
-      null
-    );
-  }, [form.subjectCode, availableSubjects, subjectsList]);
-
-  const pairedDay = useMemo(() => {
-    return getPairedDay(form.day);
-  }, [form.day]);
-
-  const pairedClassMode: "Lecture" | "Laboratory" = useMemo(() => {
-    if (form.isMajor) {
-      return form.classMode === "Lecture" ? "Laboratory" : "Lecture";
-    }
-    return "Lecture";
-  }, [form.isMajor, form.classMode]);
-
-  const pairedDuration = useMemo(() => {
-    return getExpectedSubjectDuration(selectedSubjectObj, pairedClassMode);
-  }, [selectedSubjectObj, pairedClassMode]);
-
-  const pairedTime = useMemo(() => {
-    const startPart = form.time.split("-")[0]?.trim() || "07:00 AM";
-    const endPart = calculateEndTimeFromStart(startPart, pairedDuration);
-    return `${startPart} - ${endPart}`;
-  }, [form.time, pairedDuration]);
+  }, [availableSectionsForSlot, unbookedSectionsForSlot]);
 
   const pairedRoomOptionsForStep2: SearchableOption[] = useMemo(() => {
     return roomsList.map((r) => {
@@ -1594,7 +1693,10 @@ export function SchedulesPage() {
       const diff = parseTimeToMinutes(currentEnd) - parseTimeToMinutes(currentStart);
       if (!isNaN(diff) && diff > 0) duration = diff;
     }
-    const newEnd = calculateEndTimeFromStart(newStart, duration);
+    let newEnd = calculateEndTimeFromStart(newStart, duration);
+    if (parseTimeToMinutes(newEnd) > parseTimeToMinutes("09:00 PM")) {
+      newEnd = "09:00 PM";
+    }
     setForm((prev) => ({
       ...prev,
       time: `${newStart} - ${newEnd}`,
@@ -1605,20 +1707,25 @@ export function SchedulesPage() {
     const startPart = form.time.split("-")[0]?.trim() || "07:00 AM";
     const startMin = parseTimeToMinutes(startPart);
     const endMin = parseTimeToMinutes(newEnd);
-    if (endMin <= startMin) return;
-    const duration = endMin - startMin;
-    const newMode: "Lecture" | "Laboratory" = duration >= 180 ? "Laboratory" : "Lecture";
+    let newMode: "Lecture" | "Laboratory" | undefined = undefined;
+    if (endMin > startMin) {
+      const duration = endMin - startMin;
+      newMode = duration >= 180 ? "Laboratory" : "Lecture";
+    }
 
     setForm((prev) => ({
       ...prev,
       time: `${startPart} - ${newEnd}`,
-      classMode: prev.isMajor ? newMode : prev.classMode,
+      classMode: (newMode && prev.isMajor) ? newMode : prev.classMode,
     }));
   };
 
   const handleQuickDuration = (durationMinutes: number) => {
     const startPart = form.time.split("-")[0]?.trim() || "07:00 AM";
-    const newEnd = calculateEndTimeFromStart(startPart, durationMinutes);
+    let newEnd = calculateEndTimeFromStart(startPart, durationMinutes);
+    if (parseTimeToMinutes(newEnd) > parseTimeToMinutes("09:00 PM")) {
+      newEnd = "09:00 PM";
+    }
     const newMode: "Lecture" | "Laboratory" = durationMinutes >= 180 ? "Laboratory" : "Lecture";
 
     setForm((prev) => ({
@@ -1650,6 +1757,12 @@ export function SchedulesPage() {
       return;
     }
 
+    const [sPart, ePart] = form.time.split("-").map((t) => t.trim());
+    if (sPart && ePart && parseTimeToMinutes(ePart) <= parseTimeToMinutes(sPart)) {
+      toast.push("End time must be after start time", "error");
+      return;
+    }
+
     // If subject is unset, pick candidate matching selected program or first subject
     if (!form.subjectCode && subjectsList.length > 0) {
       const candidateSub = subjectsList.find((s) => !form.program || s.program === form.program || s.program === "ALL") || subjectsList[0];
@@ -1658,11 +1771,31 @@ export function SchedulesPage() {
       }
     }
 
-    // Default section if unset
-    if (!form.section && availableSectionsForSlot.length > 0) {
-      const s = availableSectionsForSlot[0];
-      const sVal = s.course ? `${s.course} ${s.yearLevel || ''}-${s.section}`.trim() : s.section;
-      setForm((prev) => ({ ...prev, section: sVal }));
+    // Auto-select or re-validate section to ensure it is never a scheduled section
+    const freeSecs = availableSectionsForSlot.length > 0 ? availableSectionsForSlot : unbookedSectionsForSlot;
+    const isCurSectionBusy = form.section && isSectionScheduledAtTime(
+      { section: form.section },
+      form.day,
+      form.time,
+      pairedEnabled,
+      pairedDay,
+      pairedTime,
+      scheduleItems,
+      editingSchedule?.id
+    );
+
+    if (!form.section || isCurSectionBusy) {
+      if (freeSecs.length > 0) {
+        const s = freeSecs[0];
+        const sVal = formatSectionDisplay(s);
+        setForm((prev) => ({
+          ...prev,
+          section: sVal,
+          program: s.program || s.course || prev.program,
+        }));
+      } else {
+        setForm((prev) => ({ ...prev, section: "" }));
+      }
     }
 
     setModalStep(2);
@@ -1854,25 +1987,23 @@ export function SchedulesPage() {
     // Helper to check if a section is occupied at this slot
     const isSecOccupied = (secVal?: string) => {
       if (!secVal) return false;
-      return scheduleItems.some((s) => {
-        if (editingSchedule && String(s.id) === String(editingSchedule.id)) return false;
-        if (s.day.toLowerCase() !== form.day.toLowerCase()) return false;
-        if (!isTimeOverlapping(s.time, finalTime)) return false;
-        return s.section && s.section.toLowerCase().trim() === secVal.toLowerCase().trim();
-      });
+      return isSectionScheduledAtTime({ section: secVal }, form.day, finalTime, pairedEnabled, pairedDay, pairedTime, scheduleItems, editingSchedule?.id);
     };
 
-    // Auto-pick matching section if unset or occupied in this slot
+    // Auto-pick matching section only if it is completely unbooked in this slot
     let defSec = form.section;
     if (!defSec || isSecOccupied(defSec)) {
-      const matchingSec = availableSections.find((sec) => {
+      const freeMatchingSec = availableSections.find((sec) => {
         if (!isSubjectMatchingSection(sub, sec)) return false;
-        const sLabel = formatSectionDisplay(sec);
-        return !isSecOccupied(sLabel) && !isSecOccupied(sec.section);
-      }) || availableSections.find((sec) => isSubjectMatchingSection(sub, sec)) || availableSections[0];
+        return !isSectionScheduledAtTime(sec, form.day, finalTime, pairedEnabled, pairedDay, pairedTime, scheduleItems, editingSchedule?.id);
+      }) || availableSections.find((sec) => {
+        return !isSectionScheduledAtTime(sec, form.day, finalTime, pairedEnabled, pairedDay, pairedTime, scheduleItems, editingSchedule?.id);
+      });
 
-      if (matchingSec) {
-        defSec = formatSectionDisplay(matchingSec);
+      if (freeMatchingSec) {
+        defSec = formatSectionDisplay(freeMatchingSec);
+      } else {
+        defSec = "";
       }
     }
 
@@ -2220,6 +2351,10 @@ export function SchedulesPage() {
       return;
     }
 
+    let pairedSaved = false;
+    let pairedErrorMsg: string | null = null;
+    let createdPairedPayload: any = null;
+
     setLoading(true);
     try {
       const isRoomInFiltered = availableRoomsForBuilding.some((r) => r.number === form.room);
@@ -2294,9 +2429,6 @@ export function SchedulesPage() {
         }
 
         // Automatic Paired-Day Schedule Creation (e.g., Monday Lecture -> Thursday Lab)
-        let pairedSaved = false;
-        let pairedErrorMsg: string | null = null;
-
         if (pairedEnabled && pairedDay && pairedDay.toLowerCase() !== form.day.toLowerCase()) {
           const [pStartPart, pEndPart] = pairedTime.split("-").map((t) => t.trim());
           const resolvedPairedRoom = form.pairedRoom || resolvedRoom;
@@ -2319,6 +2451,7 @@ export function SchedulesPage() {
           try {
             await api.post("/schedules", pairedPayload);
             pairedSaved = true;
+            createdPairedPayload = pairedPayload;
           } catch (dupErr: any) {
             console.warn(`Could not automatically create paired schedule on ${pairedDay}:`, dupErr);
             pairedErrorMsg = dupErr?.response?.data?.error || dupErr?.message || "Slot conflict";
@@ -2366,22 +2499,30 @@ export function SchedulesPage() {
           `Scheduled ${form.subjectCode}! Pick another subject for ${form.day} ${form.time}.`,
           "success"
         );
-        await fetchSchedules();
 
         const curDay = form.day;
         const curTime = form.time;
-        const updatedList = [...scheduleItems, payload as any];
+        const updatedList = [
+          ...scheduleItems,
+          payload as any,
+          ...(pairedSaved && createdPairedPayload ? [createdPairedPayload] : []),
+        ];
+        // Instantly update state so section dropdown immediately filters out the just-scheduled section
+        setScheduleItems(updatedList);
+        fetchSchedules();
+
         const nextFreeRoom = findAvailableRoomForSlot(curDay, curTime, roomsList, updatedList);
         const nextDefRoom = nextFreeRoom?.number || roomsList[0]?.number || "COL-101";
         const nextDefBuilding = (nextFreeRoom?.building as BuildingType) || roomsList[0]?.building || "College Building";
 
-        const nextFreeSec = sectionsList.find((s) => {
-          const sLabel = formatSectionDisplay(s);
-          return !updatedList.some((sc) => sc.day.toLowerCase() === curDay.toLowerCase() && isTimeOverlapping(sc.time, curTime) && (sc.section === sLabel || sc.section === s.section));
+        // Find next section that is NOT booked during this time
+        const pool = availableSections.length > 0 ? availableSections : sectionsList;
+        const nextFreeSec = pool.find((s) => {
+          return !isSectionScheduledAtTime(s, curDay, curTime, pairedEnabled, pairedDay, pairedTime, updatedList);
         });
         const nextSecVal = nextFreeSec ? formatSectionDisplay(nextFreeSec) : "";
 
-        const nextFreeFac = facultyList.find((f) => !updatedList.some((s) => s.day.toLowerCase() === curDay.toLowerCase() && isTimeOverlapping(s.time, curTime) && (s.facultyId === f.id || s.faculty === f.name)));
+        const nextFreeFac = facultyList.find((f) => !updatedList.some((s) => s.day && s.day.toLowerCase() === curDay.toLowerCase() && isTimeOverlapping(s.time, curTime) && (s.facultyId === f.id || s.faculty === f.name)));
 
         setForm((prev) => ({
           ...prev,
@@ -2821,7 +2962,7 @@ export function SchedulesPage() {
           {/* Row 1: Header Title and Segmented View Switcher */}
           <div className="sched-control-top-row" style={{ width: "100%" }}>
             <div>
-              <p className="eyebrow" style={{ margin: 0 }}>Class Timetable &amp; Governance</p>
+              <p className="eyebrow" style={{ margin: 0 }}>Class Timetable & Governance</p>
               <h3 style={{ margin: "2px 0 0", fontSize: "1.15rem", fontWeight: 800 }}>
                 {viewMode === "unscheduled"
                   ? `Unscheduled Curriculum Subjects (${filteredUnscheduled.length})`
@@ -3852,7 +3993,7 @@ export function SchedulesPage() {
             </div>
             <div className="sched-step-info">
               <span className="sched-step-label">Step 2</span>
-              <span className="sched-step-title">Subject &amp; Section</span>
+              <span className="sched-step-title">Subject & Section</span>
             </div>
           </button>
 
@@ -3874,60 +4015,88 @@ export function SchedulesPage() {
             </div>
             <div className="sched-step-info">
               <span className="sched-step-label">Step 3</span>
-              <span className="sched-step-title">Teacher &amp; Room</span>
+              <span className="sched-step-title">Teacher & Room</span>
             </div>
           </button>
         </div>
 
         {/* STEP 1: TIME FIRST */}
+        {/* STEP 1: TIME FIRST */}
         {modalStep === 1 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div
               className="sched-form-card"
               style={{
-                padding: "14px 16px",
+                padding: "16px 18px",
                 background: "var(--srcb-surface, #ffffff)",
                 border: "1px solid var(--srcb-border)",
                 borderRadius: 12,
                 display: "flex",
                 flexDirection: "column",
-                gap: 12,
+                gap: 14,
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
-                <span className="sched-form-card-title" style={{ fontSize: "0.95rem", fontWeight: 700 }}>
-                  1. Select Designated Class Time First
-                </span>
-                {form.time && getTimeDurationStr(form.time) && (
-                  <span
+              {/* Header: Title + Real-time Live Status Badge (Heuristic #1: Visibility of System Status) */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div
                     style={{
+                      width: 30,
+                      height: 30,
+                      borderRadius: 8,
                       background: "rgba(2, 132, 199, 0.1)",
                       color: "var(--srcb-royal, #0284c7)",
-                      fontWeight: 600,
-                      padding: "3px 8px",
-                      borderRadius: 6,
-                      fontSize: "0.75rem",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Clock size={16} />
+                  </div>
+                  <div>
+                    <span className="sched-form-card-title" style={{ fontSize: "0.95rem", fontWeight: 700, display: "block", color: "var(--srcb-navy, #0f2c59)" }}>
+                      1. Select Designated Class Time First
+                    </span>
+                    <span style={{ fontSize: "0.74rem", color: "var(--srcb-text-muted)" }}>
+                      Set the teaching day and timetable duration for this class block
+                    </span>
+                  </div>
+                </div>
+
+                {form.time && getTimeDurationStr(form.time) && (
+                  <span
+                    className="sched-duration-tag"
+                    style={{
+                      background: "rgba(2, 132, 199, 0.09)",
+                      color: "var(--srcb-royal, #0284c7)",
+                      fontWeight: 700,
+                      padding: "4px 12px",
+                      borderRadius: 20,
+                      fontSize: "0.76rem",
                       display: "inline-flex",
                       alignItems: "center",
-                      gap: 4,
+                      gap: 6,
+                      border: "1px solid rgba(2, 132, 199, 0.25)",
                     }}
                   >
                     <Clock size={12} />
-                    {getTimeDurationStr(form.time)}
+                    <span>{form.day} • {form.time} ({getTimeDurationStr(form.time)})</span>
                   </span>
                 )}
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1.6fr", gap: 16, alignItems: "start" }}>
+              {/* Day and Time Controls in a Balanced Grid */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1.65fr", gap: 16, alignItems: "start" }}>
                 {/* Teaching Day Selection */}
                 <div className="field-group" style={{ margin: 0 }}>
-                  <label htmlFor="schedDay" className="modal-field-label" style={{ marginBottom: 4, fontSize: "0.82rem" }}>
+                  <label htmlFor="schedDay" className="modal-field-label" style={{ marginBottom: 6, fontSize: "0.82rem", fontWeight: 600 }}>
                     <Calendar size={13} />
                     <span>Teaching Day</span>
                     <span className="required-asterisk">*</span>
                   </label>
                   <select
                     id="schedDay"
+                    aria-label="Teaching Day"
                     value={form.day}
                     onChange={(e) => {
                       const newDay = e.target.value;
@@ -3937,7 +4106,15 @@ export function SchedulesPage() {
                         setPairedEnabled(hasPair);
                       }
                     }}
-                    style={{ padding: "8px 12px", fontSize: "0.85rem", borderRadius: 8 }}
+                    style={{
+                      padding: "8px 12px",
+                      fontSize: "0.85rem",
+                      borderRadius: 8,
+                      border: "1.5px solid var(--srcb-border)",
+                      background: "var(--srcb-surface, #ffffff)",
+                      width: "100%",
+                      fontWeight: 600,
+                    }}
                   >
                     {DAYS.map((d) => (
                       <option key={d} value={d}>
@@ -3945,16 +4122,23 @@ export function SchedulesPage() {
                       </option>
                     ))}
                   </select>
+
                   {!editingSchedule && pairedDay && (
                     <label
                       style={{
-                        fontSize: "0.74rem",
-                        color: "var(--srcb-text-muted)",
+                        fontSize: "0.76rem",
+                        color: pairedEnabled ? "var(--srcb-royal, #0284c7)" : "var(--srcb-text-muted)",
                         display: "inline-flex",
                         alignItems: "center",
-                        gap: 6,
-                        marginTop: 6,
+                        gap: 7,
+                        marginTop: 8,
                         cursor: "pointer",
+                        fontWeight: pairedEnabled ? 600 : 500,
+                        padding: "5px 10px",
+                        borderRadius: 6,
+                        background: pairedEnabled ? "rgba(2, 132, 199, 0.08)" : "transparent",
+                        border: pairedEnabled ? "1px solid rgba(2, 132, 199, 0.2)" : "1px solid transparent",
+                        transition: "all 0.15s ease",
                       }}
                     >
                       <input
@@ -3968,30 +4152,21 @@ export function SchedulesPage() {
                   )}
                 </div>
 
-                {/* Time Slot Inputs with Start & End + Quick Duration Presets */}
-                <div className="field-group" style={{ margin: 0 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                    <label htmlFor="schedStartTime" className="modal-field-label" style={{ margin: 0, fontSize: "0.82rem" }}>
+                {/* Time Window Option (Heuristics Enhanced: Error Prevention, Recognition, and Flexibility) */}
+                <div className="sched-time-window-card" style={{ margin: 0 }}>
+                  <div className="sched-time-window-header">
+                    <label htmlFor="schedStartTime" className="modal-field-label" style={{ margin: 0, fontSize: "0.82rem", fontWeight: 700, color: "var(--srcb-navy, #0f2c59)" }}>
                       <Clock size={13} />
                       <span>Time Window</span>
                       <span className="required-asterisk">*</span>
                     </label>
 
-                    {/* Quick Duration Buttons */}
-                    <div style={{ display: "flex", gap: 4 }}>
+                    {/* Quick Duration Buttons (Heuristics: Recognition rather than Recall & Efficiency) */}
+                    <div className="sched-duration-pills-wrap">
                       <button
                         type="button"
                         onClick={() => handleQuickDuration(90)}
-                        style={{
-                          padding: "2px 7px",
-                          borderRadius: 6,
-                          fontSize: "0.72rem",
-                          fontWeight: parsedDurationMinutes === 90 ? 700 : 500,
-                          background: parsedDurationMinutes === 90 ? "rgba(2, 132, 199, 0.15)" : "transparent",
-                          border: parsedDurationMinutes === 90 ? "1px solid var(--srcb-royal, #0284c7)" : "1px solid var(--srcb-border)",
-                          color: parsedDurationMinutes === 90 ? "var(--srcb-royal)" : "var(--srcb-text)",
-                          cursor: "pointer",
-                        }}
+                        className={`sched-duration-pill-btn ${parsedDurationMinutes === 90 ? "is-active" : ""}`}
                         title="Standard 1.5 Hours for Minor / Gen Ed"
                       >
                         1.5h (Minor)
@@ -3999,16 +4174,7 @@ export function SchedulesPage() {
                       <button
                         type="button"
                         onClick={() => handleQuickDuration(120)}
-                        style={{
-                          padding: "2px 7px",
-                          borderRadius: 6,
-                          fontSize: "0.72rem",
-                          fontWeight: parsedDurationMinutes === 120 ? 700 : 500,
-                          background: parsedDurationMinutes === 120 ? "rgba(37, 99, 235, 0.15)" : "transparent",
-                          border: parsedDurationMinutes === 120 ? "1px solid var(--srcb-royal, #2563eb)" : "1px solid var(--srcb-border)",
-                          color: parsedDurationMinutes === 120 ? "var(--srcb-royal)" : "var(--srcb-text)",
-                          cursor: "pointer",
-                        }}
+                        className={`sched-duration-pill-btn ${parsedDurationMinutes === 120 ? "is-active" : ""}`}
                         title="Standard 2.0 Hours for Major Lecture"
                       >
                         2.0h (Major Lec)
@@ -4016,16 +4182,7 @@ export function SchedulesPage() {
                       <button
                         type="button"
                         onClick={() => handleQuickDuration(180)}
-                        style={{
-                          padding: "2px 7px",
-                          borderRadius: 6,
-                          fontSize: "0.72rem",
-                          fontWeight: parsedDurationMinutes === 180 ? 700 : 500,
-                          background: parsedDurationMinutes === 180 ? "rgba(124, 58, 237, 0.15)" : "transparent",
-                          border: parsedDurationMinutes === 180 ? "1px solid #7c3aed" : "1px solid var(--srcb-border)",
-                          color: parsedDurationMinutes === 180 ? "#7c3aed" : "var(--srcb-text)",
-                          cursor: "pointer",
-                        }}
+                        className={`sched-duration-pill-btn ${parsedDurationMinutes === 180 ? "is-active" : ""}`}
                         title="Standard 3.0 Hours for Laboratory"
                       >
                         3.0h (Lab)
@@ -4033,14 +4190,18 @@ export function SchedulesPage() {
                     </div>
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", gap: 10 }}>
-                    <div>
+                  {/* Start and End Time Selectors (Selectable Dropdowns) */}
+                  <div className="sched-time-picker-grid">
+                    <div className="sched-time-select-card">
+                      <label htmlFor="schedStartTime" className="sched-time-select-label">
+                        <Clock size={11} /> Start Time
+                      </label>
                       <select
                         id="schedStartTime"
                         aria-label="Start Time"
+                        className="sched-time-select-dropdown"
                         value={form.time.split("-")[0]?.trim() || "07:00 AM"}
                         onChange={(e) => handleStartTimeChange(e.target.value)}
-                        style={{ padding: "8px 12px", fontSize: "0.85rem", borderRadius: 8, width: "100%" }}
                       >
                         {TIME_POINTS.slice(0, -1).map((tp) => (
                           <option key={tp} value={tp}>
@@ -4050,17 +4211,21 @@ export function SchedulesPage() {
                       </select>
                     </div>
 
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", color: "var(--srcb-text-muted)" }}>
-                      <ArrowRight size={14} />
+                    <div className="sched-time-connector">
+                      <ArrowRight size={13} />
+                      <span>{getTimeDurationStr(form.time) || "Duration"}</span>
                     </div>
 
-                    <div>
+                    <div className="sched-time-select-card">
+                      <label htmlFor="schedEndTime" className="sched-time-select-label">
+                        <Clock size={11} /> End Time
+                      </label>
                       <select
                         id="schedEndTime"
                         aria-label="End Time"
+                        className="sched-time-select-dropdown"
                         value={form.time.split("-")[1]?.trim() || "08:30 AM"}
                         onChange={(e) => handleEndTimeChange(e.target.value)}
-                        style={{ padding: "8px 12px", fontSize: "0.85rem", borderRadius: 8, width: "100%" }}
                       >
                         {validEndPoints.map((tp) => {
                           const sPart = form.time.split("-")[0]?.trim() || "07:00 AM";
@@ -4077,20 +4242,41 @@ export function SchedulesPage() {
                 </div>
               </div>
 
+              {/* Paired Day Information Card (Heuristic #1: Visibility of System Status) */}
+              {!editingSchedule && pairedDay && pairedEnabled && (
+                <div
+                  style={{
+                    padding: "8px 12px",
+                    background: "rgba(2, 132, 199, 0.06)",
+                    border: "1px solid rgba(2, 132, 199, 0.2)",
+                    borderRadius: 8,
+                    fontSize: "0.78rem",
+                    color: "var(--srcb-royal, #0284c7)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  <CalendarRange size={14} style={{ flexShrink: 0 }} />
+                  <span>
+                    <strong>Auto-pairs with {pairedDay}:</strong> Linked class pattern scheduled for {pairedDay} • {pairedTime} ({pairedClassMode === "Laboratory" ? "3h Lab" : "2h Lecture"}).
+                  </span>
+                </div>
+              )}
+
               {/* Concurrent Time Slot Note */}
               {concurrentSlotSchedules.length > 0 && (
                 <div
                   style={{
-                    padding: "6px 10px",
-                    background: "rgba(37, 99, 235, 0.06)",
-                    border: "1px solid rgba(37, 99, 235, 0.2)",
-                    borderRadius: 6,
-                    fontSize: "0.74rem",
+                    padding: "7px 11px",
+                    background: "rgba(37, 99, 235, 0.05)",
+                    border: "1px solid rgba(37, 99, 235, 0.18)",
+                    borderRadius: 8,
+                    fontSize: "0.75rem",
                     color: "var(--srcb-royal, #2563eb)",
                     display: "flex",
                     alignItems: "center",
-                    gap: 6,
-                    marginTop: 6,
+                    gap: 8,
                   }}
                 >
                   <Layers size={13} style={{ flexShrink: 0 }} />
@@ -4144,7 +4330,7 @@ export function SchedulesPage() {
                     gap: 8,
                   }}
                 >
-                  <span>Confirm Time &amp; Next</span>
+                  <span>Confirm Time & Next</span>
                   <ArrowRight size={15} />
                 </button>
               </div>
@@ -4206,7 +4392,7 @@ export function SchedulesPage() {
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
                 <span className="sched-form-card-title" style={{ fontSize: "0.95rem", fontWeight: 700 }}>
-                  2. Curriculum Subject &amp; Section
+                  2. Curriculum Subject & Section
                 </span>
                 {form.subjectCode && (
                   <span
@@ -4276,6 +4462,28 @@ export function SchedulesPage() {
                 </div>
               </div>
 
+              {/* Status Banner when all sections are occupied (Heuristic: Visibility of System Status & Error Prevention) */}
+              {sectionOptionsForStep2.length === 0 && (
+                <div
+                  style={{
+                    padding: "8px 12px",
+                    background: "rgba(239, 68, 68, 0.08)",
+                    border: "1px solid rgba(239, 68, 68, 0.25)",
+                    borderRadius: 8,
+                    fontSize: "0.78rem",
+                    color: "#b91c1c",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  <AlertTriangle size={15} style={{ flexShrink: 0 }} />
+                  <span>
+                    <strong>All student sections are already scheduled at this time.</strong> Every section in this program already has a timetable block during {form.day} {form.time}. Please switch time window in Step 1 to schedule another class.
+                  </span>
+                </div>
+              )}
+
               {/* Major Subject Mode / Paired Info */}
               {selectedSubjectObj && form.isMajor && (
                 <div
@@ -4315,7 +4523,7 @@ export function SchedulesPage() {
 
                   {!editingSchedule && pairedDay && pairedEnabled && (
                     <span style={{ fontSize: "0.74rem", color: "var(--srcb-text-muted)" }}>
-                      {pairedDay} auto-assigned as <strong>{pairedClassMode} ({pairedClassMode === "Laboratory" ? "3 hrs" : "2 hrs"})</strong>
+                      Auto-pairs with {pairedDay}: {pairedDay} auto-assigned as <strong>{pairedClassMode} ({pairedClassMode === "Laboratory" ? "3 hrs" : "2 hrs"})</strong>
                     </span>
                   )}
                 </div>
@@ -4382,7 +4590,7 @@ export function SchedulesPage() {
                     gap: 8,
                   }}
                 >
-                  <span>Confirm Subject &amp; Next</span>
+                  <span>Confirm Subject & Next</span>
                   <ArrowRight size={15} />
                 </button>
               </div>
@@ -4459,7 +4667,7 @@ export function SchedulesPage() {
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
                 <span className="sched-form-card-title" style={{ fontSize: "0.95rem", fontWeight: 700 }}>
-                  3. Instructor &amp; Classroom Assignment
+                  3. Instructor Assignment, Classroom & Verification
                 </span>
                 {form.room && (
                   <span
@@ -4610,7 +4818,7 @@ export function SchedulesPage() {
                 style={{ padding: "6px 12px", fontSize: "0.82rem", display: "inline-flex", alignItems: "center", gap: 6 }}
               >
                 <ArrowLeft size={14} />
-                <span>Back to Subject &amp; Section</span>
+                <span>Back to Subject & Section</span>
               </button>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <button
@@ -4651,7 +4859,7 @@ export function SchedulesPage() {
                     }}
                   >
                     <Plus size={14} />
-                    <span>Save &amp; Add Another Subject Here</span>
+                    <span>Save & Add Another Subject Here</span>
                   </button>
                 )}
                 <button
@@ -4907,7 +5115,7 @@ export function SchedulesPage() {
                             </span>
                             <span className="stacked-accordion-divider">—</span>
                             <span className="stacked-accordion-subject" style={{ color: "var(--srcb-text-muted)" }}>
-                              Ready for Subject &amp; Room Assignment
+                              Ready for Subject & Room Assignment
                             </span>
                           </div>
 
@@ -4935,7 +5143,7 @@ export function SchedulesPage() {
                                   title="Assign Subject & Room"
                                 >
                                   <Plus size={12} />
-                                  <span>Assign Subject &amp; Room</span>
+                                  <span>Assign Subject & Room</span>
                                 </button>
                                 <button
                                   type="button"
@@ -5400,7 +5608,7 @@ export function SchedulesPage() {
                     style={{ padding: "2px 8px", fontSize: "0.72rem" }}
                     onClick={() => setBatchPlotDays(["Monday", "Thursday"])}
                   >
-                    Mon &amp; Thu
+                    Mon & Thu
                   </button>
                   <button
                     type="button"
@@ -5408,7 +5616,7 @@ export function SchedulesPage() {
                     style={{ padding: "2px 8px", fontSize: "0.72rem" }}
                     onClick={() => setBatchPlotDays(["Tuesday", "Friday"])}
                   >
-                    Tue &amp; Fri
+                    Tue & Fri
                   </button>
                   <button
                     type="button"
